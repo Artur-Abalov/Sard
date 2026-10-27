@@ -17,6 +17,8 @@ func TestLayoutNamesFilesNextToTheMainConfig(t *testing.T) {
 		l.FragmentDir():           "/etc/sard/agent.d",
 		l.RepositoryFragment("x"): "/etc/sard/agent.d/repo-x.yaml",
 		l.SecretFragment("db"):    "/etc/sard/agent.d/secret-db.yaml",
+		l.BindingDir():            "/etc/sard/secret-bindings",
+		l.SecretBinding("db"):     "/etc/sard/secret-bindings/db.yaml",
 		l.LockFile():              "/etc/sard/agent.d/.sard-config.lock",
 		l.SecretsDir():            "/etc/sard/secrets",
 		l.SecretFile("db"):        "/etc/sard/secrets/db",

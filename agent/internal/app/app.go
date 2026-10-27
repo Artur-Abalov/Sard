@@ -10,6 +10,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -40,6 +41,10 @@ type Agent struct {
 	// Local holds the host-local repositories, secrets and scripts. Only
 	// their names and metadata are sent to the server (ADR 0008).
 	Local config.Config
+	// Bindings are the bindings of the secrets of Local (S11), told to the
+	// server by name and target so that the console warns before a step
+	// fails; nil reports every secret as unbound.
+	Bindings Bindings
 	// RestoreDir is restore.dir of the host: the only place the console may
 	// restore to. It is told to the server for display and cannot be set by it.
 	RestoreDir string
@@ -83,6 +88,7 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		Repositories:    a.repositoryInfos(ctx),
 		RestoreDir:      a.RestoreDir,
 		SecretNames:     a.Local.SecretNames(),
+		Secrets:         a.secretInfos(),
 		ScriptNames:     a.Local.ScriptNames(),
 		// An empty status still tells the server this agent speaks the
 		// verification contract; a verifier measures its own (V5).
@@ -105,6 +111,41 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		})
 	}
 	return req
+}
+
+// Bindings are the bindings of the secrets of the host (*secretbind.Store).
+type Bindings interface {
+	Binding(name string) (b secretbind.Binding, ok bool, err error)
+}
+
+// secretInfos are the secrets of the host with their bindings: names and
+// targets, never a value, a path or the CA file.
+func (a *Agent) secretInfos() []*agentv1.SecretInfo {
+	names := a.Local.SecretNames()
+	infos := make([]*agentv1.SecretInfo, 0, len(names))
+	for _, name := range names {
+		infos = append(infos, a.secretInfo(name))
+	}
+	return infos
+}
+
+func (a *Agent) secretInfo(name string) *agentv1.SecretInfo {
+	info := &agentv1.SecretInfo{Name: name, BindingProblem: "the secret has no binding on the agent host and is given to no plugin"}
+	if a.Bindings == nil {
+		return info
+	}
+	b, ok, err := a.Bindings.Binding(name)
+	switch {
+	case err != nil:
+		info.BindingProblem = err.Error()
+	case ok:
+		info.BindingProblem, info.Plugin, info.Auth = "", b.Plugin, b.Auth
+		info.AllowTls, info.AllowNoChannelBinding = b.AllowTLS, b.AllowNoChannelBinding
+		for _, t := range b.Targets {
+			info.Targets = append(info.Targets, t.String())
+		}
+	}
+	return info
 }
 
 // repositoryInfos describes the host's repositories without URL or key.

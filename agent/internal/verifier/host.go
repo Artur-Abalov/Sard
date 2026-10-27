@@ -31,7 +31,7 @@ func (x *run) host() sdk.RestoreHost {
 	return copyHost{x}
 }
 
-func (copyHost) Secret(string) ([]byte, error) { return nil, errNoSecret }
+func (copyHost) SecretFor(string, sdk.Target) (sdk.Secret, error) { return sdk.Secret{}, errNoSecret }
 
 func (copyHost) Progress(uint64, uint64) {}
 

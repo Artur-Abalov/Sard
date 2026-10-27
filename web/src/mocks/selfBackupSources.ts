@@ -62,6 +62,7 @@ function systemSource(role: Role, agentId: string): Schemas['Source'] {
     agentId,
     plugin: PLUGINS[role],
     ...neverVerified,
+    secretWarnings: [],
     repositoryName: DEFAULT_REPOSITORY,
     config: CONFIGS[role],
     createdAt: DEFAULT_BOUND_AT,

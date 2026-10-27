@@ -126,7 +126,7 @@ class PostgresqlRestoreTest {
             fun of(major: Int): Stand {
                 val id = UUID.randomUUID().toString().take(8)
                 val source = PgServer(sard, major, alias = "db-$id").start().also { it.seed() }
-                val agent = PgAgent(sard, major, "restore$major-$id")
+                val agent = PgAgent(sard, major, "restore$major-$id", servers = listOf("db-$id", "db-restore-$id"))
                 val target = PgServer(sard, major, alias = "db-restore-$id").start()
                 return Stand(source, agent, target)
             }

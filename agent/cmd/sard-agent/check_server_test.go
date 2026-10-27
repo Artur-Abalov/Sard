@@ -59,7 +59,7 @@ func TestTheServerAcceptsTheAgent(t *testing.T) {
 	lines, summary, code := h.checkLines()
 	assertCode(t, code, exitOK)
 	assertLines(t, lines, "OK", "-", serverChecks...)
-	if summary != "summary: 28 ok, 0 warnings, 0 errors, 2 skipped" {
+	if summary != "summary: 29 ok, 0 warnings, 0 errors, 2 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 	if h.server.count() != 1 {

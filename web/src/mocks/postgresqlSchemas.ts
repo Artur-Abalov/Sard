@@ -11,6 +11,7 @@ export const postgresqlSchema = {
   type: 'object',
   properties: {
     host: {
+      'x-sard-target': 'host',
       type: 'string',
       title: 'Host',
       description:
@@ -28,6 +29,7 @@ export const postgresqlSchema = {
       examples: ['db.example.com', '10.0.0.5', '::1', '/var/run/postgresql'],
     },
     port: {
+      'x-sard-target': 'port',
       type: 'integer',
       title: 'Port',
       description:
@@ -45,6 +47,7 @@ export const postgresqlSchema = {
       examples: [5432, 6432],
     },
     database: {
+      'x-sard-target': 'database',
       type: 'string',
       title: 'Database',
       description: 'Name of the database to dump: one database per source. At most 63 bytes.',
@@ -82,12 +85,12 @@ export const postgresqlSchema = {
       format: 'sard-secret',
       title: 'Password secret',
       description:
-        "Name of a secret defined on the agent host (secrets: in agent.yaml) whose file holds the role's password; never the password itself.",
+        "Name of a secret defined on the agent host (secrets: in agent.yaml) whose file holds the role's password; never the password itself. The agent uses it only if the secret is bound on the host to postgresql and this host, port and database (sudo sard-agent secret set <name> --plugin postgresql --target host:port/database).",
       'x-sard-i18n': {
         ru: {
           title: 'Секрет с паролем',
           description:
-            'Имя секрета, заданного на хосте агента (secrets: в agent.yaml), в файле которого лежит пароль роли; не сам пароль.',
+            'Имя секрета, заданного на хосте агента (secrets: в agent.yaml), в файле которого лежит пароль роли; не сам пароль. Агент применяет его, только если секрет привязан на хосте к postgresql и этим хосту, порту и базе (sudo sard-agent secret set <имя> --plugin postgresql --target хост:порт/база).',
         },
       },
       examples: ['pg-app'],
@@ -97,12 +100,12 @@ export const postgresqlSchema = {
       enum: ['disable', 'require', 'verify-full'],
       title: 'TLS mode',
       description:
-        "disable: no TLS. require: TLS without checking the server's certificate. verify-full: TLS with the certificate and the host name checked. Default: require for a TCP host, disable for a socket directory, where only disable works.",
+        "disable: no TLS. require: TLS without checking the server's certificate. verify-full: TLS with the certificate and the host name checked. Default: verify-full for a server on the network, require for one on the agent host (localhost, 127.0.0.0/8, ::1), disable for a socket directory, where only disable works. To a server on the network, disable and require are refused unless the binding of the secret on the agent host allows them (sard-agent secret set --allow-tls).",
       'x-sard-i18n': {
         ru: {
           title: 'Режим TLS',
           description:
-            'disable: без TLS. require: TLS без проверки сертификата сервера. verify-full: TLS с проверкой сертификата и имени хоста. По умолчанию require для хоста TCP и disable для каталога сокета, где работает только disable.',
+            'disable: без TLS. require: TLS без проверки сертификата сервера. verify-full: TLS с проверкой сертификата и имени хоста. По умолчанию verify-full для сервера в сети, require для сервера на хосте агента (localhost, 127.0.0.0/8, ::1) и disable для каталога сокета, где работает только disable. К серверу в сети disable и require отклоняются, если привязка секрета на хосте агента их не разрешает (sard-agent secret set --allow-tls).',
         },
       },
       examples: ['verify-full', 'disable'],
@@ -111,12 +114,12 @@ export const postgresqlSchema = {
       type: 'string',
       title: 'CA certificate',
       description:
-        "Absolute path, on the agent host, of the file with the CA certificate that signed the server's certificate. Only with verify-full; without it libpq reads ~/.postgresql/root.crt of the agent user.",
+        "Absolute path, on the agent host, of the file with the CA certificate that signed the server's certificate. Only with verify-full. A CA bound to the secret on the agent host (sard-agent secret set --ca-file) takes precedence; without either, the CA store of the system is used.",
       'x-sard-i18n': {
         ru: {
           title: 'Сертификат CA',
           description:
-            'Абсолютный путь на хосте агента файла с сертификатом CA, подписавшего сертификат сервера. Только с verify-full; без него libpq читает ~/.postgresql/root.crt пользователя агента.',
+            'Абсолютный путь на хосте агента файла с сертификатом CA, подписавшего сертификат сервера. Только с verify-full. CA из привязки секрета на хосте агента (sard-agent secret set --ca-file) важнее; без обоих используется хранилище CA системы.',
         },
       },
       minLength: 2,
@@ -180,7 +183,12 @@ export const postgresqlSchema = {
             'Таблицы, строки которых точно считаются при каждом бэкапе, в виде схема.таблица (имена как есть, не шаблоны), чтобы проверка восстановления сравнила их с копией. Если не заданы, считаются 10 самых больших таблиц. Каждый подсчёт идёт в той же транзакции, что и дамп, не дольше минуты; подсчёт сверх лимита записывается как не выполненный, бэкап продолжается. Не больше 64.',
         },
       },
-      items: { type: 'string', minLength: 3, maxLength: 127, pattern: '^[^.\\x00]+\\.[^\\x00]+$' },
+      items: {
+        type: 'string',
+        minLength: 3,
+        maxLength: 127,
+        pattern: '^[^.\\x00]+\\.[^\\x00]+$',
+      },
       maxItems: 64,
       uniqueItems: true,
       examples: [['public.orders', 'public.users']],
@@ -279,6 +287,7 @@ export const postgresqlRestoreSchema = {
   type: 'object',
   properties: {
     host: {
+      'x-sard-target': 'host',
       type: 'string',
       title: 'Host',
       description:
@@ -296,6 +305,7 @@ export const postgresqlRestoreSchema = {
       examples: ['db.example.com', '10.0.0.5', '::1', '/var/run/postgresql'],
     },
     port: {
+      'x-sard-target': 'port',
       type: 'integer',
       title: 'Port',
       description:
@@ -334,12 +344,12 @@ export const postgresqlRestoreSchema = {
       format: 'sard-secret',
       title: 'Password secret',
       description:
-        "Name of a secret defined on the agent host (secrets: in agent.yaml) whose file holds the role's password; never the password itself.",
+        "Name of a secret defined on the agent host (secrets: in agent.yaml) whose file holds the role's password; never the password itself. The agent uses it only if the secret is bound on the host to postgresql and this host, port and database (sudo sard-agent secret set <name> --plugin postgresql --target host:port/database).",
       'x-sard-i18n': {
         ru: {
           title: 'Секрет с паролем',
           description:
-            'Имя секрета, заданного на хосте агента (secrets: в agent.yaml), в файле которого лежит пароль роли; не сам пароль.',
+            'Имя секрета, заданного на хосте агента (secrets: в agent.yaml), в файле которого лежит пароль роли; не сам пароль. Агент применяет его, только если секрет привязан на хосте к postgresql и этим хосту, порту и базе (sudo sard-agent secret set <имя> --plugin postgresql --target хост:порт/база).',
         },
       },
       examples: ['pg-app'],
@@ -349,12 +359,12 @@ export const postgresqlRestoreSchema = {
       enum: ['disable', 'require', 'verify-full'],
       title: 'TLS mode',
       description:
-        "disable: no TLS. require: TLS without checking the server's certificate. verify-full: TLS with the certificate and the host name checked. Default: require for a TCP host, disable for a socket directory, where only disable works.",
+        "disable: no TLS. require: TLS without checking the server's certificate. verify-full: TLS with the certificate and the host name checked. Default: verify-full for a server on the network, require for one on the agent host (localhost, 127.0.0.0/8, ::1), disable for a socket directory, where only disable works. To a server on the network, disable and require are refused unless the binding of the secret on the agent host allows them (sard-agent secret set --allow-tls).",
       'x-sard-i18n': {
         ru: {
           title: 'Режим TLS',
           description:
-            'disable: без TLS. require: TLS без проверки сертификата сервера. verify-full: TLS с проверкой сертификата и имени хоста. По умолчанию require для хоста TCP и disable для каталога сокета, где работает только disable.',
+            'disable: без TLS. require: TLS без проверки сертификата сервера. verify-full: TLS с проверкой сертификата и имени хоста. По умолчанию verify-full для сервера в сети, require для сервера на хосте агента (localhost, 127.0.0.0/8, ::1) и disable для каталога сокета, где работает только disable. К серверу в сети disable и require отклоняются, если привязка секрета на хосте агента их не разрешает (sard-agent secret set --allow-tls).',
         },
       },
       examples: ['verify-full', 'disable'],
@@ -363,12 +373,12 @@ export const postgresqlRestoreSchema = {
       type: 'string',
       title: 'CA certificate',
       description:
-        "Absolute path, on the agent host, of the file with the CA certificate that signed the server's certificate. Only with verify-full; without it libpq reads ~/.postgresql/root.crt of the agent user.",
+        "Absolute path, on the agent host, of the file with the CA certificate that signed the server's certificate. Only with verify-full. A CA bound to the secret on the agent host (sard-agent secret set --ca-file) takes precedence; without either, the CA store of the system is used.",
       'x-sard-i18n': {
         ru: {
           title: 'Сертификат CA',
           description:
-            'Абсолютный путь на хосте агента файла с сертификатом CA, подписавшего сертификат сервера. Только с verify-full; без него libpq читает ~/.postgresql/root.crt пользователя агента.',
+            'Абсолютный путь на хосте агента файла с сертификатом CA, подписавшего сертификат сервера. Только с verify-full. CA из привязки секрета на хосте агента (sard-agent secret set --ca-file) важнее; без обоих используется хранилище CA системы.',
         },
       },
       minLength: 2,
@@ -377,6 +387,7 @@ export const postgresqlRestoreSchema = {
       examples: ['/etc/sard/pg-ca.pem'],
     },
     database: {
+      'x-sard-target': 'database',
       type: 'string',
       title: 'New database',
       description:

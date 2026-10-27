@@ -337,7 +337,7 @@ func TestTheRecoveryCanRewriteTheEntry(t *testing.T) {
 func TestASecretThatCannotBeReadDuringTheRecoveryIsACleanupFailureThatNamesNoPath(t *testing.T) {
 	var ev events
 	failed := func(_ context.Context, h sdk.RecoveryHost, _ string, _ []byte) sdk.Recovery {
-		_, err := h.Secret("gone")
+		_, err := secretOf(h, "gone")
 		return sdk.LeftBehind([]string{"entry c1"}, err.Error(), true)
 	}
 	r := newOwnRig(t, recovering("journaltest", &ev, failed))
@@ -357,7 +357,7 @@ func TestTheRecoveryReadsASecretOfTheHostAndLogs(t *testing.T) {
 	var ev events
 	var value []byte
 	read := func(_ context.Context, h sdk.RecoveryHost, _ string, _ []byte) sdk.Recovery {
-		value, _ = h.Secret("pg-restore")
+		value, _ = secretOf(h, "pg-restore")
 		h.Log(sdk.LevelWarn, "looking at c1")
 		return sdk.NothingRestored()
 	}
@@ -379,7 +379,7 @@ func TestTheRecoveryCannotSaveTheValueOfASecretItRead(t *testing.T) {
 	var ev events
 	var saveErr error
 	leak := func(_ context.Context, h sdk.RecoveryHost, _ string, _ []byte) sdk.Recovery {
-		value, _ := h.Secret("pg-restore")
+		value, _ := secretOf(h, "pg-restore")
 		saveErr = h.Journal().Save(value)
 		return sdk.NothingRestored()
 	}

@@ -261,7 +261,7 @@ func TestAnEntryWhoseSecretCannotBeReadSaysWhy(t *testing.T) {
 	h := newPGHost(t)
 	h.host.secrets = nil
 	got := h.recover(leftByAKill(`,"database":{"name":"` + rpNewDatabase + `","oid":20001}`))
-	if !strings.Contains(got.Cleanup, "cannot read the secret pg-restore of the interrupted restore") {
+	if !strings.Contains(got.Cleanup, `the secret pg-restore of the interrupted restore cannot be used: unknown secret "pg-restore"`) {
 		t.Errorf("cleanup %q", got.Cleanup)
 	}
 }

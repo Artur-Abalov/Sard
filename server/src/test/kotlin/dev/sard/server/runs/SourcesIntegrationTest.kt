@@ -29,6 +29,7 @@ class SourcesIntegrationTest(
     @Autowired private val runs: Runs,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val warnings: SourceWarnings,
 ) {
     private val tenant = RunsTenant(jdbc)
     private val other = RunsTenant(jdbc)
@@ -174,5 +175,33 @@ class SourcesIntegrationTest(
         val after = PageKey(c.createdAt, c.id)
         assertEquals(listOf(b.id, a.id), sources.list(tenant.id, null, after, 50).map { it.id })
         assertEquals(listOf(b.id), sources.list(tenant.id, secondAgent, null, 50).map { it.id })
+    }
+
+    @Test
+    fun `a source whose target the binding of its secret does not allow carries a warning (S11)`() {
+        val schema = java.io.File("../agent/plugins/postgresql/schema.json").readText()
+        jdbc.update("update agent_plugins set config_schema = ?::jsonb where agent_id = ?", schema, tenant.agentId)
+        jdbc.update(
+            "update agents set secret_names = array['pg'], secret_bindings = ?::jsonb where id = ?",
+            """[{"name":"pg","plugin":"postgresql","targets":["db.example.com:5432/app"],"problem":""}]""",
+            tenant.agentId,
+        )
+        val config = { host: String -> """{"host":"$host","database":"app","user":"backup","password_ref":"pg"}""" }
+
+        val allowed = sources.create(tenant.id, tenant.draft(name = "allowed", config = config("db.example.com")))
+        val elsewhere = sources.create(tenant.id, tenant.draft(name = "elsewhere", config = config("evil.example")))
+        val warning =
+            "secret \"pg\" is not allowed for postgresql at evil.example:5432/app; if that is intended, " +
+                "run on the agent host: " +
+                "sudo sard-agent secret set pg --plugin postgresql --target evil.example:5432/app"
+        assertEquals(
+            mapOf(allowed.id to emptyList(), elsewhere.id to listOf(warning)),
+            warnings.of(tenant.id, sources.list(tenant.id, null, null, 10)),
+        )
+        val draft = tenant.draft(name = "elsewhere", config = config("DB.example.com"))
+        val replaced = sources.replace(tenant.id, elsewhere.id, draft)
+        assertEquals(mapOf(replaced.id to emptyList<String>()), warnings.of(tenant.id, listOf(replaced)))
+        jdbc.update("delete from agent_plugins where agent_id = ?", tenant.agentId)
+        assertEquals(mapOf(replaced.id to emptyList<String>()), warnings.of(tenant.id, listOf(replaced)))
     }
 }

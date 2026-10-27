@@ -83,8 +83,10 @@ ALTER ROLE backup SET lo_compat_privileges = on;
 (`exclude_tables`). Если роль не суперпользователь и не член `pg_read_all_data`, в лог шага
 попадает одна строка WARN с именем роли.
 
-Роль должна быть допущена в `pg_hba.conf` к этой базе с паролем (`scram-sha-256` или
-`md5`).
+Роль должна быть допущена в `pg_hba.conf` к этой базе с паролем `scram-sha-256`
+(`password_encryption = 'scram-sha-256'`, умолчание с PostgreSQL 14). Метод `md5` и
+`password` агент по TCP отвергает, пока привязка секрета не разрешит их явно
+(«Привязка секрета»).
 
 ## Секрет с паролем
 
@@ -95,11 +97,95 @@ ALTER ROLE backup SET lo_compat_privileges = on;
 службы ([настройка хоста агента](../operations/agent-host-setup.md)).
 
 ```bash
-printf '%s' 'пароль роли backup' | sudo sard-agent secret set pg-app --stdin
+printf '%s' 'пароль роли backup' | sudo sard-agent secret set pg-app \
+  --plugin postgresql --target db1.example.com:5432/app --stdin
 ```
 
-Агент сообщает серверу имена секретов, консоль предлагает их в поле «пароль» источника, а
-сервер при сохранении источника проверяет, что секрет есть у агента.
+Агент сообщает серверу имена секретов и их привязки. Консоль предлагает секреты в поле
+«пароль» источника, сервер при сохранении проверяет, что секрет есть у агента. Если
+привязка не разрешает цель источника, страница источника предупреждает об этом и
+показывает команду для хоста.
+
+## Привязка секрета
+
+Куда уйдёт пароль, решает оператор хоста агента, а не сервер (S11, дополнение ADR 0008).
+`secret set` требует `--plugin` и хотя бы один `--target`. Агент отдаёт пароль только этому
+плагину и только этим целям, что бы ни прислал сервер. При чужой цели шаг падает до
+подключения: ни одна программа не запускается, файл секрета не читается. Сообщение шага
+называет секрет и цель и даёт команду, которая её разрешает:
+
+```text
+secret "pg-app" is not allowed for postgresql at evil.example:5432/app; if that is intended,
+run on the agent host: sudo sard-agent secret set pg-app --plugin postgresql --target evil.example:5432/app
+```
+
+Цель — `хост[:порт][/база]`:
+
+| Цель | Что разрешает |
+|---|---|
+| `db1.example.com:5432/app` | Ровно этот хост, порт и базу. |
+| `db1.example.com:5432/*`, `db1.example.com:5432` | Любую базу этого сервера. Восстановлению из консоли нужна и новая база, и служебная `postgres`: через неё оно создаёт базу, а при откате удаляет. Пароль не уйдёт ни в одну из них, пока привязка не разрешит обе. |
+| `db1.example.com` | Любой порт и любую базу. |
+| `[2001:db8::5]:5432/app` | Адрес IPv6 — в скобках. |
+| `/var/run/postgresql:5432/app` | Каталог сокета; база — только после порта. |
+
+Групповых символов в хосте нет. Имя хоста сравнивается без учёта регистра, адрес — по
+значению. Имя и адрес — разные цели: источник с `host: 10.0.0.5` не попадает в привязку
+`db1.example.com`. `--target` можно повторять, целей и методов `--auth` — не больше 64
+(столько принимает сервер).
+
+Что привязка разрешает сверх правил плагина:
+
+| Флаг | По умолчанию | Что разрешает |
+|---|---|---|
+| `--auth scram-sha-256,md5` | TCP: только `scram-sha-256`; сокет: любой метод | Точный список методов, которые может запросить сервер: `scram-sha-256`, `md5`, `password`, `none`. На сокете задаёт ограничение, которого иначе нет. |
+| `--allow-tls require` или `--allow-tls disable` | к серверу в сети — только `verify-full` | Более слабый `tls_mode` источника. |
+| `--ca-file /etc/sard/pg-ca.pem` | `tls_root_cert` источника, иначе системные CA | CA, которым проверяется сертификат сервера; важнее `tls_root_cert` из конфига. |
+| `--allow-no-channel-binding` | channel binding обязателен при TLS и SCRAM | SCRAM по TLS без channel binding (например, через пулер). |
+
+Привязка лежит в `/etc/sard/secret-bindings/<имя>.yaml` рядом с главным конфигом. Файл
+принадлежит root (группа службы, `0640`), это не часть конфига: агент предыдущей версии
+запускается с ним. Повторный `secret set` заменяет привязку целиком: перечислите все цели.
+Файл, который могут менять группа или прочие, или с другим владельцем, агент не
+использует. `sard-agent secret list` показывает привязки (колонка `BOUND_TO`),
+`sard-agent check` — строку `secret.bound`. Секрет, объявленный в `agent.yaml` вручную,
+получает привязку тоже вручную, тем же файлом:
+
+```yaml
+plugin: postgresql
+targets:
+  - db1.example.com:5432/app
+allow_tls: require    # необязательно
+```
+
+## Аутентификация и TLS
+
+Строку подключения для `psql`, `pg_dump`, `pg_dumpall` и `pg_restore` собирает одна
+функция плагина, одинаково для бэкапа, отпечатка, восстановления и отката:
+
+- **TCP** (сеть и `localhost`): `require_auth=scram-sha-256`, если привязка не задаёт
+  `--auth`. Сервер, который просит `md5` или пароль открытым текстом, пароль не получает:
+  libpq обрывает вход до отправки. `require_auth` идёт в строке подключения, а не в
+  `PGREQUIREAUTH`: клиент ниже PostgreSQL 16 отвергает неизвестный параметр строки до
+  подключения, а неизвестную переменную пропустил бы молча.
+- **TLS со SCRAM**: `channel_binding=require` — обмен SCRAM привязан к сертификату
+  сервера, и посредник, пересылающий его к настоящему серверу, будет замечен.
+- **TLS по TCP**: `gssencmode=disable`. libpq по умолчанию сначала пробует шифрование
+  GSS, а у такого соединения нет TLS: не проверялись бы ни сертификат, ни channel binding.
+- **Сервер в сети** (не сокет, не `localhost`, не 127.0.0.0/8, не `::1`): `tls_mode`
+  `disable` и `require` отклоняются до запуска программ, если привязка не разрешает их
+  `--allow-tls`. Без `tls_mode` используется `verify-full`: проверяются сертификат и имя
+  хоста, CA — из `--ca-file` привязки, `tls_root_cert` источника или системный
+  (`sslrootcert=system`).
+- **Сервер на этом хосте по TCP**: `tls_mode` любой, по умолчанию `require`; SCRAM
+  обязателен — порт `localhost` может занять любой пользователь хоста, пока PostgreSQL
+  не запущен.
+- **Сокет**: TLS нет (`disable`); метод входа — какой выберет сервер (`peer`, `trust`,
+  `scram-sha-256`), если привязка не задаёт `--auth`.
+
+Клиенту PostgreSQL на хосте нужна libpq 16 или новее (параметр `require_auth`). Версия
+`psql` и версия libpq могут различаться: пакеты PGDG ставят libpq новее клиента. На сокете
+старый клиент работает.
 
 Значением пароля считается содержимое файла без завершающих `\r` и `\n`. Пустое значение
 и значение с байтом NUL — ошибка шага.
@@ -119,9 +205,9 @@ printf '%s' 'пароль роли backup' | sudo sard-agent secret set pg-app -
 | `port` | целое 1…65535, по умолчанию 5432 | Для сокета — номер в имени файла `.s.PGSQL.<port>`. |
 | `database` | строка, обязательно | Имя базы, до 63 байт. Одна база на источник: несколько баз — несколько источников. |
 | `user` | строка, обязательно | Роль, до 63 байт. |
-| `password_ref` | строка, обязательно | **Имя** секрета агента с паролем. |
-| `tls_mode` | `disable`, `require`, `verify-full` | По умолчанию `require` для TCP; для сокета допустим только `disable`, он же умолчание. |
-| `tls_root_cert` | абсолютный путь | Файл CA на хосте агента. Только с `verify-full`; без него libpq ищет `~/.postgresql/root.crt` пользователя агента. |
+| `password_ref` | строка, обязательно | **Имя** секрета агента с паролем; секрет должен быть привязан к `postgresql` и этой цели. |
+| `tls_mode` | `disable`, `require`, `verify-full` | По умолчанию `verify-full` для сервера в сети, `require` для сервера на этом хосте; для сокета допустим только `disable`, он же умолчание. К серверу в сети `disable` и `require` — только по `--allow-tls` привязки. |
+| `tls_root_cert` | абсолютный путь | Файл CA на хосте агента. Только с `verify-full`; `--ca-file` привязки важнее; без обоих — системные CA. |
 | `exclude_schemas`, `exclude_tables` | массивы строк | Шаблоны `pg_dump` (`--exclude-schema`, `--exclude-table`), до 256, каждый до 1024 байт, без повторов. Шаблон, которому ничего не соответствует, не ошибка. |
 | `key_tables` | массив строк `схема.таблица` | Таблицы, строки которых отпечаток считает точно (имена как есть, не шаблоны), до 64. Не заданы — 10 самых больших по `pg_total_relation_size`. См. «Отпечаток базы». |
 | `pg_dump_path` | абсолютный путь | Исполняемый файл `pg_dump`; `psql` и `pg_dumpall` — из того же каталога. |
@@ -463,6 +549,13 @@ pg_restore --no-owner --no-acl -d restored app.dump
 | `pg_dump 16.4 is older than the PostgreSQL server 18.0` | Поставьте `pg_dump` 18 или новее, задайте `pg_dump_path`. |
 | `password authentication failed for user …` | Неверный пароль в секрете или нет такой роли. |
 | `no pg_hba.conf entry …` | Разрешите роли вход с хоста агента в `pg_hba.conf`. |
-| `server does not support SSL` | Сервер без TLS: `tls_mode: disable` или включите TLS на сервере. |
+| `server does not support SSL` | Сервер без TLS: включите TLS на сервере или задайте `tls_mode: disable` и разрешите его в привязке (`--allow-tls disable`). |
+| `secret "…" is not allowed for postgresql at …` | Цель источника вне привязки секрета: выполните на хосте агента команду из сообщения или исправьте источник. |
+| `secret "…" has no binding on this host …` | Секрет без привязки: `sudo sard-agent secret set <имя> --plugin postgresql --target …`. |
+| `tls_mode disable would send the password …` | `tls_mode` слабее, чем разрешает привязка: включите TLS (`verify-full`) или разрешите `--allow-tls`. |
+| `authentication method requirement "scram-sha-256" failed: server requested a hashed password` | Роль входит по `md5`: задайте `password_encryption = 'scram-sha-256'` и пароль роли заново, или разрешите `--auth scram-sha-256,md5`. Пароль не отправлен. |
+| `channel binding is required, but server did not offer …` | Между агентом и сервером пулер или роль без пароля SCRAM: исправьте сервер или разрешите `--allow-no-channel-binding`. |
+| `invalid connection option "require_auth"` | libpq на хосте ниже 16: поставьте клиент PostgreSQL 16 или новее (образ агента `-pg18` его содержит) или укажите `pg_dump_path`. |
+| `root certificate file … does not exist` | Нет CA для `verify-full`: `--ca-file` в привязке или `tls_root_cert` источника. |
 | `permission denied for table …` | Роли нужно `pg_read_all_data` или `SELECT` на таблицу; либо `exclude_tables`. |
 | `pg_dump failed: empty output`, `not a custom-format archive` | `pg_dump` завершился, не создав архив: смотрите лог шага. |

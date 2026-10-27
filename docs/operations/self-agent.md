@@ -22,7 +22,7 @@
 
 | Что | Как |
 |---|---|
-| Читать базу целиком | роль PostgreSQL `sard_backup`, член `pg_read_all_data`; по сети compose до `postgres:5432`; пароль — файл тома `sard-db-backup`, подключённый в `/run/sard-self/db-password` |
+| Читать базу целиком | роль PostgreSQL `sard_backup`, член `pg_read_all_data`; по сети compose до `postgres:5432`; пароль — файл тома `sard-db-backup`, подключённый в `/run/sard-self/db-password`. Секрет `sard-db` привязан к плагину `postgresql` и цели `postgres:5432/sard` без TLS (файл `secret-bindings/sard-db.yaml` образа, S11): серверу ничего не стоит прислать другой хост, но пароль туда не уйдёт |
 | Читать каталог CA, ключ CA тоже | том `sard-pki` подключён `:ro` в `/var/lib/sard/pki` |
 | Читать конфигурацию установки | каталог compose (`./`) подключён `:ro` в `/etc/sard/install`; `.env` — группа 10001, 0640 |
 | Звонить серверу | `server:9090`, mTLS, как любой агент. Имя `server` всегда есть в сертификате сервера |
@@ -94,6 +94,27 @@ CA в зашифрованный репозиторий рядом с базой
   кластера вручную ([раздел 16](../operator/16-postgresql.md#внешний-кластер)).
   Пароль ей задаёт тот, кто выполнил скрипт; сервер роль и пароль не меняет.
 
+Если база не `postgres:5432/sard` (`SARD_SELF_BACKUP_DATABASE_HOST`, `…_PORT`, `…_NAME`),
+поправьте привязку пароля в томе конфигурации sard-self: агент отдаёт его только туда, куда
+она разрешает ([привязка секрета](../plugins/postgresql.md#привязка-секрета)). Секрет
+объявлен в `agent.yaml` образа, поэтому `secret set` его не меняет: правьте файл.
+
+Режим TLS источника задаёт сервер: `SARD_SELF_BACKUP_DATABASE_TLS_MODE` в `environment`
+сервера, по умолчанию `disable` (сеть compose). Внешней базе в сети нужен TLS:
+`verify-full`, если её сертификат проверяется (тогда `allow_tls` в привязке не нужен),
+иначе `require` и `allow_tls: require` в привязке. Без этого плагин откажет до запуска
+`pg_dump`.
+
+```bash
+docker compose exec -T -u 0 self-agent sh -c 'cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
+plugin: postgresql
+targets:
+  - db.internal:5432/sard
+allow_tls: require    # только с SARD_SELF_BACKUP_DATABASE_TLS_MODE=require
+YAML
+docker compose restart self-agent
+```
+
 ## Обновление
 
 Обновление со сборок до DB2 (схема `public`, пользователь сервера — суперпользователь) не
@@ -104,3 +125,8 @@ CA в зашифрованный репозиторий рядом с базой
 сохраняет данные, агентов, встроенный агент `sard-self` и пройденный мастер:
 после `docker compose up -d` с новым файлом и версией `db-init` и `migrate`
 идут до сервера, новый встроенный токен не выпускается.
+
+Том `sard_sard-self-config` получает файлы образа только при создании, поэтому
+привязку пароля `secret-bindings/sard-db.yaml` (S11) в существующий том при
+обновлении дописывают один раз — команда в
+[разделе 7](../operator/07-upgrade.md#обновление-до-версии-с-привязкой-секретов-s11).

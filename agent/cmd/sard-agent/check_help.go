@@ -27,7 +27,7 @@ server.reachable, server.tls, server.accepted, clock.skew, then for every
 repository repository.storage, repository.credentials, repository.initialized,
 repository.password, repository.id, repository.locks (see "sard-agent repo
 check --help"; restic check with --read-data is only run there), then
-secret.readable of every secret, plugin.declared, plugin.programs of every
+secret.readable and secret.bound of every secret, plugin.declared, plugin.programs of every
 plugin, restore.locations, selinux.labels, selinux.denials, service.running and
 service.steps. The server is asked once and read-only: a TCP connection, an mTLS
 handshake and the call Probe, which answers whether the server accepts this agent

@@ -195,7 +195,7 @@ func (r *repo) Backup(ctx context.Context, req restic.BackupRequest, progress fu
 
 func newSource(t *testing.T, p sdk.Plugin) *pluginhost.Source {
 	t.Helper()
-	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read)
+	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read, bound{plugin: p.Name()})
 	s, err := pluginhost.NewSource(p, secrets)
 	if err != nil {
 		t.Fatal(err)
@@ -360,7 +360,7 @@ func TestResticFailureIsReturned(t *testing.T) {
 func TestHostGivesTheValueTheStepStartedWithEvenIfTheFileChanged(t *testing.T) {
 	var value []byte
 	p := &plugin{prepare: func(_ context.Context, h sdk.Host, _ sdk.Config) error {
-		value, _ = h.Secret("pg") // the file now holds "s3cret"
+		value, _ = secretOf(h, "pg") // the file now holds "s3cret"
 		return nil
 	}}
 	rep := &reporter{snapshot: map[string][]byte{"pg": []byte("old-value")}}
@@ -376,8 +376,8 @@ func TestHostGivesSecretsByNameAndForwardsLogs(t *testing.T) {
 	var value []byte
 	var unknown error
 	p := &plugin{prepare: func(_ context.Context, h sdk.Host, _ sdk.Config) error {
-		value, _ = h.Secret("pg")
-		_, unknown = h.Secret("mysql")
+		value, _ = secretOf(h, "pg")
+		_, unknown = secretOf(h, "mysql")
 		for _, l := range []sdk.Level{sdk.LevelDebug, sdk.LevelInfo, sdk.LevelWarn, sdk.LevelError, 0} {
 			h.Log(l, fmt.Sprint("level ", int(l)))
 		}
@@ -410,7 +410,7 @@ func TestHostGivesSecretsByNameAndForwardsLogs(t *testing.T) {
 
 func TestSourceNeedsAValidSchema(t *testing.T) {
 	bad := &badSchema{}
-	if _, err := pluginhost.NewSource(bad, pluginhost.NewSecrets(nil, nil)); err == nil {
+	if _, err := pluginhost.NewSource(bad, pluginhost.NewSecrets(nil, nil, nil)); err == nil {
 		t.Fatal("NewSource accepted an invalid schema")
 	}
 }

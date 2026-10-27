@@ -120,8 +120,8 @@ type Recoverer interface {
 
 // RecoveryHost is what the agent offers a plugin while it recovers.
 type RecoveryHost interface {
-	// Secret returns the value of the named secret, as Host.Secret does.
-	Secret(name string) ([]byte, error)
+	// SecretFor returns the value of the named secret, as Host.SecretFor does.
+	SecretFor(name string, target Target) (Secret, error)
 	// Log sends a line to the log of the agent.
 	Log(level Level, text string)
 	// Journal rewrites the entry that is being recovered.

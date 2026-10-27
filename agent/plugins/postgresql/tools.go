@@ -33,14 +33,15 @@ func (p Plugin) fs() FS {
 	return p.FS
 }
 
-// setup is what every phase needs first: the password of the secret and the
-// tools of the host.
-func (p Plugin) setup(h sdk.Host, c config) (password []byte, t tools, err error) {
-	if password, err = p.password(h, c); err != nil {
-		return nil, tools{}, err
+// setup is what every phase needs first: the password of the secret, the
+// config with what its binding allows, and the tools of the host.
+func (p Plugin) setup(h sdk.Host, c config) (config, []byte, tools, error) {
+	c, password, err := p.password(h, c)
+	if err != nil {
+		return c, nil, tools{}, err
 	}
-	t, err = p.locate(c)
-	return password, t, err
+	t, err := p.locate(c)
+	return c, password, t, err
 }
 
 // locate finds pg_dump (pg_dump_path or the PATH of the agent) and psql

@@ -183,11 +183,30 @@ function DeleteButton({ source }: { source: SourceModel }) {
   )
 }
 
+// What the agent will refuse by the bindings of the secrets on its host (S11): the server's words, with the command.
+function SecretWarnings({ source }: { source: SourceModel }) {
+  const { t } = useTranslation()
+  if (source.secretWarnings.length === 0) return null
+  return (
+    <Alert color={tones.warning} title={t('source.secretWarningsTitle')}>
+      <Stack gap="xs">
+        <Text size="sm">{t('source.secretWarningsWhy')}</Text>
+        {source.secretWarnings.map((warning) => (
+          <Code key={warning} block>
+            {warning}
+          </Code>
+        ))}
+      </Stack>
+    </Alert>
+  )
+}
+
 function SourceOverview({ source }: { source: SourceModel }) {
   const { t } = useTranslation()
   return (
     <Stack>
       {source.systemRole !== null && <Text c="dimmed">{t('source.systemWhy')}</Text>}
+      <SecretWarnings source={source} />
       <Table>
         <Table.Tbody>
           <Table.Tr>

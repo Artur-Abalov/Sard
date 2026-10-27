@@ -47,7 +47,7 @@ func newConsoleRepo(t *testing.T) consoleRepo {
 	engine := consolerestore.New(consolerestore.Options{
 		Dir: dir, FS: hostsetup.OS{}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700}, Logger: slog.New(slog.DiscardHandler),
 	})
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, os.ReadFile), func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, os.ReadFile, nil), func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 		return r.cli.ForStep(commandID, stderr), name == "it"
 	}, t.TempDir(), pluginhost.WithConsoleRestore(engine))
 	if err != nil {

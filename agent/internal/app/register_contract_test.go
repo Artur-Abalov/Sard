@@ -39,7 +39,7 @@ const (
 func TestBuiltinPluginsPassTheServersRegisterRules(t *testing.T) {
 	for _, version := range []string{"dev", agentVersionInRelease} {
 		reg := plugins.Registry(version)
-		handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
+		handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +84,7 @@ func checkPlugin(t *testing.T, p *agentv1.Plugin) {
 // their restore from the console, with the version of the agent.
 func TestRegisterAnnouncesTheBackupAndTheRestoreOfFilesAndPostgresql(t *testing.T) {
 	reg := plugins.Registry(agentVersionInRelease)
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestRegisterAnnouncesTheBackupAndTheRestoreOfFilesAndPostgresql(t *testing.
 // Scenario: Register сообщает каталог восстановления и схемы восстановления плагинов.
 func TestRegisterAnnouncesTheRestoreDirectoryAndTheRestoreSchemasOfThePlugins(t *testing.T) {
 	reg := plugins.Registry(agentVersionInRelease)
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestRegisterAnnouncesTheRestoreDirectoryAndTheRestoreSchemasOfThePlugins(t 
 // Scenario: С R2b плагин postgresql объявляет схему восстановления.
 func TestRegisterAnnouncesTheRestoreSchemaOfPostgresql(t *testing.T) {
 	reg := plugins.Registry(agentVersionInRelease)
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

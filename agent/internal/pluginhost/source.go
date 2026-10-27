@@ -96,7 +96,7 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 	if err := s.schema.Validate(cfg); err != nil {
 		return Backup{}, err
 	}
-	h := &host{secrets: s.secrets, r: r}
+	h := &host{secrets: s.secrets, plugin: s.plugin.Name(), r: r}
 	d, err := s.prepareAndDump(ctx, h, cfg)
 	if err != nil {
 		return Backup{}, err
@@ -238,6 +238,7 @@ func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string, 
 // host is the sdk.Host of one step; progress goes to the current phase.
 type host struct {
 	secrets *Secrets
+	plugin  string
 	r       Reporter
 	phase   atomic.Int32
 }
@@ -247,13 +248,21 @@ func (h *host) enter(phase agentv1.StepPhase) {
 	h.r.Progress(phase, 0, 0)
 }
 
-// Secret gives the value the step started with, the one the log masker knows;
-// a name the step did not start with is read from its file.
-func (h *host) Secret(name string) ([]byte, error) {
-	if v, ok := h.r.Secret(name); ok {
-		return v, nil
+// SecretFor gives, once the binding allows the plugin of the step at target,
+// the value the step started with, the one the log masker knows; a name the
+// step did not start with is read from its file.
+func (h *host) SecretFor(name string, target sdk.Target) (sdk.Secret, error) {
+	grant, err := h.secrets.Allow(h.plugin, name, target)
+	if err != nil {
+		return sdk.Secret{}, err
 	}
-	return h.secrets.Secret(name)
+	v, ok := h.r.Secret(name)
+	if !ok {
+		if v, err = h.secrets.value(name); err != nil {
+			return sdk.Secret{}, err
+		}
+	}
+	return sdk.Secret{Value: v, Grant: grant}, nil
 }
 
 func (h *host) Progress(done, total uint64) {

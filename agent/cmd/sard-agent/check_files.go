@@ -220,20 +220,34 @@ func (readOnlyFiles) Remove(string) error                         { return errRe
 func (readOnlyFiles) Rename(string, string) error                 { return errReadOnly }
 func (readOnlyFiles) WriteFile(string, []byte, os.FileMode) error { return errReadOnly }
 
-// secretLines is secret.readable for every secret of the config (Ч17).
+// secretLines are secret.readable (Ч17) and secret.bound (S11) for every
+// secret of the config.
 func (c *hostCheck) secretLines() {
 	if failed := c.configBlock(); failed != "" {
 		c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretReadable, "", failed))
+		c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretBound, "", failed))
 		return
 	}
 	for _, name := range c.cfg.SecretNames() {
 		path := c.cfg.Secrets[name]
 		if c.failed[hostcheck.CheckServiceUser] {
 			c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretReadable, name, hostcheck.CheckServiceUser))
+			c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretBound, name, hostcheck.CheckServiceUser))
 			continue
 		}
 		c.emit(c.guarded(hostcheck.CheckSecretReadable, name, func() hostcheck.Line { return c.secretLine(name, path) }))
+		c.emit(c.guarded(hostcheck.CheckSecretBound, name, func() hostcheck.Line { return c.bindingLine(name) }))
 	}
+}
+
+// bindingLine judges the binding of the secret as the service does: the same
+// rules of its file, the same reading.
+func (c *hostCheck) bindingLine(name string) hostcheck.Line {
+	path := hostsetup.Layout{Config: c.opts.configPath}.SecretBinding(name)
+	b, bound, err := c.deps.bindings(c.opts.configPath, c.who.Service).Binding(name)
+	c.noteDenied(path, err)
+	hint := hostcheck.BindingHint(name, path, hostcheck.InMainConfig(c.cfg, name))
+	return hostcheck.BindingLine(name, path, hint, describeBinding(b), bound, err)
 }
 
 // secretLine reads the secret as the service does and says only whether it
@@ -241,5 +255,5 @@ func (c *hostCheck) secretLines() {
 func (c *hostCheck) secretLine(name, path string) hostcheck.Line {
 	data, err := c.deps.readOwned(path, c.who.Service.UID)
 	c.noteDenied(path, err)
-	return hostcheck.SecretLine(name, path, len(data), err)
+	return hostcheck.SecretLine(name, path, hostcheck.SecretSetHint(name, hostcheck.InMainConfig(c.cfg, name)), len(data), err)
 }

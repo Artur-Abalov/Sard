@@ -90,7 +90,7 @@ func (rec *JournalRecovery) recoverEntry(o RecoveryOptions, id, pluginName, path
 		rec.outcomes[id] = leftBehind([]string{path}, fmt.Sprintf("this agent has no plugin %q that recovers entries", pluginName))
 		return
 	}
-	host := &recoveryHost{log: o.Logger.With("plugin", pluginName, "command_id", id), secrets: o.Secrets,
+	host := &recoveryHost{log: o.Logger.With("plugin", pluginName, "command_id", id), secrets: o.Secrets, plugin: pluginName,
 		journal: &stepJournal{store: o.Journal, plugin: pluginName, commandID: id}}
 	got, err := recoverWithin(o, recoverer, host, id, entry)
 	if err != nil {
@@ -235,19 +235,21 @@ func (rec *JournalRecovery) unnotified() []string {
 type recoveryHost struct {
 	log     *slog.Logger
 	secrets *Secrets
+	plugin  string
 	journal *stepJournal
 }
 
 var _ sdk.RecoveryHost = (*recoveryHost)(nil)
 
-// Secret implements sdk.RecoveryHost: read from the file of the host; the
-// error names the secret, never its file.
-func (h *recoveryHost) Secret(name string) ([]byte, error) {
-	value, err := h.secrets.Secret(name)
+// SecretFor implements sdk.RecoveryHost: read from the file of the host once
+// the binding allows the plugin at target; the error names the secret, never
+// its file.
+func (h *recoveryHost) SecretFor(name string, target sdk.Target) (sdk.Secret, error) {
+	secret, err := h.secrets.SecretFor(h.plugin, name, target)
 	if err == nil {
-		h.journal.noteSecret(name, value)
+		h.journal.noteSecret(name, secret.Value)
 	}
-	return value, err
+	return secret, err
 }
 
 var slogLevels = map[sdk.Level]slog.Level{

@@ -7,14 +7,22 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
 )
 
-// set is "secret set <name> --stdin" with the value on standard input.
+// bindFlags bind a secret of the tests to the plugin postgresql at one target.
+var bindFlags = []string{"--plugin", "postgresql", "--target", "db.example.com:5432/app"}
+
+// set is "secret set <name> --stdin" with the value on standard input, bound
+// by bindFlags unless extra binds it.
 func (h *setupHost) set(name, value string, extra ...string) (int, string, string) {
 	h.stdinIs(value)
+	if !slices.Contains(extra, "--plugin") {
+		extra = append(slices.Clone(bindFlags), extra...)
+	}
 	// The name stands after "--": one that starts with "-" is a name, not a flag.
 	args := append([]string{"secret", "set"}, extra...)
 	return h.sudo(append(args, "--stdin", "--config", "C", "--", name)...)
@@ -47,7 +55,7 @@ func TestFileValueIsStoredByteForByteAndTheSourceIsUntouched(t *testing.T) {
 	src := h.path("outside/F")
 	h.write(src, "SECRET-MARKER\n", 0o644)
 	before := h.fsys.chowns()
-	code, _, _ := h.sudo("secret", "set", "db", "--from-file", src, "--config", "C")
+	code, _, _ := h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--from-file", src, "--config", "C")
 	assertCode(t, code, exitOK)
 	if got := h.fileContent(h.path("secrets/db")); got != "SECRET-MARKER\n" {
 		t.Fatalf("stored %q", got)
@@ -62,7 +70,7 @@ func TestTerminalValueIsAskedTwiceAndStoredWithoutALineBreak(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
 	term := h.terminalIs("SECRET-MARKER", "SECRET-MARKER")
-	code, _, stderr := h.sudo("secret", "set", "db", "--config", "C")
+	code, _, stderr := h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--config", "C")
 	assertCode(t, code, exitOK)
 	if got := h.fileContent(h.path("secrets/db")); got != "SECRET-MARKER" || len(term.prompts) != 2 {
 		t.Fatalf("stored %q after %d prompts", got, len(term.prompts))
@@ -75,7 +83,7 @@ func TestTerminalValuesThatDifferAreRefusedAndNothingChanges(t *testing.T) {
 	h := newSetupHost(t)
 	h.terminalIs("SECRET-MARKER-1", "SECRET-MARKER-2")
 	before := h.hostTree()
-	code, stdout, stderr := h.sudo("secret", "set", "db", "--config", "C")
+	code, stdout, stderr := h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "SECRET_MISMATCH")
 	h.assertHostUnchanged(before)
 	h.assertValuesHidden(stdout, stderr)
@@ -87,7 +95,7 @@ func TestWithoutATerminalAndWithoutAFlagNothingIsRead(t *testing.T) {
 	h.hung = &hungInput{}
 	h.deps.stdin = h.hung
 	before := h.hostTree()
-	code, _, stderr := h.sudo("secret", "set", "db", "--config", "C")
+	code, _, stderr := h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "SECRET_SOURCE_MISSING")
 	for _, want := range []string{"--stdin", "--from-file"} {
 		if !strings.Contains(stderr, want) {
@@ -104,7 +112,7 @@ func TestTwoSourcesAreRefused(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
-	code, _, stderr := h.sudo("secret", "set", "db", "--stdin", "--from-file", h.path("F"), "--config", "C")
+	code, _, stderr := h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--stdin", "--from-file", h.path("F"), "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "SECRET_SOURCE_CONFLICT")
 	h.assertHostUnchanged(before)
 }
@@ -112,9 +120,9 @@ func TestTwoSourcesAreRefused(t *testing.T) {
 func TestAValueGivenAsAnArgumentOrFlagIsNotAcceptedNorPrinted(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
-		{"secret", "set", "db", "SECRET-MARKER", "--config", "C"},
-		{"secret", "set", "db", "--value", "SECRET-MARKER", "--config", "C"},
-		{"secret", "set", "db", "--value=SECRET-MARKER", "--config", "C"},
+		{"secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "SECRET-MARKER", "--config", "C"},
+		{"secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--value", "SECRET-MARKER", "--config", "C"},
+		{"secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--value=SECRET-MARKER", "--config", "C"},
 	} {
 		h := newSetupHost(t)
 		before := h.hostTree()
@@ -153,7 +161,7 @@ func TestMissingValueFileIsRefusedWithItsPath(t *testing.T) {
 	h := newSetupHost(t)
 	before := h.hostTree()
 	missing := h.path("nowhere/F")
-	code, _, stderr := h.sudo("secret", "set", "db", "--from-file", missing, "--config", "C")
+	code, _, stderr := h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--from-file", missing, "--config", "C")
 	assertCode(t, code, exitUsage)
 	if !strings.Contains(stderr, missing) {
 		t.Fatalf("stderr %q", stderr)
@@ -251,11 +259,11 @@ func TestTemporaryFilesLiveInTheDirectoryOfTheirTarget(t *testing.T) {
 	code, _, _ := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
 	dirs := h.tempFileDirs()
-	if len(dirs) != 2 {
+	if len(dirs) != 3 {
 		t.Fatalf("%d temporary files, want one per file written", len(dirs))
 	}
 	for _, dir := range dirs {
-		if dir != h.secretsDir() && dir != h.agentD() {
+		if dir != h.secretsDir() && dir != h.agentD() && dir != h.path("secret-bindings") {
 			t.Errorf("a temporary file outside the target directories: %s", dir)
 		}
 	}
@@ -403,7 +411,7 @@ func TestTheValueIsNeverInTheFragmentOrTheAudit(t *testing.T) {
 func TestChangingCommandsFromTheServiceUserAreRefusedWithTheSameCommand(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
-		{"secret", "set", "db", "--stdin", "--config", "C"},
+		{"secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--stdin", "--config", "C"},
 		{"secret", "remove", "pg", "--config", "C"},
 		{"repo", "add", "extra", "D/repo-extra", "--config", "C"},
 		{"repo", "remove", "base", "--config", "C"},
@@ -425,7 +433,7 @@ func TestEveryCommandFromAnotherUserIsRefused(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
 		{"secret", "list", "--config", "C"},
-		{"secret", "set", "db", "--stdin", "--config", "C"},
+		{"secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--stdin", "--config", "C"},
 		{"repo", "show", "base", "--config", "C"},
 		{"repo", "add", "extra", "D/repo-extra", "--config", "C"},
 	} {
@@ -444,7 +452,7 @@ func TestTheRightToRunIsCheckedBeforeTheConfigOfASecretCommand(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
 	h.stdinIs("x")
-	code, _, stderr := h.asService("secret", "set", "db", "--stdin", "--config", h.path("absent.yaml"))
+	code, _, stderr := h.asService("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--stdin", "--config", h.path("absent.yaml"))
 	assertRefusal(t, code, stderr, exitUsage, "PRIVILEGES_REQUIRED")
 }
 

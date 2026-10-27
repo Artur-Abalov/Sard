@@ -76,7 +76,7 @@ func (o outcome) failure() error {
 	case o.err != nil:
 		return fmt.Errorf("%s failed: %w", o.tool, o.err)
 	case o.code != 0 && o.reason != "":
-		return fmt.Errorf("%s failed (exit code %d): %s", o.tool, o.code, o.reason)
+		return fmt.Errorf("%s failed (exit code %d): %s%s", o.tool, o.code, o.reason, hintFor(o.reason))
 	case o.code != 0:
 		return fmt.Errorf("%s failed (exit code %d)", o.tool, o.code)
 	}

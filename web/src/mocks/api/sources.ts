@@ -92,6 +92,7 @@ export const sourceHandlers = [
       updatedAt: now,
       systemRole: null,
       ...neverVerified,
+      secretWarnings: [],
     }
     state.sources.unshift(source)
     return response(201).json(source)

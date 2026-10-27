@@ -35,6 +35,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/restorejournal"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
@@ -228,8 +229,19 @@ func recoverJournal(cfg config.Config, journal *pluginhost.Journal, test, builti
 		reg = test
 	}
 	return pluginhost.RecoverJournal(pluginhost.RecoveryOptions{
-		Journal: journal, Plugins: reg, Secrets: pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), Logger: log,
+		Journal: journal, Plugins: reg, Secrets: hostSecrets(cfg), Logger: log,
 	})
+}
+
+// hostSecrets are the secrets of the config, given only as their bindings next
+// to the main config allow (S11).
+func hostSecrets(cfg config.Config) *pluginhost.Secrets {
+	return pluginhost.NewSecrets(cfg.Secrets, os.ReadFile, hostBindings(cfg))
+}
+
+// hostBindings are the bindings next to the main config, read as the service.
+func hostBindings(cfg config.Config) *secretbind.Store {
+	return secretbind.NewStore(hostsetup.Layout{Config: cfg.Path()}.SecretBinding, uint32(os.Getuid()), secretbind.ReadFile)
 }
 
 // checkHostRuntime finds restic and the host name, before the network.
@@ -395,13 +407,14 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 	handlerOpts := append([]pluginhost.Option{pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithRepositoryWords(consolerestore.NewClassifier(restoreTargets(cfg, os.ReadFile))), pluginhost.WithLogger(slog.Default())}, extra...)
 	return &app.Agent{
 		Plugins:   registry,
-		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), handlerOpts...),
+		Handlers:  plugins.Handlers(registry, hostSecrets(cfg), repos.get, restoreDir(cfg.Executor.StateDir), handlerOpts...),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,
 		OS:        runtime.GOOS,
 		Arch:      runtime.GOARCH,
 		Local:     cfg,
+		Bindings:  hostBindings(cfg),
 		// Only the operator of the host says where the console may restore.
 		RestoreDir: cfg.RestoreDir(),
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {

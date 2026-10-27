@@ -52,6 +52,7 @@ class Registration(
         agent.arch = snapshot.arch
         agent.protocolVersion = snapshot.protocolVersion.toInt()
         agent.secretNames = snapshot.secretNames
+        agent.secretBindings = snapshot.secretsJson()
         agent.scriptNames = snapshot.scriptNames
         agent.machineId = snapshot.machineId
         agent.restoreDir = snapshot.restoreDir.ifEmpty { null }

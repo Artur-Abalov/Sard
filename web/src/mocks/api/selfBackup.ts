@@ -289,6 +289,7 @@ function keep(role: Role, agentId: string, repositoryName: string, now: string):
       plugin: PLUGINS[role],
       repositoryName,
       ...neverVerified,
+      secretWarnings: [],
       config: CONFIGS[role],
       createdAt: now,
       updatedAt: now,

@@ -43,17 +43,37 @@ func printHelp(stdout io.Writer, usage, text string, codes []repoHelpCode) {
 	printRepoCodes(stdout, codes)
 }
 
-const secretSetHelpText = `Stores a secret value in a file of the service user and defines the secret in
-a fragment of agent.d next to the main config; the main config is never
-changed. The value never comes from an argument: give it on the terminal
-(asked twice, no echo), with --stdin or with --from-file.
+const secretSetHelpText = `Stores a secret value in a file of the service user, binds the secret to a
+plugin and the targets its value may go to, and defines the secret in a
+fragment of agent.d next to the main config; the main config is never
+changed. The agent gives the value to that plugin for those targets only,
+whatever the server asks. The value never comes from an argument: give it on
+the terminal (asked twice, no echo), with --stdin or with --from-file.
 
 Flags:
   --config string      path to the agent config (default /etc/sard/agent.yaml)
+  --plugin string      the plugin the secret is for, e.g. postgresql (required)
+  --target string      a target the value may go to, host[:port][/database]:
+                       db.example.com:5432/app, [2001:db8::5]:5432/app,
+                       /var/run/postgresql:5432/app (a socket directory; the
+                       database only after the port); * or nothing is any port
+                       or database; given once or more (required)
+  --auth list          the authentication methods the server may ask for, of
+                       scram-sha-256, md5, password, none (comma-separated);
+                       default: scram-sha-256 over TCP, any on a socket
+  --allow-tls string   the weakest TLS mode allowed to a server on the network:
+                       require or disable; default: verify-full only
+  --ca-file string     the CA that checks the server's certificate; default:
+                       tls_root_cert of the source, else the system's CAs
+  --allow-no-channel-binding
+                       allow SCRAM over TLS without channel binding
   --stdin              read the value from standard input to its end, byte for byte
   --from-file string   read the value from a file, byte for byte
   --no-restart         do not restart the service, say how to
   (without --stdin and --from-file, with no terminal: SECRET_SOURCE_MISSING)
+
+The binding is written to secret-bindings/<name>.yaml next to the main config,
+root's, readable by the service. Setting the secret again replaces it.
 
 The name is 1-64 characters of A-Z a-z 0-9 - _, the first a letter or digit.
 (a name that starts with - is read as a flag: put it after --).
@@ -67,20 +87,21 @@ func printSecretHelp(stdout io.Writer, sub string) {
 	case "set":
 		printHelp(stdout, "secret set [flags] <name>", secretSetHelpText, []repoHelpCode{
 			codeOK, codeRestart,
-			usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, config, DEFINED_IN_CONFIG, PATH_IN_USE, SECRET_SOURCE_MISSING, SECRET_SOURCE_CONFLICT, SECRET_EMPTY, SECRET_TOO_LARGE, SECRET_MISMATCH"),
+			usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, PLUGIN_UNKNOWN, config, DEFINED_IN_CONFIG, PATH_IN_USE, SECRET_SOURCE_MISSING, SECRET_SOURCE_CONFLICT, SECRET_EMPTY, SECRET_TOO_LARGE, SECRET_MISMATCH"),
 			codeLocked, codeWrite,
 		})
 	case "list":
-		printHelp(stdout, "secret list [flags]", `Lists the names of the secrets and the file of the config that defines each
-(NAME, DEFINED_IN, by name). No value file is opened or checked.
+		printHelp(stdout, "secret list [flags]", `Lists the names of the secrets, the file of the config that defines each and
+the plugin and targets it is bound to (NAME, DEFINED_IN, BOUND_TO, by name). A
+secret without a binding is given to no plugin. No value file is opened.
 
 Flags:
   --config string   path to the agent config (default /etc/sard/agent.yaml)
-  --json            print one JSON object {"secrets":[{"name","defined_in"}]}
+  --json            print one JSON object {"secrets":[{"name","defined_in","binding"}]}
 
 `+readOnlyHelp, []repoHelpCode{codeOK, usageCode("flags, rights (PRIVILEGES_REQUIRED), config, DUPLICATE_NAME")})
 	default:
-		printHelp(stdout, "secret remove [flags] <name>", `Removes the fragment of a secret and its value file. A secret defined in the
+		printHelp(stdout, "secret remove [flags] <name>", `Removes the fragment of a secret, its binding and its value file. A secret defined in the
 main config is never removed (DEFINED_IN_CONFIG). Removing what is not there
 is not an error (nothing to remove).
 

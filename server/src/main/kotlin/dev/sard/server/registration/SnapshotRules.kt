@@ -38,6 +38,8 @@ object SnapshotRules {
     const val MAX_SECRET_NAMES = 1024
     const val MAX_SCRIPT_NAMES = 1024
     const val MAX_CONFIG_SCHEMA_BYTES = 64 * 1024
+    const val MAX_SECRET_TARGETS = 64
+    const val MAX_SECRET_TEXT_BYTES = 1024
     private const val MAX_RESTORE_DIR_BYTES = 4096
 
     fun check(snapshot: AgentSnapshot) {
@@ -53,6 +55,7 @@ object SnapshotRules {
         if (!MACHINE_ID.matches(snapshot.machineId)) throw invalid("machine_id")
         checkRestoreDir(snapshot.restoreDir)
         checkVerifier(snapshot.verifier)
+        checkSecrets(snapshot.secrets, MAX_SECRET_NAMES)
     }
 
     private fun checkVerifier(report: VerifierReport?) {
@@ -105,28 +108,6 @@ object SnapshotRules {
         }
     }
 
-    private fun checkNames(
-        names: List<String>,
-        collection: String,
-        limit: Int,
-        element: (Int) -> String,
-    ) {
-        checkCount(names.size, collection, limit)
-        val seen = HashSet<String>()
-        names.forEachIndexed { i, name ->
-            if (!NAME.matches(name)) throw rejected(Reason.NAME_INVALID, element(i))
-            if (!seen.add(name)) throw rejected(Reason.NAME_DUPLICATE, element(i))
-        }
-    }
-
-    private fun checkCount(
-        count: Int,
-        field: String,
-        limit: Int,
-    ) {
-        if (count > limit) throw tooLarge(field, limit)
-    }
-
     private fun checkConfigSchema(
         schema: String,
         field: String,
@@ -134,6 +115,50 @@ object SnapshotRules {
         checkCount(schema.toByteArray(Charsets.UTF_8).size, field, MAX_CONFIG_SCHEMA_BYTES)
         if (!storableJson(schema)) throw rejected(Reason.CONFIG_SCHEMA_INVALID, field)
     }
+}
+
+/**
+ * The bindings of the secrets (S11): one per secret name at most, a plugin of the one name format, a bounded
+ * number of targets, every text bounded and without NUL (they go to a jsonb column as they come).
+ */
+private fun checkSecrets(
+    secrets: List<SecretEntry>,
+    limit: Int,
+) {
+    checkNames(secrets.map { it.name }, "secrets", limit) { "secrets[$it].name" }
+    secrets.forEachIndexed { i, secret ->
+        checkOptional(secret.plugin, NAME, "secrets[$i].plugin")
+        checkCount(secret.targets.size, "secrets[$i].targets", SnapshotRules.MAX_SECRET_TARGETS)
+        checkCount(secret.auth.size, "secrets[$i].auth", SnapshotRules.MAX_SECRET_TARGETS)
+        if (secret.texts().any { !storableText(it) }) throw invalid("secrets[$i]")
+    }
+}
+
+private fun storableText(text: String): Boolean {
+    val size = text.toByteArray(Charsets.UTF_8).size
+    return '\u0000' !in text && size <= SnapshotRules.MAX_SECRET_TEXT_BYTES
+}
+
+private fun checkNames(
+    names: List<String>,
+    collection: String,
+    limit: Int,
+    element: (Int) -> String,
+) {
+    checkCount(names.size, collection, limit)
+    val seen = HashSet<String>()
+    names.forEachIndexed { i, name ->
+        if (!NAME.matches(name)) throw rejected(Reason.NAME_INVALID, element(i))
+        if (!seen.add(name)) throw rejected(Reason.NAME_DUPLICATE, element(i))
+    }
+}
+
+private fun checkCount(
+    count: Int,
+    field: String,
+    limit: Int,
+) {
+    if (count > limit) throw tooLarge(field, limit)
 }
 
 /** One JSON value and nothing after it; no NUL character, which PostgreSQL's jsonb cannot hold. */

@@ -28,9 +28,14 @@
 
    ```bash
    sudo sard-agent repo add main /srv/sard/main
-   printf '%s' "$PG_PASSWORD" | sudo sard-agent secret set pg-prod --stdin
+   printf '%s' "$PG_PASSWORD" | sudo sard-agent secret set pg-prod \
+     --plugin postgresql --target db.example.com:5432/prod --stdin
    sudo systemctl enable --now sard-agent.service
    ```
+
+   Секрет отдаётся только плагину и целям из `--plugin` и `--target`: сервер
+   не может направить пароль на другой хост
+   ([привязка секрета](../plugins/postgresql.md#привязка-секрета)).
 
    Репозиторий в облачном хранилище или на SFTP-сервере подключает та же
    команда: `sudo sard-agent repo add main s3:https://… --access-key-id …`

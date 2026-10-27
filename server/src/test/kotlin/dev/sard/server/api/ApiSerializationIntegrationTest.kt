@@ -124,7 +124,22 @@ class ApiSerializationIntegrationTest(
             finishedAt = null,
         )
     private val source =
-        Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null, true, null, null, null)
+        Source(
+            id,
+            "etc",
+            id,
+            "files",
+            "local",
+            mapOf("paths" to listOf("/etc")),
+            at,
+            at,
+            null,
+            true,
+            null,
+            null,
+            null,
+            emptyList(),
+        )
     private val systemSource =
         Source(
             id,
@@ -140,6 +155,7 @@ class ApiSerializationIntegrationTest(
             verificationStatus = VerificationOutcome.PASSED,
             lastVerifiedAt = at,
             lastVerifiedLevel = 5,
+            secretWarnings = listOf("secret \"sard-db\" is not allowed for postgresql at postgres:5432/sard"),
         )
     private val token =
         EnrollmentToken(

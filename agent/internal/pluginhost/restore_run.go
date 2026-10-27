@@ -120,7 +120,7 @@ var _ sdk.RestoreHost = (*restoreHost)(nil)
 
 func (h *handler) newRestoreHost(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) *restoreHost {
 	return &restoreHost{
-		host: &host{secrets: h.src.secrets, r: r}, ctx: ctx, words: h.words, repo: repo, repository: step.GetRepositoryName(),
+		host: &host{secrets: h.src.secrets, plugin: h.src.plugin.Name(), r: r}, ctx: ctx, words: h.words, repo: repo, repository: step.GetRepositoryName(),
 		commandID: step.GetCommandId(), newTarget: h.newTarget,
 		journal: &stepJournal{store: h.journal, plugin: h.src.plugin.Name(), commandID: step.GetCommandId()},
 	}
@@ -222,14 +222,14 @@ func (f *failureWriter) failure() error {
 	return f.err
 }
 
-// Secret implements sdk.Host: the value is remembered, so that the journal can
-// refuse an entry that holds it.
-func (h *restoreHost) Secret(name string) ([]byte, error) {
-	value, err := h.host.Secret(name)
+// SecretFor implements sdk.Host: the value is remembered, so that the journal
+// can refuse an entry that holds it.
+func (h *restoreHost) SecretFor(name string, target sdk.Target) (sdk.Secret, error) {
+	secret, err := h.host.SecretFor(name, target)
 	if err == nil {
-		h.journal.noteSecret(name, value)
+		h.journal.noteSecret(name, secret.Value)
 	}
-	return value, err
+	return secret, err
 }
 
 // stepJournal is the sdk.Journal of one command. It refuses an entry that

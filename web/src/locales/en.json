@@ -247,7 +247,9 @@
     "total": "Total",
     "updatedAt": "Updated",
     "system": "system",
-    "systemWhy": "The server keeps this source itself for its self-backup. Only its schedule can be changed."
+    "systemWhy": "The server keeps this source itself for its self-backup. Only its schedule can be changed.",
+    "secretWarningsTitle": "The agent will refuse this source",
+    "secretWarningsWhy": "The binding of a secret on the agent host does not allow this source: its steps fail before connecting. Run the command on the agent host if the target is intended, or change the source."
   },
   "form": {
     "add": "Add",

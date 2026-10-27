@@ -506,6 +506,7 @@ export const sources: Schemas['Source'][] = [
     updatedAt: '2026-09-22T10:00:00Z',
     systemRole: null,
     ...neverVerified,
+    secretWarnings: [],
   },
   {
     id: ids.homeSource,
@@ -518,6 +519,7 @@ export const sources: Schemas['Source'][] = [
     updatedAt: '2026-09-24T08:15:00Z',
     systemRole: null,
     ...neverVerified,
+    secretWarnings: [],
   },
   {
     id: ids.srvSource,
@@ -530,6 +532,7 @@ export const sources: Schemas['Source'][] = [
     updatedAt: '2026-09-27T09:50:00Z',
     systemRole: null,
     ...neverVerified,
+    secretWarnings: [],
   },
 ]
 
@@ -552,6 +555,7 @@ const appSource: Schemas['Source'] = {
   updatedAt: '2026-09-22T10:30:00Z',
   systemRole: null,
   ...neverVerified,
+  secretWarnings: [],
 }
 sources.push(appSource)
 
@@ -568,6 +572,7 @@ export const deletedSources: Schemas['Source'][] = [
     updatedAt: '2026-09-18T10:00:00Z',
     systemRole: null,
     ...neverVerified,
+    secretWarnings: [],
   },
 ]
 

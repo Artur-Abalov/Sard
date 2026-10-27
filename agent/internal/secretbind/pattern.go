@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+// Package secretbind is the binding of a secret of the agent to a plugin and
+// to the targets its value may go to (S11, ADR 00XX-draft-secret-binding):
+// the operator of the host decides where a password is sent, not the server.
+package secretbind
+
+import (
+	"errors"
+	"fmt"
+	"net"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"unicode"
+
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
+)
+
+// wildcard is the wildcard of a port or a database.
+const wildcard = "*"
+
+// Limits of a pattern, as the schema of the postgresql plugin has them.
+const (
+	maxHostBytes     = 255
+	maxDatabaseBytes = 63
+)
+
+// Pattern is one target of a binding: host[:port][/database], an IPv6
+// address in brackets, or a socket directory /dir[:port[/database]]. A port
+// or a database left out, or *, is any.
+type Pattern struct {
+	host, port, database string
+}
+
+// ParsePattern reads a pattern; the error says what is wrong with it.
+func ParsePattern(s string) (Pattern, error) {
+	if s == "" {
+		return Pattern{}, errors.New("a target is empty: want host[:port][/database]")
+	}
+	var p Pattern
+	var err error
+	switch {
+	case strings.HasPrefix(s, "/"):
+		p, err = parseSocket(s)
+	case strings.HasPrefix(s, "["):
+		p, err = parseBracketed(s)
+	default:
+		p, err = parseHost(s)
+	}
+	if err != nil {
+		return Pattern{}, fmt.Errorf("target %q: %w", s, err)
+	}
+	return p, nil
+}
+
+// parseSocket is /dir[:port[/database]]: the last colon ends the directory.
+func parseSocket(s string) (Pattern, error) {
+	if !strings.Contains(s, ":") {
+		return finish(Pattern{host: s})
+	}
+	i := strings.LastIndex(s, ":")
+	return parseTail(s[:i], s[i:])
+}
+
+// parseBracketed is [ipv6][:port][/database].
+func parseBracketed(s string) (Pattern, error) {
+	host, rest, closed := strings.Cut(s[1:], "]")
+	if !closed {
+		return Pattern{}, errors.New("an IPv6 address needs its closing brackets ]")
+	}
+	if err := checkBracketed(host, rest); err != nil {
+		return Pattern{}, err
+	}
+	return parseTail(host, rest)
+}
+
+// checkBracketed: an IPv6 address in the brackets, :port or /database after.
+func checkBracketed(host, rest string) error {
+	if !isIPv6(host) {
+		return errors.New("only an IPv6 address goes in brackets: want [address]:port/database")
+	}
+	if rest != "" && !strings.HasPrefix(rest, ":") && !strings.HasPrefix(rest, "/") {
+		return errors.New("after the brackets of an IPv6 address come :port or /database")
+	}
+	return nil
+}
+
+// isIPv6: the host is an IPv6 address.
+func isIPv6(host string) bool { return strings.Contains(host, ":") && net.ParseIP(host) != nil }
+
+// parseHost is host[:port][/database], or an IPv6 address alone.
+func parseHost(s string) (Pattern, error) {
+	if isIPv6(s) {
+		return Pattern{host: s}, nil
+	}
+	hostport, _, _ := strings.Cut(s, "/")
+	host, _, _ := strings.Cut(hostport, ":")
+	if strings.Count(hostport, ":") > 1 {
+		return Pattern{}, errors.New("an IPv6 address goes in brackets: [address]:port/database")
+	}
+	if err := checkHost(host); err != nil {
+		return Pattern{}, err
+	}
+	return parseTail(host, s[len(host):])
+}
+
+// parseTail reads [:port][/database] after the host.
+func parseTail(host, rest string) (Pattern, error) {
+	p := Pattern{host: host}
+	database, hasDatabase := "", false
+	switch {
+	case strings.HasPrefix(rest, ":"):
+		p.port, database, hasDatabase = strings.Cut(rest[1:], "/")
+		if p.port == "" {
+			return Pattern{}, errors.New("the port after : is empty")
+		}
+	case strings.HasPrefix(rest, "/"):
+		database, hasDatabase = rest[1:], true
+	}
+	if hasDatabase && database == "" {
+		return Pattern{}, errors.New("the database after / is empty")
+	}
+	p.database = database
+	return finish(p)
+}
+
+// finish checks the host length, the port and the database of p.
+func finish(p Pattern) (Pattern, error) {
+	if err := checkHostBytes(p.host); err != nil {
+		return Pattern{}, err
+	}
+	if err := checkPort(p.port); err != nil {
+		return Pattern{}, err
+	}
+	if err := checkDatabase(p.database); err != nil {
+		return Pattern{}, err
+	}
+	return p, nil
+}
+
+// checkHost: a name or an IPv4 address, without the characters libpq or a
+// pattern would read otherwise; no wildcard.
+func checkHost(host string) error {
+	if host == "" || strings.ContainsAny(host, ",@*[]\x00") || strings.ContainsFunc(host, unicode.IsSpace) {
+		return fmt.Errorf("the host must be a name or an address, without , @ * [ ] or spaces; got %q", host)
+	}
+	return checkHostBytes(host)
+}
+
+func checkHostBytes(host string) error {
+	if len(host) > maxHostBytes || strings.ContainsRune(host, 0) {
+		return fmt.Errorf("the host is longer than %d bytes or holds a NUL byte", maxHostBytes)
+	}
+	return nil
+}
+
+// checkPort: empty, * or 1-65535.
+func checkPort(port string) error {
+	if port == "" || port == wildcard || portNumber(port) {
+		return nil
+	}
+	return fmt.Errorf("the port must be 1-65535 or *; got %q", port)
+}
+
+// portNumber: 1-65535 written without a sign or leading zeros.
+func portNumber(port string) bool {
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535 && strconv.Itoa(n) == port
+}
+
+// checkDatabase: empty, * or a name of 1-63 bytes without NUL and *.
+func checkDatabase(db string) error {
+	if db == wildcard {
+		return nil
+	}
+	if len(db) > maxDatabaseBytes || strings.ContainsAny(db, "*\x00") {
+		return fmt.Errorf("the database must be a name of 1-%d bytes without * or NUL, or * alone", maxDatabaseBytes)
+	}
+	return nil
+}
+
+// String is the pattern as it was given.
+func (p Pattern) String() string {
+	s := p.host
+	if p.bracketed() {
+		s = "[" + p.host + "]"
+	}
+	if p.port != "" {
+		s += ":" + p.port
+	}
+	if p.database != "" {
+		s += "/" + p.database
+	}
+	return s
+}
+
+// bracketed: an IPv6 address followed by a port or a database.
+func (p Pattern) bracketed() bool {
+	return isIPv6(p.host) && (p.port != "" || p.database != "")
+}
+
+// Match says whether t is a target of the pattern.
+func (p Pattern) Match(t sdk.Target) bool {
+	return sameHost(p.host, t.Host) && wild(p.port, strconv.Itoa(t.Port)) && wild(p.database, t.Database)
+}
+
+func wild(pattern, value string) bool {
+	return pattern == "" || pattern == wildcard || pattern == value
+}
+
+// sameHost: a socket directory by its clean path, an address by its value, a
+// name without regard to case.
+func sameHost(pattern, host string) bool {
+	if strings.HasPrefix(pattern, "/") {
+		return sameSocket(pattern, host)
+	}
+	if ip := net.ParseIP(pattern); ip != nil {
+		return ip.Equal(net.ParseIP(host))
+	}
+	return strings.EqualFold(pattern, host)
+}
+
+// sameSocket: host is the socket directory of the pattern; a clean path that
+// begins with / is never the clean form of a relative one.
+func sameSocket(pattern, host string) bool {
+	return filepath.Clean(pattern) == filepath.Clean(host)
+}

@@ -40,7 +40,7 @@ func (p Plugin) Prepare(ctx context.Context, h sdk.Host, cfg sdk.Config) error {
 	if err != nil {
 		return err
 	}
-	password, t, err := p.setup(h, c)
+	c, password, t, err := p.setup(h, c)
 	if err != nil {
 		return err
 	}
@@ -83,14 +83,13 @@ func checkServer(h sdk.Host, c config, pgDump version, r role) error {
 	return checkRole(h, c, r)
 }
 
-// password reads the secret of the config: its content without the line
-// ending, neither empty nor holding a NUL byte (F1 ПГ3).
-func (p Plugin) password(h sdk.Host, c config) ([]byte, error) {
-	value, err := h.Secret(c.PasswordRef)
-	if err != nil {
-		return nil, err
-	}
-	return checkPassword(c.PasswordRef, value)
+// password reads the secret of the config for its database (S11) and returns
+// the config with what the binding of the secret allows: its content without
+// the line ending, neither empty nor holding a NUL byte (F1 ПГ3).
+func (p Plugin) password(h sdk.Host, c config) (config, []byte, error) {
+	t, password, err := c.target().secured(h, c.Database)
+	c.grant = t.grant
+	return c, password, err
 }
 
 // checkPassword is the content of the secret called name without its line
