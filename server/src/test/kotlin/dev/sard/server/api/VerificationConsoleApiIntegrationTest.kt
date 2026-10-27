@@ -505,7 +505,7 @@ class VerificationConsoleApiIntegrationTest(
 
         val response = world.api.get("/api/v1/verification-setup", admin)
 
-        // The template of repo add names the flag --password-from-file, the one place the word occurs (spec conflict).
+        // The word «password» occurs only as the flag name --password-from-file in the repo add template (the spec).
         val body = response.body.replace(response.json.path("verifierRepoAdd").asString(), "")
         for (marker in listOf("QA-SECRET-MARKER", "AWS_SECRET_ACCESS_KEY", "password", "secret")) {
             assertTrue(marker !in body, "$marker in $body")

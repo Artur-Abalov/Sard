@@ -70,7 +70,11 @@ function settleJob(sourceId: string): void {
   }
   state.verifications = [record, ...state.verifications]
   delete state.verificationJobs[sourceId]
-  Object.assign(source, withVerification(source, state.verifications))
+  const { verificationStatus, lastVerifiedAt, lastVerifiedLevel } = withVerification(
+    source,
+    state.verifications,
+  )
+  Object.assign(source, { verificationStatus, lastVerifiedAt, lastVerifiedLevel })
 }
 
 /** Why a verifier does not take a job of a source whose repository has the id [repository]: by the mock's own facts. */

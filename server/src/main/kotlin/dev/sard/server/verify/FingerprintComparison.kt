@@ -48,13 +48,12 @@ object FingerprintComparison {
     fun view(
         bytes: ByteArray?,
         sha256: String?,
-        status: VerificationStatus,
         mismatches: List<StepOutput.Mismatch>,
         stages: List<StepOutput.Stage>,
     ): FingerprintView {
         val kept = bytes?.let { SourceFingerprint.of(it, sha256.orEmpty()) } ?: return FingerprintView.NONE
         val summary = kept.summary()
-        return FingerprintView(rows(summary.facts, mismatches, compared(status, mismatches, stages)), summary.hidden)
+        return FingerprintView(rows(summary.facts, mismatches, compared(mismatches, stages)), summary.hidden)
     }
 
     fun rows(
@@ -66,15 +65,11 @@ object FingerprintComparison {
         return facts.map { fact -> row(fact, differing[fact.name], compared) }
     }
 
-    /** Whether the copy was held against the fingerprint: it passed, differed, or its comparison stage ran. */
+    /** Whether the copy was held against the fingerprint: it differed or its fingerprint stage ran. */
     fun compared(
-        status: VerificationStatus,
         mismatches: List<StepOutput.Mismatch>,
         stages: List<StepOutput.Stage>,
-    ): Boolean =
-        status == VerificationStatus.PASSED ||
-            mismatches.isNotEmpty() ||
-            ranFingerprintStage(stages)
+    ): Boolean = mismatches.isNotEmpty() || ranFingerprintStage(stages)
 
     private fun ranFingerprintStage(stages: List<StepOutput.Stage>): Boolean =
         stages.any { it.name == FINGERPRINT_STAGE && it.state in RAN }

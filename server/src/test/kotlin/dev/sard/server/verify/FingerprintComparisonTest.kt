@@ -62,23 +62,27 @@ class FingerprintComparisonTest {
     }
 
     @Test
-    fun `the copy was compared when the verification passed, mismatched, or its fingerprint stage ran`() {
+    fun `the copy was compared when it mismatched or its fingerprint stage ran, not merely when it passed`() {
         fun compared(
-            status: VerificationStatus,
             mismatches: List<StepOutput.Mismatch>,
             vararg stages: StepOutput.Stage,
-        ) = MutFlow.underTest { FingerprintComparison.compared(status, mismatches, stages.toList()) }
+        ) = MutFlow.underTest { FingerprintComparison.compared(mismatches, stages.toList()) }
         val mismatch = listOf(StepOutput.Mismatch("tables", "1", "2"))
 
-        assertEquals(true, compared(VerificationStatus.PASSED, emptyList()))
-        assertEquals(true, compared(VerificationStatus.FAILED, mismatch))
-        assertEquals(true, compared(VerificationStatus.FAILED, emptyList(), stage("fingerprint", StageState.FAILED)))
-        assertEquals(true, compared(VerificationStatus.FAILED, emptyList(), stage("fingerprint", StageState.PASSED)))
-        assertEquals(false, compared(VerificationStatus.FAILED, emptyList(), stage("restic_check", StageState.FAILED)))
+        assertEquals(false, compared(emptyList()))
         assertEquals(
             false,
-            compared(VerificationStatus.CANNOT_VERIFY, emptyList(), stage("fingerprint", StageState.CANNOT_RUN)),
+            compared(emptyList(), stage("fingerprint", StageState.NOT_APPLICABLE)),
         )
-        assertEquals(false, compared(VerificationStatus.NO_VERIFIER, emptyList()))
+        assertEquals(true, compared(emptyList(), stage("fingerprint", StageState.PASSED)))
+        assertEquals(true, compared(mismatch))
+        assertEquals(true, compared(emptyList(), stage("fingerprint", StageState.FAILED)))
+        assertEquals(true, compared(emptyList(), stage("fingerprint", StageState.PASSED)))
+        assertEquals(false, compared(emptyList(), stage("restic_check", StageState.FAILED)))
+        assertEquals(
+            false,
+            compared(emptyList(), stage("fingerprint", StageState.CANNOT_RUN)),
+        )
+        assertEquals(false, compared(emptyList()))
     }
 }

@@ -15,6 +15,10 @@ ALTER TABLE verification_stale_episodes ADD COLUMN timezone TEXT;
 UPDATE verification_stale_episodes SET threshold_days = 7, timezone = 'UTC';
 ALTER TABLE verification_stale_episodes ALTER COLUMN threshold_days SET NOT NULL;
 ALTER TABLE verification_stale_episodes ALTER COLUMN timezone SET NOT NULL;
+-- The defaults are what the V4 server implied (seven days, UTC), so that it can still open an episode on a migrated
+-- database, as after a rollback of the binary alone; the V6 server always names both.
+ALTER TABLE verification_stale_episodes ALTER COLUMN threshold_days SET DEFAULT 7;
+ALTER TABLE verification_stale_episodes ALTER COLUMN timezone SET DEFAULT 'UTC';
 ALTER TABLE verification_stale_episodes
     ADD CONSTRAINT verification_stale_episodes_threshold_check CHECK (threshold_days BETWEEN 1 AND 90);
 

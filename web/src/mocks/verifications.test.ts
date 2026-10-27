@@ -207,4 +207,18 @@ describe('the endpoints of verification', () => {
     expect(files.hints).toEqual(['control_paths_missing'])
     expect(database.hints).toEqual(['key_tables_missing'])
   })
+
+  test('a finished verify now keeps the verification switch the user set', async () => {
+    await signIn()
+    const path = { params: { path: { sourceId: ids.etcSource } } }
+    await api.PUT('/api/v1/sources/{sourceId}/verification', { ...path, body: { enabled: false } })
+    await api.POST('/api/v1/sources/{sourceId}/verifications', { ...path, body: {} })
+    const job = state.verificationJobs[ids.etcSource]
+    job.createdAt = new Date(Date.now() - 60_000).toISOString()
+
+    const settled = must(await api.GET('/api/v1/sources/{sourceId}/verification', path))
+
+    expect(settled.enabled).toBe(false)
+    expect(settled.status).toBe('passed')
+  })
 })

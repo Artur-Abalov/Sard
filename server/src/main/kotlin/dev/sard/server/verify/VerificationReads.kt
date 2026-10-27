@@ -265,7 +265,6 @@ private fun viewOf(row: Array<Any?>): VerificationView {
         FingerprintComparison.view(
             row[Column.FINGERPRINT] as ByteArray?,
             row[Column.FINGERPRINT_SHA256] as String?,
-            status,
             mismatches,
             stages,
         )

@@ -64,7 +64,7 @@ internal fun mismatchOf(mismatch: StepOutput.Mismatch): FingerprintMismatch {
 internal fun fieldOf(row: FingerprintRow) =
     FingerprintField(
         row.name,
-        FingerprintRule.valueOf(row.rule.uppercase()),
+        if (row.rule == "exact") FingerprintRule.EXACT else FingerprintRule.INFO,
         row.source,
         row.copy,
         FingerprintOutcomeKind.valueOf(row.outcome.name),
