@@ -113,7 +113,7 @@ jobs:
           cache-dependency-path: "**/go.sum"
       # The agent's mutation testing runs as shards in agent-mutation.
       - run: ./scripts/gate.sh ${{ matrix.module }} ${{ matrix.module == 'agent' && 'fast' || '' }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && matrix.module != 'agent'
         with:
           name: mutation-${{ matrix.module }}
@@ -148,7 +148,7 @@ jobs:
       - run: ./scripts/gate.sh agent mutation ${{ matrix.shard }}/12
         env:
           MUTATION_STREAM: "1"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: mutation-agent-${{ matrix.shard }}
@@ -217,7 +217,7 @@ jobs:
         run: scripts/test-image-packages.sh "$VERSION"
       - name: The e2e stand's agent packages
         run: make package-stand
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sard-agent-packages
           path: |
@@ -227,7 +227,7 @@ jobs:
             dist/manifest.json
             dist/SHA256SUMS
           if-no-files-found: error
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sard-agent-stand
           path: test/e2e/build/stand-dist/
@@ -246,7 +246,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "25"
@@ -355,12 +355,12 @@ jobs:
         run: |
           make server-image SERVER_IMAGE=sard-server:e2e
           docker save -o "$RUNNER_TEMP/sard-server-image.tar" sard-server:e2e
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sard-server-jar
           path: build/server-jar/sard-server.jar
           if-no-files-found: error
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sard-server-image
           path: ${{ runner.temp }}/sard-server-image.tar
@@ -392,7 +392,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "25"
@@ -423,13 +423,13 @@ jobs:
         if: always()
         run: scripts/e2e-shard.sh times test/e2e/build/test-results/test
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-test-results-${{ matrix.shard }}
           path: test/e2e/build/test-results/test/*.xml
           if-no-files-found: ignore
       - if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-logs-${{ matrix.shard }}
           path: |
@@ -439,7 +439,7 @@ jobs:
       # The recovery drill (F7, Р41) writes the time and the sizes the page's table "Сколько это займёт" takes
       # a row from; whatever the outcome, only the shard that ran the class has the files.
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: recovery-drill-${{ matrix.shard }}
           path: |
@@ -501,7 +501,7 @@ jobs:
           make e2e-agent-pg-image DIST=dist
       - run: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=e2e scripts/test-self-agent.sh "$RUNNER_TEMP/self-agent"
       - if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: self-agent-compose-log
           path: ${{ runner.temp }}/self-agent/compose.log
