@@ -474,6 +474,21 @@ class ArchitectureTest {
         assertEquals(emptyMap(), shared)
     }
 
+    /** Scenario "Миграции ядра не содержат переноса объектов между схемами" (DB2): the schema is right from V1. */
+    @Test
+    fun `Миграции ядра не содержат переноса объектов между схемами`() {
+        val dir = File("src/main/resources/db/migration")
+        val transfers = Regex("""SET\s+SCHEMA|REASSIGN\s+OWNED|\bpublic\b""", RegexOption.IGNORE_CASE)
+        val offenders =
+            dir.listFiles { f -> f.extension == "sql" }!!.flatMap { file ->
+                transfers
+                    .findAll(file.readText().replace(SQL_COMMENT, ""))
+                    .map { "${file.name}: ${it.value}" }
+                    .toList()
+            }
+        assertEquals(emptyList(), offenders)
+    }
+
     @Test
     fun `the tenant tables are read from the migrations`() {
         val tables = tenantTables()

@@ -36,8 +36,8 @@ data class SelfBackupSettings(
 
 /**
  * `sard.self-backup.*` (F6, ADR 00XX-draft-self-backup). The defaults fit deploy/docker-compose.yml: the
- * database is the server's own (its datasource URL), read by the role sard_self with the password the
- * server writes into the channel (secret sard-db of self-agent); the CA directory and the installation
+ * database is the server's own (its datasource URL), read by the role sard_backup with the password db-init
+ * writes into a volume of self-agent's own (secret sard-db); the CA directory and the installation
  * directory are mounted read-only into self-agent at [pkiDir] and [installDir]. An empty [timezone] means
  * the server's own zone; [databaseHost] empty means: take host, port and name from the datasource URL.
  */
@@ -48,7 +48,7 @@ data class SelfBackupProperties(
     val databaseHost: String = "",
     val databasePort: Int = DEFAULT_PORT,
     val databaseName: String = "",
-    val databaseUser: String = "sard_self",
+    val databaseUser: String = "sard_backup",
     val passwordSecret: String = "sard-db",
     /** The compose network is private to the installation; an external PostgreSQL wants require or verify-full. */
     val databaseTlsMode: String = "disable",

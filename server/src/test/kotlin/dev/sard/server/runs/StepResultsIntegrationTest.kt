@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.pki.MovableClock
 import org.springframework.beans.factory.annotation.Autowired
@@ -91,7 +92,7 @@ class StepResultsIntegrationTest(
 
     @AfterTest
     fun `drop both tenants`() {
-        jdbc.update("drop trigger if exists snapshots_fail on snapshots")
+        TestAdmin.of(jdbc).update("drop trigger if exists snapshots_fail on snapshots")
         for (t in listOf(tenant, other)) jdbc.update("delete from snapshots where tenant_id = ?", t.id)
         tenant.drop()
         other.drop()
@@ -290,7 +291,7 @@ class StepResultsIntegrationTest(
     @Test
     fun `a database failure leaves nothing behind, and the agent's next copy is recorded`() {
         val (run, step) = running()
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             """
             create or replace function snapshots_fail() returns trigger language plpgsql as
             ${'$'}${'$'} begin raise exception 'disk full'; end ${'$'}${'$'};
@@ -303,7 +304,7 @@ class StepResultsIntegrationTest(
         assertEquals(listOf<Any?>("running", "running"), statuses)
         assertEquals(emptyList(), finished.heard)
 
-        jdbc.update("drop trigger snapshots_fail on snapshots")
+        TestAdmin.of(jdbc).update("drop trigger snapshots_fail on snapshots")
         assertEquals(Recorded.Closed(StepState.SUCCEEDED, invalid = null), record(step))
         assertEquals("succeeded", row("runs", run.id)["status"])
         assertEquals(1, finished.heard.size)

@@ -5,6 +5,7 @@ package dev.sard.server.prometheus
 
 import dev.sard.server.fleet.AgentPresence
 import dev.sard.server.metrics.DatabaseSettingsGauges
+import dev.sard.server.metrics.RoleExcessGauges
 import dev.sard.server.metrics.RunDurations
 import dev.sard.server.metrics.SelfBackupSource
 import dev.sard.server.metrics.StateGauges
@@ -39,6 +40,10 @@ class MetricsListenerConfiguration {
     /** What the start found about the database (DB1), registered before any migration runs. */
     @Bean
     fun databaseSettingsGauges(meters: PrometheusMeterRegistry) = DatabaseSettingsGauges(meters)
+
+    /** What the start found about the server's database role (DB2), registered before the schema is used. */
+    @Bean
+    fun roleExcessGauges(meters: PrometheusMeterRegistry) = RoleExcessGauges(meters)
 
     @Bean
     fun metricsListener(

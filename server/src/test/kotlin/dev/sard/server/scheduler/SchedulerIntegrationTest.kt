@@ -3,6 +3,7 @@
 
 package dev.sard.server.scheduler
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
@@ -88,7 +89,7 @@ class SchedulerIntegrationTest(
 
     @AfterTest
     fun `drop the tenant`() {
-        jdbc.execute("drop trigger if exists fail_fires on schedule_fires")
+        TestAdmin.of(jdbc).execute("drop trigger if exists fail_fires on schedule_fires")
         tables.drop()
     }
 
@@ -168,13 +169,13 @@ class SchedulerIntegrationTest(
     fun `3 - a server that stops in the middle of a fire neither loses nor doubles it`(output: CapturedOutput) {
         val schedule = schedule(source())
         // The transaction fails after the run is written, before the fire is recorded: the server died.
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             """
             create or replace function fail_fire() returns trigger language plpgsql as
             ${'$'}${'$'} begin raise exception 'server stopped'; end ${'$'}${'$'}
             """.trimIndent(),
         )
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             "create trigger fail_fires before insert on schedule_fires for each row execute function fail_fire()",
         )
 
@@ -185,7 +186,7 @@ class SchedulerIntegrationTest(
         assertEquals(at("2026-09-30T11:00:00Z"), nextRunAt(schedule.id))
         assertTrue(output.out.contains("Schedule ${schedule.id} failed to fire; retrying at the next tick"))
 
-        jdbc.execute("drop trigger fail_fires on schedule_fires")
+        TestAdmin.of(jdbc).execute("drop trigger fail_fires on schedule_fires")
         val restarted = anotherServer()
         clock.now = at("2026-09-30T11:00:20Z")
         restarted.tick()
@@ -279,19 +280,19 @@ class SchedulerIntegrationTest(
         val metrics = RecordingSchedulerMetrics()
         val server = anotherServer(metrics)
         val schedule = schedule(source())
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             """
             create or replace function fail_fire() returns trigger language plpgsql as
             ${'$'}${'$'} begin raise exception 'server stopped'; end ${'$'}${'$'}
             """.trimIndent(),
         )
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             "create trigger fail_fires before insert on schedule_fires for each row execute function fail_fire()",
         )
         clock.now = at("2026-09-30T11:00:30Z")
         MutFlow.underTest { server.tick() }
         assertEquals(emptyList(), metrics.fired, "a fire rolled back is not counted")
-        jdbc.execute("drop trigger fail_fires on schedule_fires")
+        TestAdmin.of(jdbc).execute("drop trigger fail_fires on schedule_fires")
 
         MutFlow.underTest { server.tick() }
         clock.now = at("2026-09-30T12:00:00Z")

@@ -17,8 +17,7 @@ enum class RetentionKind(
     STEP_LOG_PARTITION("step_log_partition"),
     NOTIFICATION_DELIVERY("notification_delivery"),
     SCHEDULE_FIRE("schedule_fire"),
-    RESTORE_VERIFICATION("restore_verification"),
-    VERIFICATION_JOB("verification_job"),
+    VERIFICATION_EVIDENCE("verification_evidence"),
     RUN_STEP("run_step"),
     RUN("run"),
 }

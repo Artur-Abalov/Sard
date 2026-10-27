@@ -10,6 +10,7 @@ import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy
 import org.springframework.boot.info.BuildProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.jdbc.datasource.SingleConnectionDataSource
 
 /** A migration as the refusal names it; [failed] when the database records it as not applied. */
 data class MigrationRef(
@@ -63,17 +64,62 @@ private fun newestFuture(all: Array<MigrationInfo>) =
 
 private fun newestKnown(all: Array<MigrationInfo>) = all.filter { it.state.isResolved }.mapNotNull { it.version }.max()
 
-/** Before any migration: the database's PostgreSQL and initdb parameters (DB1), then its Sard version (ADR 0060). */
+/**
+ * The server does not start: a migration of this build is not applied (DB2). The server never migrates (it is
+ * sard_app, which may not change the schema); the migrate step does, before the server starts. The message starts with
+ * "Database startup refused: MIGRATIONS_NOT_APPLIED:" and names the first migration missing.
+ */
+class MigrationsNotApplied(
+    first: MigrationRef,
+    count: Int,
+) : IllegalStateException(
+        "Database startup refused: MIGRATIONS_NOT_APPLIED: $count migration(s) of this server are not applied, the " +
+            "first is ${first.version} (${first.description}); run the migrate service (docker compose up migrate) " +
+            "before the server (docs/operator/16-postgresql.md)",
+    )
+
+/** The migrations of this build that the database does not have applied, in order; failed ones are among them. */
+private fun notApplied(flyway: Flyway) =
+    flyway
+        .info()
+        .all()
+        .filter { it.state == MigrationState.PENDING || (it.state.isFailed && it.state.isResolved) }
+        .sortedBy { it.version }
+
+/** Throws [MigrationsNotApplied] when [flyway] has a migration of this build that the database lacks. */
+fun requireMigrated(flyway: Flyway) {
+    val missing = notApplied(flyway)
+    val first = missing.firstOrNull() ?: return
+    throw MigrationsNotApplied(MigrationRef(first.version.version, first.description), missing.size)
+}
+
+/**
+ * Before the server uses the database: its PostgreSQL and initdb parameters (DB1), whether its role is more than the
+ * server needs (DB2), its Sard version (ADR 0060) and that the migrate step has run. Nothing is migrated here.
+ */
 @Configuration(proxyBeanMethods = false)
 class DatabaseVersionConfiguration {
     @Bean
     fun databaseVersionGuard(
         build: BuildProperties,
         mismatches: DatabaseMismatchListener,
+        excess: RoleExcessListener,
     ) = FlywayMigrationStrategy { flyway ->
-        flyway.configuration.dataSource.connection
-            .use(DatabaseSettingsCheck(mismatches)::check)
-        refuseNewerDatabase(flyway, build.version ?: "unknown")
-        flyway.migrate()
+        // One connection of the pool for all of it: Flyway asks for a second one to inform its callbacks, and a pool
+        // of one connection (ADR 0013, a request holds one connection at a time) would wait for it for good.
+        flyway.configuration.dataSource.connection.use { connection ->
+            DatabaseSettingsCheck(mismatches).check(connection)
+            RoleExcessCheck(excess).check(connection)
+            val reader =
+                Flyway
+                    .configure()
+                    .configuration(flyway.configuration)
+                    .dataSource(SingleConnectionDataSource(connection, true))
+                    .load()
+            refuseNewerDatabase(reader, build.version ?: "unknown")
+            requireMigrated(reader)
+            // What migrate would refuse to go on from: an applied migration this build lacks, a changed checksum.
+            reader.validate()
+        }
     }
 }

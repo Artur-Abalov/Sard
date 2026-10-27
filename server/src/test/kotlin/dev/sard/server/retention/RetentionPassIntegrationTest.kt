@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -112,9 +113,7 @@ class RetentionPassIntegrationTest(
         }
     }
 
-    private fun dropPartitions() {
-        for (name in jdbc.partitionNames()) jdbc.execute("drop table $name")
-    }
+    private fun dropPartitions() = jdbc.dropPartitions()
 
     private fun partition(month: String) = jdbc.createPartition(month)
 
@@ -199,23 +198,6 @@ class RetentionPassIntegrationTest(
     }
 
     @Test
-    fun `Запись проверки удаляется вместе со своим закрытым заданием`() {
-        val source = anchored()
-        val snapshot = a.oldSnapshot(source)
-        val oldRun = a.run(source, old(RUNS_TERM), trigger = "verification", status = "failed")
-        val record = a.verification(source, snapshot, old(RUNS_TERM), "failed", oldRun)
-        val job = jdbc.queryForObject("select job_id from restore_verifications where id = ?", UUID::class.java, record)
-
-        val totals = pass()
-
-        assertFalse(a.exists("restore_verifications", record))
-        assertFalse(a.exists("verification_jobs", requireNotNull(job)))
-        assertFalse(run(a, oldRun.id), "the verification run goes after its record, in the same pass")
-        assertEquals(1, totals[RetentionKind.RESTORE_VERIFICATION])
-        assertEquals(1, totals[RetentionKind.VERIFICATION_JOB])
-    }
-
-    @Test
     fun `Старая доставка в финальном статусе удаляется, в ожидании остаётся, свежая остаётся`() {
         val source = anchored()
         val run = a.run(source, boundary(RUNS_TERM))
@@ -232,6 +214,21 @@ class RetentionPassIntegrationTest(
         assertTrue(gone.none { a.exists("notification_deliveries", it) })
         assertTrue(listOf(pending, fresh, young).all { a.exists("notification_deliveries", it) })
         assertEquals(4, totals[RetentionKind.NOTIFICATION_DELIVERY])
+    }
+
+    @Test
+    fun `Пачка ровно в размер повторяется, пустая пачка ничего не сообщает`() {
+        val source = anchored()
+        a.runs(source, 4, old(RUNS_TERM), steps = 1)
+        val told = CopyOnWriteArrayList<Pair<RetentionKind, Int>>()
+        val metrics = RetentionMetrics { kind, count -> told += kind to count }
+        val small = RetentionPass(sessions, logs, clock, settings(batchSize = 2), metrics)
+
+        val totals = finishing { small.run() }
+
+        assertEquals(listOf(2, 2), told.filter { it.first == RetentionKind.RUN }.map { it.second })
+        assertEquals(4, totals[RetentionKind.RUN])
+        assertTrue(told.none { it.second == 0 }, "a batch that deleted nothing is not told: $told")
     }
 
     @Test
@@ -400,95 +397,12 @@ class RetentionPassIntegrationTest(
         assertTrue(run(b, laterB.id))
     }
 
-    // ---- verification records ---------------------------------------------------------------------------------
+    // ---- verification records: they are kept for good, see RetentionEvidenceIntegrationTest -----------------------
 
     private fun verifiedSource(): Pair<UUID, UUID> {
         val source = a.source()
         val snapshot = a.oldSnapshot(source)
         return source to snapshot
-    }
-
-    @Test
-    fun `Последняя успешная проверка источника остаётся`() {
-        val (source, snapshot) = verifiedSource()
-        val records =
-            (1L..4L).map { a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(it)), "passed") }
-
-        pass()
-
-        assertEquals(listOf(true, false, false, false), records.map { a.exists("restore_verifications", it) })
-    }
-
-    @Test
-    fun `Последняя неуспешная проверка источника остаётся`() {
-        val (source, snapshot) = verifiedSource()
-        val failed = a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(30)), "failed")
-        val cannot = a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(20)), "cannot_verify")
-        val none = a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(10)), "no_verifier")
-        a.verification(source, snapshot, boundary(RUNS_TERM), "passed")
-
-        pass()
-
-        assertTrue(a.exists("restore_verifications", none))
-        assertFalse(a.exists("restore_verifications", failed))
-        assertFalse(a.exists("restore_verifications", cannot))
-    }
-
-    @Test
-    fun `Последние проверки считаются по каждому источнику отдельно`() {
-        val records =
-            (1..4).flatMap {
-                val (source, snapshot) = verifiedSource()
-                listOf(
-                    a.verification(source, snapshot, old(RUNS_TERM), "passed"),
-                    a.verification(source, snapshot, old(RUNS_TERM), "failed"),
-                )
-            }
-
-        pass()
-
-        assertTrue(records.all { a.exists("restore_verifications", it) })
-    }
-
-    @Test
-    fun `Проверка не удаляется, пока её задание открыто`() {
-        val (source, snapshot) = verifiedSource()
-        val record = a.verification(source, snapshot, old(RUNS_TERM), "failed", jobStatus = "running")
-        a.verification(source, snapshot, boundary(RUNS_TERM), "failed")
-        a.verification(source, snapshot, boundary(RUNS_TERM), "passed")
-
-        pass()
-
-        assertTrue(a.exists("restore_verifications", record))
-    }
-
-    @Test
-    fun `Закрытый эпизод устаревания удаляется перед проверкой, которая его закрыла`() {
-        val (source, snapshot) = verifiedSource()
-        val closing = a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(1)), "passed")
-        a.verification(source, snapshot, old(RUNS_TERM), "passed")
-        val episode = a.staleEpisode(source, closing)
-
-        pass()
-
-        assertFalse(a.exists("verification_stale_episodes", episode))
-        assertFalse(a.exists("restore_verifications", closing))
-    }
-
-    @Test
-    fun `Эпизод устаревания, закрытый последней проверкой источника, остаётся, открытый тоже`() {
-        val (source, snapshot) = verifiedSource()
-        val lastPassed = a.verification(source, snapshot, old(RUNS_TERM), "passed")
-        val lastOther = a.verification(source, snapshot, old(RUNS_TERM), "no_verifier")
-        val byPassed = a.staleEpisode(source, lastPassed)
-        val byOther = a.staleEpisode(source, lastOther)
-        val open = a.staleEpisode(a.source(), null, T0.minus(Duration.ofDays(400)))
-
-        pass()
-
-        for (kept in listOf(byPassed, byOther)) assertTrue(a.exists("verification_stale_episodes", kept))
-        assertTrue(a.exists("restore_verifications", lastPassed) && a.exists("restore_verifications", lastOther))
-        assertTrue(a.exists("verification_stale_episodes", open))
     }
 
     // ---- schedule fires ---------------------------------------------------------------------------------------
@@ -568,13 +482,14 @@ class RetentionPassIntegrationTest(
             ),
         )
         partition("2027_04")
+        val before = counter("step_log_partition")
 
         val totals = pass()
 
         assertEquals(setOf("step_logs_2027_03", "step_logs_2027_04"), partitions())
         assertEquals(1000, lines("2027_03"))
         assertEquals(2, totals[RetentionKind.STEP_LOG_PARTITION])
-        assertEquals(2.0, counter("step_log_partition"))
+        assertEquals(before + 2, counter("step_log_partition"))
     }
 
     @Test
@@ -658,18 +573,17 @@ class RetentionPassIntegrationTest(
             holder.autoCommit = false
             // An open transaction that has read the partition: the drop needs it to itself and waits.
             holder.createStatement().use { it.execute("select count(*) from step_logs_2027_01") }
-            val quick = StepLogRetention(jdbc, Duration.ofMillis(200))
-            val impatient = RetentionPass(sessions, quick, clock, settings()) { _, _ -> }
 
-            finishing { impatient.run() }
-            val errors = output.out.lines().filter { "ERROR" in it && "Retention" in it }
+            finishing { retention.run() }
+            val warnings = output.out.lines().filter { "WARN" in it && "Retention" in it }
             assertTrue(
-                errors.any { "step_logs_2027_01" in it && "Exception" in it && "lock_timeout" in it },
-                errors.toString(),
+                warnings.any { "step_logs_2027_01" in it && "Exception" in it && "lock_timeout" in it },
+                warnings.toString(),
             )
+            assertFalse(output.out.lines().any { "ERROR" in it && "Retention" in it }, "a lock not got is no error")
             assertTrue("step_logs_2027_01" in partitions())
             holder.rollback()
-            impatient.run()
+            retention.run()
             assertFalse("step_logs_2027_01" in partitions(), "the next pass drops the partition")
         } finally {
             holder.rollback()
@@ -701,9 +615,6 @@ class RetentionPassIntegrationTest(
         a.runs(source, 5, old(RUNS_TERM), steps = 2)
         a.fires(schedule, 3, old(RUNS_TERM))
         a.deliveries(source, 4, old(DELIVERIES_TERM))
-        val (vSource, snapshot) = verifiedSource()
-        a.verification(vSource, snapshot, old(RUNS_TERM), "passed")
-        a.verifications(vSource, snapshot, 4, old(RUNS_TERM).minus(Duration.ofDays(1)), "passed")
         partition("2027_01")
         partition("2027_02")
 
@@ -714,7 +625,7 @@ class RetentionPassIntegrationTest(
         assertTrue(summaries.single().contains("INFO"))
         assertEquals(
             "Retention pass deleted step_log_partition=2 notification_delivery=4 schedule_fire=3 " +
-                "restore_verification=4 verification_job=4 run_step=10 run=5",
+                "verification_evidence=0 run_step=10 run=5",
             summaries.single().substringAfter("Retention pass").let { "Retention pass" + it },
         )
     }
@@ -728,8 +639,8 @@ class RetentionPassIntegrationTest(
         val line = output.out.lines().single { "Retention pass deleted" in it }
         assertTrue(
             line.endsWith(
-                "step_log_partition=0 notification_delivery=0 schedule_fire=0 restore_verification=0 " +
-                    "verification_job=0 run_step=0 run=0",
+                "step_log_partition=0 notification_delivery=0 schedule_fire=0 verification_evidence=0 " +
+                    "run_step=0 run=0",
             ),
             line,
         )
@@ -739,5 +650,6 @@ class RetentionPassIntegrationTest(
     private fun settings(
         stepLogs: Duration = LOGS_TERM,
         runs: Duration = RUNS_TERM,
-    ) = RetentionSettings(stepLogs, runs, RUNS_TERM, RUNS_TERM, DELIVERIES_TERM, Duration.ofHours(1), 500)
+        batchSize: Int = 500,
+    ) = RetentionSettings(stepLogs, runs, RUNS_TERM, RUNS_TERM, DELIVERIES_TERM, Duration.ofHours(1), batchSize)
 }

@@ -36,6 +36,21 @@ internal object E2e {
     /** deploy/docker-compose.yml: the installation the drill's old machine runs. */
     val composeFile: Path get() = Path.of(property("e2e.composeFile"))
 
+    /** The files of deploy/db/ that docker-compose.yml refers to as ./db/… (DB2); the installation has them in db/. */
+    val composeDbFiles: List<Path>
+        get() =
+            Files.list(Path.of(property("e2e.composeDbDir"))).use { files ->
+                files.filter { Files.isRegularFile(it) }.toList()
+            }
+
+    /** deploy/db/bootstrap.sql (DB2): without its psql meta-command, which JDBC cannot run. */
+    val bootstrapSql: String
+        get() =
+            Files
+                .readAllLines(Path.of(property("e2e.bootstrapSql")))
+                .filterNot { it.startsWith("\\") }
+                .joinToString("\n")
+
     /** docs/operator/12-server-recovery.md: the page the drill follows. */
     val recoveryPage: Path get() = Path.of(property("e2e.recoveryPage"))
 

@@ -3,19 +3,13 @@
 
 package dev.sard.server.agents
 
-import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.database.MigrationSandbox
 import dev.sard.server.scheduler.QUIET_LOOP
-import org.flywaydb.core.Flyway
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Import
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.jdbc.datasource.SingleConnectionDataSource
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
-import javax.sql.DataSource
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -25,38 +19,23 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val BEFORE_V1 = "202610121300"
-private const val SCHEMA = "agent_role_migration"
+private const val SCHEMA = "sard"
 private val T0 = Timestamp.from(Instant.parse("2026-10-12T12:00:00Z"))
 
 /** Migration V202610141200 (V1): the role and machine id columns, on a schema of its own. */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = ["spring.grpc.server.port=0", QUIET_LOOP],
-)
-@Import(TestcontainersConfiguration::class)
-class AgentRoleMigrationTest(
-    @Autowired dataSource: DataSource,
-) {
-    private val connection = dataSource.connection
-    private val single = SingleConnectionDataSource(connection, true)
+class AgentRoleMigrationTest {
+    private val sandbox = MigrationSandbox()
+    private val connection = sandbox.connection
+    private val single = sandbox.dataSource
     private val jdbc = JdbcTemplate(single)
     private val tenant = UUID.randomUUID()
 
     @AfterTest
-    fun `drop the schema`() {
-        jdbc.execute("set search_path to public")
-        jdbc.execute("drop schema if exists $SCHEMA cascade")
+    fun `close the connection`() {
         connection.close()
     }
 
-    private fun flyway(target: String? = null) =
-        Flyway
-            .configure()
-            .dataSource(single)
-            .schemas(SCHEMA)
-            .defaultSchema(SCHEMA)
-            .also { if (target != null) it.target(target) }
-            .load()
+    private fun flyway(target: String? = null) = sandbox.flyway(target)
 
     /** The schema as it is after V1, rows loose of their foreign keys. */
     private fun migrated() {

@@ -69,47 +69,6 @@ class SelfChannelTest {
     }
 
     @Test
-    fun `Пароля в пустом канале нет`() {
-        assertNull(MutFlow.underTest { channel().readPassword() })
-    }
-
-    @Test
-    fun `Записанный пароль читается, лежит без перевода строки с правами 0600`() {
-        val channel = channel()
-        MutFlow.underTest { channel.writePassword(PASSWORD) }
-        assertEquals(PASSWORD, MutFlow.underTest { channel.readPassword() })
-        assertEquals(PASSWORD, Files.readString(dir.resolve("db-password")))
-        assertEquals("rw-------", perms(dir.resolve("db-password")))
-        assertEquals(listOf("db-password"), names())
-    }
-
-    @Test
-    fun `Запись пароля заменяет прежний файл целиком`() {
-        val channel = channel()
-        MutFlow.underTest { channel.writePassword("x".repeat(100)) }
-        MutFlow.underTest { channel.writePassword(PASSWORD) }
-        assertEquals(PASSWORD, Files.readString(dir.resolve("db-password")))
-        assertEquals(listOf("db-password"), names())
-    }
-
-    @Test
-    fun `Повреждённый пароль читается как отсутствующий`() {
-        val corrupted =
-            listOf(
-                "",
-                PASSWORD.drop(1),
-                PASSWORD + "0",
-                PASSWORD.uppercase(),
-                PASSWORD + "\n",
-                PASSWORD.drop(1) + "g",
-            )
-        for (text in corrupted) {
-            Files.writeString(dir.resolve("db-password"), text)
-            assertNull(MutFlow.underTest { channel().readPassword() }, "'$text'")
-        }
-    }
-
-    @Test
     fun `Токена в пустом канале нет`() {
         assertNull(MutFlow.underTest { channel().readToken() })
     }

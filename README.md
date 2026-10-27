@@ -67,8 +67,8 @@ storage keys ([ADR 0008](docs/adr/0008-crypto-provider.md)).
 
 ## Quickstart: a server in 10 minutes
 
-On a Linux host (amd64 or arm64) with Docker Engine and the Compose plugin,
-`curl` and `openssl`. This runs sard-server and PostgreSQL from the published
+On a Linux host (amd64 or arm64) with Docker Engine 26.0 or newer and the Compose plugin (2.26 or newer)
+and `curl`. This runs sard-server and PostgreSQL from the published
 image of release `SARD_TAG`
 ([releases](https://github.com/Artur-Abalov/Sard/releases)); change only
 that line to install another release.
@@ -79,7 +79,11 @@ SARD_TAG=v0.1.0-beta.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+mkdir -p db
+curl -fsSL -o db/db-init.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/db-init.sh"
+curl -fsSL -o db/bootstrap.sql "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/bootstrap.sql"
+curl -fsSL -o db/pg_hba.conf "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/pg_hba.conf"
+curl -fsSL -o db/postgres-entrypoint.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/postgres-entrypoint.sh"
 sudo chgrp 10001 .env && chmod 640 .env
 docker compose up -d --wait
 curl -fsS http://localhost:8080/api/v1/status

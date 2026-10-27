@@ -4,8 +4,8 @@
 package dev.sard.server
 
 import org.springframework.beans.factory.InitializingBean
+import org.springframework.boot.jdbc.autoconfigure.JdbcConnectionDetails
 import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.DependsOn
 import org.springframework.jdbc.core.JdbcTemplate
@@ -20,8 +20,18 @@ import java.time.Instant
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
     @Bean
-    @ServiceConnection
-    fun postgres(): PostgreSQLContainer = EmbeddedPostgres.container()
+    fun postgres(): PostgreSQLContainer = EmbeddedPostgres.prepared()
+
+    /** The server connects as sard_app, as in an installation (DB2); the container's superuser is the tests' own. */
+    @Bean
+    fun appConnection(postgres: PostgreSQLContainer) =
+        object : JdbcConnectionDetails {
+            override fun getJdbcUrl(): String = postgres.jdbcUrl
+
+            override fun getUsername(): String = EmbeddedPostgres.APP_USER
+
+            override fun getPassword(): String = EmbeddedPostgres.appPassword
+        }
 
     @Bean
     @DependsOn("flywayInitializer")

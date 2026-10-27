@@ -77,6 +77,10 @@ tasks.test {
     )
     // The recovery drill (F7): the installation it starts on the old machine and the page it follows on the new one.
     systemProperty("e2e.composeFile", rootProject.file("deploy/docker-compose.yml").path)
+    // The files the compose file refers to (./db/…, DB2): a release ships them beside it.
+    systemProperty("e2e.composeDbDir", rootProject.file("deploy/db").path)
+    // deploy/db/bootstrap.sql (DB2): the roles and the schema a server's database needs before it starts.
+    systemProperty("e2e.bootstrapSql", rootProject.file("deploy/db/bootstrap.sql").path)
     systemProperty("e2e.recoveryPage", rootProject.file("docs/operator/12-server-recovery.md").path)
     systemProperty("e2e.recoveryDrillDir", layout.buildDirectory.dir("recovery-drill").get().asFile.path)
     testLogging {

@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.agents.stream.Connection
 import dev.sard.server.agents.stream.StreamClients
@@ -279,13 +280,16 @@ class RestWorld(
 
     /** Forgets what tests left in [tenant] that this world did not create, such as the default tenant. */
     fun wipe(tenant: UUID) {
-        for (table in TENANT_TABLES) jdbc.update("delete from $table where tenant_id = ?", tenant)
+        for (table in TENANT_TABLES) admin.update("delete from $table where tenant_id = ?", tenant)
     }
+
+    /** The records of verifications may be deleted by the superuser only (DB2). */
+    private val admin by lazy { TestAdmin.of(jdbc) }
 
     override fun close() {
         clients.closeChannels()
         for (tenant in tenants) {
-            for (table in TENANT_TABLES) jdbc.update("delete from $table where tenant_id = ?", tenant)
+            for (table in TENANT_TABLES) admin.update("delete from $table where tenant_id = ?", tenant)
             jdbc.update("delete from tenants where id = ?", tenant)
         }
     }

@@ -3,6 +3,7 @@
 
 package dev.sard.server.retention
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.api.RestApiTest
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
@@ -102,19 +103,12 @@ class RetentionVolumeIntegrationTest(
         a.fires(a.schedule(a.source()), 700, boundary(RUNS_TERM))
         a.deliveries(source, 700, old(DELIVERIES_TERM))
         a.deliveries(source, 700, boundary(DELIVERIES_TERM))
-        a.verifications(source, snapshot, 700, old(RUNS_TERM), "failed")
-        a.verifications(source, snapshot, 700, boundary(RUNS_TERM), "failed")
-        a.verifications(source, snapshot, 1, boundary(RUNS_TERM), "passed")
 
         val totals = pass().run()
 
         assertEquals(700, totals[RetentionKind.SCHEDULE_FIRE].toInt())
         assertEquals(700, totals[RetentionKind.NOTIFICATION_DELIVERY].toInt())
-        assertEquals(700, totals[RetentionKind.RESTORE_VERIFICATION].toInt())
-        assertEquals(700, totals[RetentionKind.VERIFICATION_JOB].toInt())
         assertEquals(700, count(a, "schedule_fires", "recorded_at = '${boundary(RUNS_TERM)}'"))
-        assertEquals(701, count(a, "restore_verifications"))
-        assertEquals(0, count(a, "restore_verifications", "verified_at < '${boundary(RUNS_TERM)}'"))
         assertEquals(0, count(a, "notification_deliveries", "created_at < '${boundary(DELIVERIES_TERM)}'"))
         assertEquals(700, count(a, "notification_deliveries"))
         assertEquals(0, count(a, "runs", "finished_at < '${boundary(RUNS_TERM)}' and status = 'failed'"))
@@ -219,7 +213,7 @@ class RetentionVolumeIntegrationTest(
 
     @Test
     fun `Два экземпляра не удаляют одну секцию дважды`(output: CapturedOutput) {
-        jdbc.execute("drop table if exists step_logs_2027_01")
+        TestAdmin.of(jdbc).execute("drop table if exists step_logs_2027_01")
         jdbc.createPartition("2027_01")
         val before =
             jdbc.partitionNames()
@@ -351,7 +345,7 @@ class RetentionVolumeIntegrationTest(
         try {
             reader.autoCommit = false
             reader.createStatement().use { it.execute("select count(*) from step_logs_2027_01") }
-            val impatient = StepLogRetention(jdbc, lockTimeout)
+            val impatient = StepLogRetention(jdbc)
             val drop = pool.submit<Result<Boolean>> { runCatching { impatient.drop("step_logs_2027_01") } }
             waitForPendingLock()
 

@@ -21,3 +21,49 @@ CREATE INDEX notification_deliveries_retention_idx ON notification_deliveries (t
     WHERE status <> 'pending';
 CREATE INDEX schedule_fires_recorded_at_idx ON schedule_fires (tenant_id, recorded_at);
 CREATE INDEX restore_verifications_verified_at_idx ON restore_verifications (tenant_id, verified_at);
+
+-- DB2 (docs/adr/0069-database-roles.md): the records of verifications are kept for good and are append-only for the
+-- server. sard_app may read them and add one (INSERT, from the default privileges), never change or remove one, and
+-- not even empty the table: UPDATE, DELETE and TRUNCATE are taken back. What the verifier found (stages and
+-- mismatches) is cleared after sard.retention.verifications, by the function below, which is owned by sard_owner and
+-- refuses a term shorter than the floor kept in the database. A floor is fixed by a migration: sard_app may read it.
+REVOKE UPDATE, DELETE, TRUNCATE ON restore_verifications FROM sard_app;
+
+CREATE TABLE retention_floors (
+    name     TEXT PRIMARY KEY,
+    min_days INTEGER NOT NULL CHECK (min_days > 0)
+);
+INSERT INTO retention_floors (name, min_days) VALUES ('verification_evidence', 180);
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON retention_floors FROM sard_app;
+
+-- Clears the evidence of at most p_limit records of verifications of one tenant that were made before p_cutoff, except
+-- the last passed and the last not passed one of each source, and returns how many it cleared. A cutoff later than
+-- now minus the floor is taken as now minus the floor: a caller cannot clear what is younger, whatever it asks. The
+-- records themselves, their status, level, time and key holders, are not touched.
+CREATE FUNCTION clear_verification_evidence(p_tenant UUID, p_cutoff TIMESTAMPTZ, p_limit INTEGER) RETURNS INTEGER
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = pg_catalog, sard, pg_temp
+AS $$
+DECLARE
+    floor_days INTEGER;
+    cutoff TIMESTAMPTZ;
+    cleared INTEGER;
+BEGIN
+    SELECT min_days INTO STRICT floor_days FROM sard.retention_floors WHERE name = 'verification_evidence';
+    cutoff := LEAST(p_cutoff, now() - make_interval(days => floor_days));
+    WITH picked AS (
+        SELECT v.id FROM sard.restore_verifications v
+        WHERE v.tenant_id = p_tenant AND v.verified_at < cutoff
+          AND (v.stages <> '[]'::jsonb OR v.mismatches <> '[]'::jsonb)
+          AND EXISTS (SELECT 1 FROM sard.restore_verifications n
+                      WHERE n.tenant_id = v.tenant_id AND n.source_id = v.source_id
+                        AND (n.status = 'passed') = (v.status = 'passed')
+                        AND (n.verified_at, n.id) > (v.verified_at, v.id))
+        ORDER BY v.verified_at, v.id LIMIT p_limit FOR UPDATE SKIP LOCKED)
+    UPDATE sard.restore_verifications r SET stages = '[]'::jsonb, mismatches = '[]'::jsonb
+    FROM picked WHERE r.tenant_id = p_tenant AND r.id = picked.id;
+    GET DIAGNOSTICS cleared = ROW_COUNT;
+    RETURN cleared;
+END
+$$;

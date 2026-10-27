@@ -8,6 +8,8 @@ import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import dev.sard.server.EmbeddedPostgres
+import dev.sard.server.database.Cluster
+import dev.sard.server.database.Preparation
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.selfagent.Logged
 import org.slf4j.LoggerFactory
@@ -23,31 +25,41 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.core.type.classreading.MetadataReader
 import org.springframework.core.type.classreading.MetadataReaderFactory
 import org.springframework.core.type.filter.TypeFilter
-import org.testcontainers.postgresql.PostgreSQLContainer
 import tools.jackson.databind.ObjectMapper
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicInteger
 
-/** One PostgreSQL for the restart tests; each installation gets a database of its own in it. */
+/**
+ * One PostgreSQL for the restart tests; each installation gets a database of its own in it, prepared as db-init and
+ * migrate prepare one (DB2) unless the test asks for the database before its migrations.
+ */
 object TestPostgres {
-    private val container: PostgreSQLContainer by lazy {
-        EmbeddedPostgres.container().also { it.start() }
-    }
-    private val counter = AtomicInteger()
+    private val cluster: Cluster by lazy { Cluster() }
 
-    fun newDatabase(): Database {
-        val name = "installation_${counter.incrementAndGet()}"
-        container.createConnection("").use { it.createStatement().execute("create database $name") }
-        val url = "jdbc:postgresql://${container.host}:${container.firstMappedPort}/$name"
-        return Database(url, container.username, container.password)
+    fun newDatabase(migrated: Boolean = true): Database {
+        val name = cluster.newDatabase()
+        cluster.bootstrap(name)
+        if (migrated) Preparation.migrate(cluster.url(name))
+        return Database(cluster.url(name), EmbeddedPostgres.APP_USER, EmbeddedPostgres.appPassword, superuser)
     }
+
+    private val superuser: Login get() = Login(cluster.container.username, cluster.container.password)
+
+    fun databases(): Cluster = cluster
 }
+
+/** A user and its password. */
+class Login(
+    val user: String,
+    val password: String,
+)
 
 class Database(
     val url: String,
     val user: String,
     val password: String,
+    /** The superuser of the cluster the database is in, when the test has one. */
+    val admin: Login? = null,
 ) {
     /** The variables the server and its commands read. */
     fun environment(): Map<String, String> {
@@ -61,6 +73,12 @@ class Database(
             "spring.datasource.username" to user,
             "spring.datasource.password" to password,
         )
+
+    /** The same database for the superuser: the server then runs as one (DB2, the excess of its role). */
+    fun asSuperuser(): Database {
+        val login = checkNotNull(admin) { "no superuser known for this database" }
+        return Database(url, login.user, login.password, admin)
+    }
 }
 
 /** Keeps the test classes of the surrounding module out of the component scan of a server started by hand. */

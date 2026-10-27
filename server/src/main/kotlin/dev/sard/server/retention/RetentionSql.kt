@@ -44,29 +44,12 @@ internal const val OTHER_FIRES =
     """
 
 /**
- * Old verifications whose job is closed, except the last passed and the last not passed one of each source, with
- * their jobs and the closed stale episodes they closed, which must go first.
+ * The records of verifications are never deleted (DB2, Р4), and sard_app may not change one: the database clears what
+ * the verifier found (stages and mismatches) in the old ones, except the last passed and the last not passed one of
+ * each
+ * source, and never in a record younger than its own floor (docs/adr/0069-database-roles.md).
  */
-internal const val VERIFICATIONS =
-    """
-    with picked as (
-        select v.id, v.job_id from restore_verifications v
-        join verification_jobs j on j.tenant_id = v.tenant_id and j.id = v.job_id
-        where v.tenant_id = :tenant and v.verified_at < :cutoff and j.status = 'closed'
-          and exists (select 1 from restore_verifications n
-                      where n.tenant_id = v.tenant_id and n.source_id = v.source_id
-                        and (n.status = 'passed') = (v.status = 'passed')
-                        and (n.verified_at, n.id) > (v.verified_at, v.id))
-        order by v.verified_at, v.id limit :limit for update of v skip locked),
-    gone_episodes as (
-        delete from verification_stale_episodes e using picked p
-        where e.tenant_id = :tenant and e.closed_by_id = p.id returning e.id),
-    gone_verifications as (
-        delete from restore_verifications v using picked p where v.tenant_id = :tenant and v.id = p.id returning v.id),
-    gone_jobs as (
-        delete from verification_jobs j using picked p where j.tenant_id = :tenant and j.id = p.job_id returning j.id)
-    select (select count(*) from gone_verifications), (select count(*) from gone_jobs)
-    """
+internal const val CLEAR_VERIFICATION_EVIDENCE = "select clear_verification_evidence(:tenant, :cutoff, :limit)"
 
 private const val SAME_KIND =
     """(case when n.trigger = 'verification' then 'verify' else n.kind end) =
