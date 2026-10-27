@@ -188,7 +188,7 @@ services:
       - sard-pki:/var/lib/sard/pki:ro
       # The server's channel: the enrollment token, read-only.
       - sard-self-channel:/run/sard-self:ro
-      # The password of sard_backup, laid over the placeholder db-init left in the channel (docker compose 2.23+).
+      # The password of sard_backup, laid over the placeholder db-init left in the channel (Docker Engine 26.0+, Compose 2.26+).
       - type: volume
         source: sard-db-backup
         target: /run/sard-self/db-password

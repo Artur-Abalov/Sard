@@ -97,7 +97,7 @@ CI запускает его на PostgreSQL 16, 17 и 18 (`scripts/test-bootstr
 - Соседу по-прежнему нужен путь `/run/sard-self/db-password`: том канала монтируется в
   `/run/sard-self` только на чтение, поэтому `db-init` оставляет в нём пустой файл
   `db-password`, поверх которого соседу монтируется файл `password` тома `sard-db-backup`
-  (`volume.subpath`, Compose 2.23+).
+  (`volume.subpath`: Docker Engine 26.0+, Compose 2.26+).
 - `bootstrap.sql`, `db-init.sh`, `pg_hba.conf` и `postgres-entrypoint.sh` (случайный
   пароль суперпользователя) лежат в `deploy/db/`, а `docker-compose.yml` ссылается на них
   `configs: <имя>: file: ./db/…`, копий внутри нет (Р15; первая версия держала копии в

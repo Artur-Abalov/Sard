@@ -67,7 +67,7 @@ storage keys ([ADR 0008](docs/adr/0008-crypto-provider.md)).
 
 ## Quickstart: a server in 10 minutes
 
-On a Linux host (amd64 or arm64) with Docker Engine and the Compose plugin (2.23 or newer)
+On a Linux host (amd64 or arm64) with Docker Engine 26.0 or newer and the Compose plugin (2.26 or newer)
 and `curl`. This runs sard-server and PostgreSQL from the published
 image of release `SARD_TAG`
 ([releases](https://github.com/Artur-Abalov/Sard/releases)); change only

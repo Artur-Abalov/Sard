@@ -67,7 +67,7 @@ PostgreSQL только в новое место), проверки восста
 
 ## Быстрый старт: сервер за 10 минут
 
-Нужен Linux-хост (amd64 или arm64) с Docker Engine и плагином Compose (2.23 и новее)
+Нужен Linux-хост (amd64 или arm64) с Docker Engine 26.0 или новее и плагином Compose (2.26 и новее)
 и `curl`. Команды ниже запускают sard-server и PostgreSQL из
 опубликованного образа релиза `SARD_TAG`
 ([релизы](https://github.com/Artur-Abalov/Sard/releases)); чтобы поставить
