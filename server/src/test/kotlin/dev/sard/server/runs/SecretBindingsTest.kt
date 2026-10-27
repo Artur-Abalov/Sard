@@ -56,6 +56,24 @@ class SecretBindingsTest {
     }
 
     @Test
+    fun `the target in the command is one word of the shell`() {
+        val cases =
+            mapOf(
+                "db.example.com" to "db.example.com:5432/app",
+                "x;reboot" to "'x;reboot:5432/app'",
+                "\$(id)" to "'\$(id):5432/app'",
+                "it's" to "'it'\\''s:5432/app'",
+                "::1" to "'[::1]:5432/app'",
+                "db*" to "'db*:5432/app'",
+            )
+        for ((host, word) in cases) {
+            val config = PG_CONFIG.replace("db.example.com", host)
+            val warning = warnings(bound("elsewhere"), config).single()
+            assertEquals(true, warning.endsWith(" --target $word"), warning)
+        }
+    }
+
+    @Test
     fun `the port of the config, or the default of the schema, is the port of the target`() {
         val on6432 = PG_CONFIG.replace("}", ""","port":6432}""")
         assertEquals(emptyList(), warnings(bound("db.example.com:6432/app"), on6432))

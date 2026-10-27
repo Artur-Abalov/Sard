@@ -16,6 +16,18 @@ private const val SECRET_FORMAT = "sard-secret"
 private const val TARGET_KEYWORD = "x-sard-target"
 private const val ANY = "*"
 
+/** The characters no shell treats specially, even at the start of a word: no quote, no glob, no expansion. */
+private const val SHELL_SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-:/@%+=,"
+
+/**
+ * [text] as one word of the command the operator pastes into a root shell on the agent host: itself when it is only
+ * safe characters, else in single quotes. The target comes from the config of a source.
+ */
+private fun shellWord(text: String): String {
+    val quoted = "'" + text.replace("'", "'\\''") + "'"
+    return if (text.all { it in SHELL_SAFE }) text else quoted
+}
+
 /**
  * Where the value of a secret goes: the server a plugin signs in to, as the agent names it (sdk.Target).
  * [port] 0 and [database] "" when the plugin has none.
@@ -67,7 +79,8 @@ internal object SecretBindings {
         binding: JsonNode,
     ): String? {
         val refusal = refusal(plugin, target, binding) ?: return null
-        val command = "sudo sard-agent secret set $name --plugin $plugin --target ${target ?: "<target>"}"
+        val word = target?.let { shellWord("$it") } ?: "<target>"
+        val command = "sudo sard-agent secret set $name --plugin $plugin --target $word"
         return "secret \"$name\" ${refusal}run on the agent host: $command"
     }
 

@@ -14,8 +14,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
-	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
 
 func isPermission(err error) bool { return errors.Is(err, fs.ErrPermission) }
@@ -227,6 +225,7 @@ func (readOnlyFiles) WriteFile(string, []byte, os.FileMode) error { return errRe
 func (c *hostCheck) secretLines() {
 	if failed := c.configBlock(); failed != "" {
 		c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretReadable, "", failed))
+		c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretBound, "", failed))
 		return
 	}
 	for _, name := range c.cfg.SecretNames() {
@@ -245,17 +244,10 @@ func (c *hostCheck) secretLines() {
 // rules of its file, the same reading.
 func (c *hostCheck) bindingLine(name string) hostcheck.Line {
 	path := hostsetup.Layout{Config: c.opts.configPath}.SecretBinding(name)
-	read := func(p string) ([]byte, secrets.Info, error) {
-		info, err := c.deps.stat(p)
-		if err != nil {
-			return nil, info, err
-		}
-		data, err := c.deps.readFile(p)
-		return data, info, err
-	}
-	b, bound, err := secretbind.NewStore(func(string) string { return path }, c.who.Service.UID, read).Binding(name)
+	b, bound, err := c.deps.bindings(c.opts.configPath, c.who.Service.UID).Binding(name)
 	c.noteDenied(path, err)
-	return hostcheck.BindingLine(name, path, describeBinding(b), bound, err)
+	hint := hostcheck.BindingHint(name, path, hostcheck.InMainConfig(c.cfg, name))
+	return hostcheck.BindingLine(name, path, hint, describeBinding(b), bound, err)
 }
 
 // secretLine reads the secret as the service does and says only whether it
@@ -263,5 +255,5 @@ func (c *hostCheck) bindingLine(name string) hostcheck.Line {
 func (c *hostCheck) secretLine(name, path string) hostcheck.Line {
 	data, err := c.deps.readOwned(path, c.who.Service.UID)
 	c.noteDenied(path, err)
-	return hostcheck.SecretLine(name, path, len(data), err)
+	return hostcheck.SecretLine(name, path, hostcheck.SecretSetHint(name, hostcheck.InMainConfig(c.cfg, name)), len(data), err)
 }

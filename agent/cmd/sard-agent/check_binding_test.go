@@ -19,14 +19,24 @@ func TestABoundSecretIsOKWithItsBinding(t *testing.T) {
 	}
 }
 
-func TestASecretWithoutABindingIsAnErrorWithTheCommandThatBindsIt(t *testing.T) {
+func TestASecretOfTheMainConfigWithoutABindingIsAnErrorWithTheFileToWrite(t *testing.T) {
 	h := fullHost(t)
 	ok(t, os.Remove(h.path("secret-bindings/pg.yaml")))
 	lines, _, code := h.checkLines()
 	l := line(t, lines, "secret.bound", "pg")
 	if l.status != "ERROR" || !strings.Contains(l.message, "no binding ("+h.path("secret-bindings/pg.yaml")+")") ||
-		!strings.Contains(l.hint, "sudo sard-agent secret set pg --plugin") || code == exitOK {
+		!strings.Contains(l.hint, "write its binding into "+h.path("secret-bindings/pg.yaml")+" by hand") || code == exitOK {
 		t.Errorf("%+v, code %d", l, code)
+	}
+}
+
+func TestASecretOfAFragmentWithoutABindingIsAnErrorWithTheCommandThatBindsIt(t *testing.T) {
+	h := fullHost(t)
+	h.write(h.path("secrets/db"), "value", 0o600)
+	h.writeFragment("secret-db.yaml", "secrets:\n  db: "+h.path("secrets/db")+"\n", 0o640)
+	lines, _, _ := h.checkLines()
+	if l := line(t, lines, "secret.bound", "db"); l.status != "ERROR" || !strings.Contains(l.hint, "sudo sard-agent secret set db --plugin") {
+		t.Errorf("%+v", l)
 	}
 }
 

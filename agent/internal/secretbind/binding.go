@@ -28,6 +28,10 @@ var pluginName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 var authMethods = []string{"scram-sha-256", "md5", "password", "none"}
 
 // tlsModes are the weakest TLS modes a binding may allow.
+// MaxTargets is how many targets, and how many methods of auth, a binding
+// has at most: as many as the server takes (SnapshotRules.MAX_SECRET_TARGETS).
+const MaxTargets = 64
+
 var tlsModes = []string{"require", "disable"}
 
 // Binding says to which plugin and to which targets the value of a secret
@@ -82,20 +86,34 @@ func fromDocument(d document) (Binding, error) {
 	if !pluginName.MatchString(d.Plugin) {
 		return Binding{}, fmt.Errorf("plugin %q is not the name of a plugin", d.Plugin)
 	}
-	if len(d.Targets) == 0 {
-		return Binding{}, errors.New("a binding needs at least one target")
+	targets, err := patterns(d.Targets)
+	if err != nil {
+		return Binding{}, err
 	}
-	for _, s := range d.Targets {
-		p, err := ParsePattern(s)
-		if err != nil {
-			return Binding{}, err
-		}
-		b.Targets = append(b.Targets, p)
-	}
+	b.Targets = targets
 	if len(b.Auth) == 0 {
 		b.Auth = nil
 	}
 	return b, b.Check()
+}
+
+// patterns are the targets of a binding: one at least, MaxTargets at most.
+func patterns(targets []string) ([]Pattern, error) {
+	switch {
+	case len(targets) == 0:
+		return nil, errors.New("a binding needs at least one target")
+	case len(targets) > MaxTargets:
+		return nil, fmt.Errorf("a binding has at most %d targets, not %d", MaxTargets, len(targets))
+	}
+	var out []Pattern
+	for _, s := range targets {
+		p, err := ParsePattern(s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // Check checks what the binding allows beyond the plugin's rules.
@@ -112,8 +130,11 @@ func (b Binding) Check() error {
 	return nil
 }
 
-// checkAuth: every method is one libpq knows.
+// checkAuth: every method is one libpq knows, at most MaxTargets of them.
 func checkAuth(methods []string) error {
+	if len(methods) > MaxTargets {
+		return fmt.Errorf("a binding has at most %d methods of auth, not %d", MaxTargets, len(methods))
+	}
 	for _, m := range methods {
 		if !slices.Contains(authMethods, m) {
 			return fmt.Errorf("auth %q is not one of %v", m, authMethods)

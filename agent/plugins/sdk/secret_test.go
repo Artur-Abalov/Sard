@@ -6,6 +6,7 @@ package sdk_test
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -22,6 +23,26 @@ func TestATargetIsWrittenAsTheOperatorBindsIt(t *testing.T) {
 	for want, target := range cases {
 		if got := target.String(); got != want {
 			t.Errorf("%#v.String() = %q, want %q", target, got, want)
+		}
+	}
+}
+
+func TestTheCommandOfABindingErrorTakesTheTargetAsOneWordOfTheShell(t *testing.T) {
+	cases := map[string]sdk.Target{
+		"db.example.com:5432/app":            {Host: "db.example.com", Port: 5432, Database: "app"},
+		"/var/run/postgresql:5432/a_b-c.d@e": {Host: "/var/run/postgresql", Port: 5432, Database: "a_b-c.d@e"},
+		`'x;reboot:5432/app'`:                {Host: "x;reboot", Port: 5432, Database: "app"},
+		`'db:5432/$(id)'`:                    {Host: "db", Port: 5432, Database: "$(id)"},
+		`'db:5432/it'\''s'`:                  {Host: "db", Port: 5432, Database: "it's"},
+		`'db:5432/a b'`:                      {Host: "db", Port: 5432, Database: "a b"},
+		`'[::1]:5432/app'`:                   {Host: "::1", Port: 5432, Database: "app"},
+		`'db:5432/a*'`:                       {Host: "db", Port: 5432, Database: "a*"},
+		`''`:                                 {},
+	}
+	for want, target := range cases {
+		err := &sdk.BindingError{Name: "pg", Plugin: "postgresql", Target: target, Unbound: true}
+		if !strings.HasSuffix(err.Error(), " --target "+want) {
+			t.Errorf("%#v: %q, want the target %s", target, err.Error(), want)
 		}
 	}
 }

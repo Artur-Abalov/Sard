@@ -5,6 +5,7 @@ package secretbind_test
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -128,5 +129,32 @@ func TestAnEmptyListOfMethodsIsNone(t *testing.T) {
 	b, err := secretbind.Parse([]byte("plugin: postgresql\ntargets: [db]\nauth: []\n"))
 	if err != nil || b.Auth != nil || !reflect.DeepEqual(b, mustBinding(t, "postgresql", "db")) {
 		t.Errorf("Parse = %+v, %v; want no methods", b, err)
+	}
+}
+
+// The server takes at most 64 targets and 64 methods of a binding
+// (SnapshotRules.MAX_SECRET_TARGETS): a binding it would refuse is not made.
+func TestABindingHasAtMostAsManyTargetsAndMethodsAsTheServerTakes(t *testing.T) {
+	targets := func(n int) []string {
+		var out []string
+		for i := range n {
+			out = append(out, fmt.Sprintf("db%d", i))
+		}
+		return out
+	}
+	if _, err := secretbind.New("postgresql", targets(secretbind.MaxTargets)); err != nil {
+		t.Errorf("%d targets: %v", secretbind.MaxTargets, err)
+	}
+	if _, err := secretbind.New("postgresql", targets(secretbind.MaxTargets+1)); err == nil || !strings.Contains(err.Error(), "at most 64 targets") {
+		t.Errorf("%d targets: %v", secretbind.MaxTargets+1, err)
+	}
+	auth := func(n int) string {
+		return "plugin: postgresql\ntargets: [db]\nauth: [" + strings.Repeat("md5,", n-1) + "md5]\n"
+	}
+	if _, err := secretbind.Parse([]byte(auth(secretbind.MaxTargets))); err != nil {
+		t.Errorf("%d methods: %v", secretbind.MaxTargets, err)
+	}
+	if _, err := secretbind.Parse([]byte(auth(secretbind.MaxTargets + 1))); err == nil || !strings.Contains(err.Error(), "at most 64 methods") {
+		t.Errorf("%d methods: %v", secretbind.MaxTargets+1, err)
 	}
 }

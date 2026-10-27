@@ -1036,7 +1036,7 @@
     Сценарий: Ошибка конфига пропускает проверки, которые зависят от него
       Дано C содержит неразбираемый YAML
       Когда оператор выполняет check
-      Тогда строки config.names, config.references, files.permissions, tls.identity, tls.chain, tls.expiry, server.reachable, server.tls, server.accepted, clock.skew, secret.readable и все repository — SKIP с сообщением "not checked: config.load failed"
+      Тогда строки config.names, config.references, files.permissions, tls.identity, tls.chain, tls.expiry, server.reachable, server.tls, server.accepted, clock.skew, secret.readable, secret.bound и все repository — SKIP с сообщением "not checked: config.load failed"
       И строки restic.binary, plugin.declared, service.running и service.steps выполнены
       И restic не вызывался кроме version
 

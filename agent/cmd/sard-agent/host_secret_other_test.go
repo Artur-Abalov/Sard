@@ -46,7 +46,9 @@ func TestSecretListOpensNoValueFile(t *testing.T) {
 	h.deps.readFile = failing
 	h.deps.openFile = nil
 	h.deps.stat = func(path string) (info secretsInfo, err error) {
-		t.Errorf("a file was looked at: %s", path)
+		if filepath.Dir(path) != h.path("secret-bindings") {
+			t.Errorf("a file was looked at: %s", path)
+		}
 		return info, os.ErrNotExist
 	}
 	code, _, _ := h.sudo("secret", "list", "--config", "C")

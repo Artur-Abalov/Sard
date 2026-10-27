@@ -216,3 +216,18 @@ func TestSecretListSaysWhyABindingCannotBeUsedWithoutItsPath(t *testing.T) {
 		t.Fatalf("stdout %q", stdout)
 	}
 }
+
+func TestSecretListJudgesABindingFileAsTheAgentDoes(t *testing.T) {
+	t.Parallel()
+	h := newSetupHost(t)
+	code, _, stderr := h.set("db", "SECRET-MARKER", "--plugin", "postgresql", "--target", "db.example.com")
+	if code != exitOK {
+		t.Fatalf("secret set: %d %s", code, stderr)
+	}
+	if err := os.Chmod(h.path("secret-bindings/db.yaml"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ := h.sudo("secret", "list", "--config", "C")
+	assertCode(t, code, exitOK)
+	containsAll(t, stdout, "unusable: the file has mode -rw-rw-rw-: it is writable by group or others")
+}

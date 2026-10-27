@@ -8,11 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"text/tabwriter"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
-	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 )
 
@@ -23,14 +21,15 @@ func runSecretList(_ context.Context, args []string, stdout, stderr io.Writer, d
 	if code != exitOK {
 		return code
 	}
-	if _, f := authorize(deps, "secret list", opts, false, false); f != nil {
+	who, f := authorize(deps, "secret list", opts, false, false)
+	if f != nil {
 		return report(stderr, "secret list", f)
 	}
 	cfg, code := loadConfigFor("secret list", opts.configPath, stderr)
 	if code != exitOK {
 		return code
 	}
-	rows := secretRows(cfg, hostsetup.Layout{Config: opts.configPath}, deps.readFile)
+	rows := secretRows(cfg, deps.bindings(opts.configPath, who.Service.UID))
 	if opts.json {
 		printSecretsJSON(stdout, rows)
 		return exitOK
@@ -84,22 +83,17 @@ func (r secretJSONRow) boundTo() string {
 	return r.described
 }
 
-// secretRows are the secrets of the config with their bindings, by name. No
-// value file is opened.
-func secretRows(cfg config.Config, l hostsetup.Layout, read func(string) ([]byte, error)) []secretJSONRow {
+// secretRows are the secrets of the config with their bindings, by name,
+// judged as the agent judges them. No value file is opened.
+func secretRows(cfg config.Config, bindings *secretbind.Store) []secretJSONRow {
 	rows := []secretJSONRow{}
 	for _, name := range cfg.SecretNames() {
 		row := secretJSONRow{Name: name, DefinedIn: cfg.SecretSource(name)}
-		data, err := read(l.SecretBinding(name))
-		var b secretbind.Binding
-		if err == nil {
-			b, err = secretbind.Parse(data)
-		}
+		b, bound, err := bindings.Binding(name)
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:
-			row.BindingError = withoutPathError(err)
-		default:
+			row.BindingError = errors.Unwrap(err).Error()
+		case bound:
 			row.Binding, row.described = toBindingJSON(b), describeBinding(b)
 		}
 		rows = append(rows, row)
@@ -113,16 +107,6 @@ func toBindingJSON(b secretbind.Binding) *bindingJSON {
 		out.Targets = append(out.Targets, t.String())
 	}
 	return out
-}
-
-// withoutPathError is the error without the path of its file: the column
-// says which secret.
-func withoutPathError(err error) string {
-	var pe *fs.PathError
-	if errors.As(err, &pe) {
-		return pe.Err.Error()
-	}
-	return err.Error()
 }
 
 // printSecretsJSON is Р21 and S11: {"secrets":[{"name","defined_in","binding"}]}.

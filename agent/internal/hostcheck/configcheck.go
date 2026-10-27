@@ -58,7 +58,7 @@ func References(cfg config.Config) []Ref {
 		refs = append(refs, Ref{"repositories." + r.Name + ".password_file", r.PasswordFile, fix}, Ref{"repositories." + r.Name + ".env_file", r.EnvFile, fix})
 	}
 	for _, name := range cfg.SecretNames() {
-		refs = append(refs, Ref{"secrets." + name, cfg.Secrets[name], SecretSetHint(name)})
+		refs = append(refs, Ref{"secrets." + name, cfg.Secrets[name], SecretSetHint(name, InMainConfig(cfg, name))})
 	}
 	for _, name := range cfg.ScriptNames() {
 		refs = append(refs, Ref{"scripts." + name, cfg.Scripts[name], "create the script, or remove scripts." + name + " from the config"})

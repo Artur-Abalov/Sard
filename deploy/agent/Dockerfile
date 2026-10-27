@@ -107,11 +107,10 @@ executor:
 secrets: # the password of the database role sard_self, written by the server into the channel volume
   sard-db: /run/sard-self/db-password
 EOF
+COPY --chmod=0644 <<EOF /etc/sard/self/secret-bindings/sard-db.yaml
 # The binding of sard-db (S11, docs/operations/self-agent.md): the agent gives the password to the postgresql
 # plugin for the server's own database only, the compose service postgres, which has no TLS on the compose
 # network. With SARD_SELF_BACKUP_DATABASE_HOST set, change the target in the sard-self-config volume.
-COPY --chmod=0644 <<EOF /etc/sard/self/secret-bindings/sard-db.yaml
-# The plugin and the targets the secret sard-db may be sent to (S11).
 plugin: postgresql
 targets:
   - postgres:5432/sard

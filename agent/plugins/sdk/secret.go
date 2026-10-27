@@ -79,7 +79,7 @@ type BindingError struct {
 }
 
 func (e *BindingError) Error() string {
-	fix := fmt.Sprintf("sudo sard-agent secret set %s --plugin %s --target %s", e.Name, e.Plugin, e.Target)
+	fix := fmt.Sprintf("sudo sard-agent secret set %s --plugin %s --target %s", e.Name, e.Plugin, shellWord(e.Target.String()))
 	var b strings.Builder
 	switch {
 	case e.Unbound:
@@ -90,6 +90,20 @@ func (e *BindingError) Error() string {
 		fmt.Fprintf(&b, "secret %q is not allowed for %s at %s; if that is intended, run on the agent host: ", e.Name, e.Plugin, e.Target)
 	}
 	return b.String() + fix
+}
+
+// shellSafe are the characters no shell treats specially, even at the start
+// of a word: no quote, no glob, no expansion.
+const shellSafe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-:/@%+=,"
+
+// shellWord is s as one word of the command the operator pastes into a root
+// shell: s itself when it is only safe characters, else in single quotes. The
+// target comes from a config the server sent.
+func shellWord(s string) string {
+	if s != "" && strings.Trim(s, shellSafe) == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // Is matches ErrSecretNotAllowed.
