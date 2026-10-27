@@ -44,7 +44,7 @@
 завершится с ошибкой `SECRET_NOT_ALLOWED`:
 
 ```bash
-docker compose exec -u 0 self-agent sh -c 'mkdir -p /etc/sard/self/secret-bindings && cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
+docker compose exec -T -u 0 self-agent sh -c 'mkdir -p /etc/sard/self/secret-bindings && cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
 plugin: postgresql
 targets:
   - postgres:5432/sard

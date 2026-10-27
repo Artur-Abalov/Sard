@@ -99,12 +99,18 @@ CA в зашифрованный репозиторий рядом с базой
 она разрешает ([привязка секрета](../plugins/postgresql.md#привязка-секрета)). Секрет
 объявлен в `agent.yaml` образа, поэтому `secret set` его не меняет: правьте файл.
 
+Режим TLS источника задаёт сервер: `SARD_SELF_BACKUP_DATABASE_TLS_MODE` в `environment`
+сервера, по умолчанию `disable` (сеть compose). Внешней базе в сети нужен TLS:
+`verify-full`, если её сертификат проверяется (тогда `allow_tls` в привязке не нужен),
+иначе `require` и `allow_tls: require` в привязке. Без этого плагин откажет до запуска
+`pg_dump`.
+
 ```bash
-docker compose exec -u 0 self-agent sh -c 'cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
+docker compose exec -T -u 0 self-agent sh -c 'cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
 plugin: postgresql
 targets:
   - db.internal:5432/sard
-allow_tls: require    # или уберите строку, если сервер с проверяемым сертификатом
+allow_tls: require    # только с SARD_SELF_BACKUP_DATABASE_TLS_MODE=require
 YAML
 docker compose restart self-agent
 ```
