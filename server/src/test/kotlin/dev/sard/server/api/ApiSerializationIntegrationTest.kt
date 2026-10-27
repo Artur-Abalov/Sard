@@ -124,7 +124,22 @@ class ApiSerializationIntegrationTest(
             finishedAt = null,
         )
     private val source =
-        Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null, true, null, null, null, emptyList())
+        Source(
+            id,
+            "etc",
+            id,
+            "files",
+            "local",
+            mapOf("paths" to listOf("/etc")),
+            at,
+            at,
+            null,
+            true,
+            null,
+            null,
+            null,
+            emptyList(),
+        )
     private val systemSource =
         Source(
             id,

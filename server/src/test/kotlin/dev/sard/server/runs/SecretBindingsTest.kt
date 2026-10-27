@@ -47,7 +47,8 @@ class SecretBindingsTest {
     fun `a source at another target says which and what to run on the host`() {
         assertEquals(
             listOf(
-                "secret \"pg\" is not allowed for postgresql at db.example.com:5432/app; if that is intended, run on the agent host: " +
+                "secret \"pg\" is not allowed for postgresql at db.example.com:5432/app; if that is intended, " +
+                    "run on the agent host: " +
                     "sudo sard-agent secret set pg --plugin postgresql --target db.example.com:5432/app",
             ),
             warnings(bound("db.example.com:5432/billing")),
@@ -56,7 +57,8 @@ class SecretBindingsTest {
 
     @Test
     fun `the port of the config, or the default of the schema, is the port of the target`() {
-        assertEquals(emptyList(), warnings(bound("db.example.com:6432/app"), PG_CONFIG.replace("}", ""","port":6432}""")))
+        val on6432 = PG_CONFIG.replace("}", ""","port":6432}""")
+        assertEquals(emptyList(), warnings(bound("db.example.com:6432/app"), on6432))
         assertEquals(1, warnings(bound("db.example.com:6432/app")).size)
     }
 
@@ -106,10 +108,16 @@ class SecretBindingsTest {
                         target("db.example.com.evil") to false,
                     ),
                 "db.example.com" to listOf(target("db.example.com", 1, "x") to true, target("other") to false),
-                "db.example.com/app" to listOf(target("db.example.com", 6432) to true, target("db.example.com", database = "x") to false),
+                "db.example.com/app" to
+                    listOf(target("db.example.com", 6432) to true, target("db.example.com", database = "x") to false),
                 "db:*/app" to listOf(target("db", 6432) to true),
                 "[::1]:5432/app" to
-                    listOf(target("::1") to true, target("0:0::1") to true, target("::2") to false, target("localhost") to false),
+                    listOf(
+                        target("::1") to true,
+                        target("0:0::1") to true,
+                        target("::2") to false,
+                        target("localhost") to false,
+                    ),
                 "[::1]/app" to listOf(target("::1", 1) to true, target("::1", database = "x") to false),
                 "::1" to listOf(target("0::1", 7) to true),
                 "127.0.0.1" to listOf(target("127.0.0.1") to true, target("localhost") to false),
@@ -121,13 +129,14 @@ class SecretBindingsTest {
                         target("/var/run/postgresql", 5433) to false,
                         target("/tmp") to false,
                     ),
-                "/var/run/postgresql" to listOf(target("/var/run/postgresql/.", 5433, "x") to true, target("var/run/postgresql") to false),
+                "/var/run/postgresql" to
+                    listOf(target("/var/run/postgresql/.", 5433, "x") to true, target("var/run/postgresql") to false),
                 "/run/a:b:5432/app" to listOf(target("/run/a:b") to true),
                 "[::1" to listOf(target("::1") to false),
             )
         for ((pattern, targets) in cases) {
             for ((t, want) in targets) {
-                assertEquals(want, MutFlow.underTest { SecretBindings.matches(pattern, t) }, "$pattern ~ $t")
+                assertEquals(want, MutFlow.underTest { SecretTargets.matches(pattern, t) }, "$pattern ~ $t")
             }
         }
     }

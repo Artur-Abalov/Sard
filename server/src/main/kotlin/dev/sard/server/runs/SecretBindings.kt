@@ -26,17 +26,18 @@ internal data class SecretTarget(
     val database: String,
 ) {
     /** host[:port][/database], an IPv6 address in brackets, as the operator binds it. */
-    override fun toString(): String {
-        val host = if (port != 0 && ':' in host && !host.startsWith("/")) "[$host]" else host
-        return host + (if (port != 0) ":$port" else "") + (if (database.isNotEmpty()) "/$database" else "")
-    }
+    override fun toString(): String = hostPart() + portPart() + databasePart()
+
+    private fun hostPart() = if (port != 0 && ':' in host && !host.startsWith("/")) "[$host]" else host
+
+    private fun portPart() = if (port != 0) ":$port" else ""
+
+    private fun databasePart() = if (database.isNotEmpty()) "/$database" else ""
 }
 
 /**
  * The bindings an agent reported (S11, agents.secret_bindings), judged against the config of a source before it
- * runs. The agent decides; this only warns about what it will refuse. The grammar of a target is the agent's
- * (agent/internal/secretbind): host[:port][/database], [ipv6][:port][/database], /dir[:port[/database]]; a port or
- * a database left out, or *, is any; a host name is compared without regard to case, an address by its value.
+ * runs. The agent decides; this only warns about what it will refuse.
  */
 internal object SecretBindings {
     /**
@@ -50,10 +51,10 @@ internal object SecretBindings {
         config: String,
         bindings: String,
     ): List<String> {
-        val properties = read(schema)?.get("properties") ?: return emptyList()
-        val values = read(config) ?: return emptyList()
+        val properties = read(schema).path("properties")
+        val values = read(config)
         val target = targetOf(properties, values)
-        val reported = read(bindings)?.associateBy { it.path("name").asString("") }.orEmpty()
+        val reported = read(bindings).associateBy { it.path("name").asString("") }
         return secretNames(properties, values).mapNotNull { name ->
             reported[name]?.let { warning(name, plugin, target, it) }
         }
@@ -65,16 +66,32 @@ internal object SecretBindings {
         target: SecretTarget?,
         binding: JsonNode,
     ): String? {
-        val fix = "run on the agent host: sudo sard-agent secret set $name --plugin $plugin --target ${target ?: "<target>"}"
+        val refusal = refusal(plugin, target, binding) ?: return null
+        val command = "sudo sard-agent secret set $name --plugin $plugin --target ${target ?: "<target>"}"
+        return "secret \"$name\" ${refusal}run on the agent host: $command"
+    }
+
+    /** Why the agent refuses the secret to [plugin] at [target], null when it does not. */
+    private fun refusal(
+        plugin: String,
+        target: SecretTarget?,
+        binding: JsonNode,
+    ): String? {
         val problem = binding.path("problem").asString("")
         val boundTo = binding.path("plugin").asString("")
         return when {
-            problem.isNotEmpty() -> "secret \"$name\" is given to no plugin on the agent host ($problem); $fix"
-            boundTo != plugin -> "secret \"$name\" is bound to the plugin $boundTo, not $plugin; $fix"
-            target == null || binding.path("targets").any { matches(it.asString(""), target) } -> null
-            else -> "secret \"$name\" is not allowed for $plugin at $target; if that is intended, $fix"
+            problem.isNotEmpty() -> "is given to no plugin on the agent host ($problem); "
+            boundTo != plugin -> "is bound to the plugin $boundTo, not $plugin; "
+            allows(binding, target) -> null
+            else -> "is not allowed for $plugin at $target; if that is intended, "
         }
     }
+
+    /** A config without a target is allowed wherever its plugin is. */
+    private fun allows(
+        binding: JsonNode,
+        target: SecretTarget?,
+    ) = target == null || binding.path("targets").any { SecretTargets.matches(it.asString(""), target) }
 
     /** The names of the secrets the config holds in the fields its schema marks sard-secret. */
     private fun secretNames(
@@ -82,7 +99,8 @@ internal object SecretBindings {
         values: JsonNode,
     ): List<String> =
         properties.properties().mapNotNull { (field, property) ->
-            values.get(field)?.takeIf { property.path("format").asString("") == SECRET_FORMAT && it.isString }?.asString()
+            val secret = property.path("format").asString("") == SECRET_FORMAT
+            values.path(field).takeIf { secret && it.isString }?.asString()
         }
 
     /** The target of the config, if its schema marks a host. */
@@ -90,13 +108,38 @@ internal object SecretBindings {
         properties: JsonNode,
         values: JsonNode,
     ): SecretTarget? {
-        val fields = properties.properties().associate { (field, property) -> property.path(TARGET_KEYWORD).asString("") to field }
-        val host = fields["host"]?.let { values.get(it)?.asString() } ?: return null
-        val port = fields["port"]?.let { values.get(it) ?: properties.get(it).get("default") }?.asInt(0) ?: 0
-        val database = fields["database"]?.let { values.get(it)?.asString() }.orEmpty()
-        return SecretTarget(host, port, database)
+        val fields = properties.properties().associate { (field, p) -> p.path(TARGET_KEYWORD).asString("") to field }
+        val host = values.path(fields["host"].orEmpty())
+        if (!host.isString) return null
+        val database = values.path(fields["database"].orEmpty()).asString("")
+        return SecretTarget(host.asString(), portOf(fields["port"].orEmpty(), properties, values), database)
     }
 
+    /** The port of the config, or the default of its field in the schema; 0 without one. */
+    private fun portOf(
+        field: String,
+        properties: JsonNode,
+        values: JsonNode,
+    ): Int {
+        val given = values.path(field)
+        return if (given.isMissingNode) properties.path(field).path("default").asInt(0) else given.asInt(0)
+    }
+
+    /** The JSON of [text]; a missing node, which has no fields, for text that is not JSON. */
+    private fun read(text: String): JsonNode =
+        try {
+            JSON.readTree(text)
+        } catch (_: JacksonException) {
+            JSON.missingNode()
+        }
+}
+
+/**
+ * The grammar of a target of a binding, the agent's (agent/internal/secretbind): host[:port][/database],
+ * [ipv6][:port][/database], /dir[:port[/database]]; a port or a database left out, or *, is any; a host name is
+ * compared without regard to case, an address by its value, a socket directory by its clean path.
+ */
+internal object SecretTargets {
     /** Whether [target] is a target of [pattern]; a pattern the agent would not write matches nothing. */
     fun matches(
         pattern: String,
@@ -119,11 +162,15 @@ internal object SecretBindings {
             pattern.startsWith("/") -> socket(pattern)
             pattern.startsWith("[") -> bracketed(pattern)
             ipv6(pattern) -> Parts(pattern, "", "")
-            else -> tail(pattern.substringBefore(':').substringBefore('/'), pattern.dropWhile { it != ':' && it != '/' })
+            else -> tail(pattern.substringBefore(':').substringBefore('/'), pattern.dropWhile { it !in ":/" })
         }
 
     private fun socket(pattern: String): Parts =
-        if (':' in pattern) tail(pattern.substringBeforeLast(':'), ":" + pattern.substringAfterLast(':')) else Parts(pattern, "", "")
+        if (':' in pattern) {
+            tail(pattern.substringBeforeLast(':'), ":" + pattern.substringAfterLast(':'))
+        } else {
+            Parts(pattern, "", "")
+        }
 
     private fun bracketed(pattern: String): Parts? {
         val end = pattern.indexOf(']')
@@ -167,11 +214,4 @@ internal object SecretBindings {
         }
 
     private fun ipv6(host: String) = ':' in host && literal(host) != null
-
-    private fun read(text: String): JsonNode? =
-        try {
-            JSON.readTree(text)
-        } catch (_: JacksonException) {
-            null
-        }
 }

@@ -192,7 +192,8 @@ class SourcesIntegrationTest(
 
         assertEquals(emptyList(), allowed.secretWarnings)
         val warning =
-            "secret \"pg\" is not allowed for postgresql at evil.example:5432/app; if that is intended, run on the agent host: " +
+            "secret \"pg\" is not allowed for postgresql at evil.example:5432/app; if that is intended, " +
+                "run on the agent host: " +
                 "sudo sard-agent secret set pg --plugin postgresql --target evil.example:5432/app"
         assertEquals(listOf(warning), elsewhere.secretWarnings)
         assertEquals(listOf(warning), sources.get(tenant.id, elsewhere.id).secretWarnings)
@@ -200,7 +201,8 @@ class SourcesIntegrationTest(
             mapOf("allowed" to emptyList(), "elsewhere" to listOf(warning)),
             sources.list(tenant.id, null, null, 10).associate { it.name to it.secretWarnings },
         )
-        val replaced = sources.replace(tenant.id, elsewhere.id, tenant.draft(name = "elsewhere", config = config("DB.example.com")))
+        val draft = tenant.draft(name = "elsewhere", config = config("DB.example.com"))
+        val replaced = sources.replace(tenant.id, elsewhere.id, draft)
         assertEquals(emptyList(), replaced.secretWarnings)
     }
 }

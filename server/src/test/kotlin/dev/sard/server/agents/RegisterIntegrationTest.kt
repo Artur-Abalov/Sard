@@ -310,9 +310,10 @@ class RegisterIntegrationTest(
         val stored = { jdbc.queryForObject(sql, String::class.java, agent.identity.agentId) }
         assertEquals(
             jsonb(
-                """[{"name":"pg-prod","plugin":"postgresql","targets":["db.example.com:5432/app","[::1]:5432/*"],"auth":["md5"],""" +
-                    """"allow_tls":"require","allow_no_channel_binding":true,"problem":""},""" +
-                    """{"name":"PG_PASSWORD","plugin":"","targets":[],"auth":[],"allow_tls":"","allow_no_channel_binding":false,"problem":"no binding"}]""",
+                """[{"name":"pg-prod","plugin":"postgresql","targets":["db.example.com:5432/app","[::1]:5432/*"],""" +
+                    """"auth":["md5"],"allow_tls":"require","allow_no_channel_binding":true,"problem":""},""" +
+                    """{"name":"PG_PASSWORD","plugin":"","targets":[],"auth":[],"allow_tls":"",""" +
+                    """"allow_no_channel_binding":false,"problem":"no binding"}]""",
             ),
             stored(),
         )

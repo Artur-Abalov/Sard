@@ -151,3 +151,59 @@ main `545331b0`.
   `StepLogRedactionTest.kt`), а в образе sard-self — привязка `sard-db`.
   Без этого e2e с PostgreSQL сейчас упадут.
 - Register, сервер, консоль, `check` (A8d), документация оператора.
+
+## Фаза 3 — Register, консоль, check, sard-self, e2e, документация (2026-10-27)
+
+### Сделано
+- Proto: `RegisterRequest.secrets` (13, `SecretInfo`: имя, плагин, цели,
+  `auth`, `allow_tls`, `allow_no_channel_binding`, `binding_problem`).
+  Поле 8 `secret_names` **осталось**. Владелец разрешил удалить его, но гейт
+  proto (`buf breaking` FILE против `main`) запрещает удаление поля, а гейт
+  ослаблять нельзя. Удаление требует решения владельца об исключении.
+- Агент: `app.Agent.Bindings`, `secretInfos` (без значения, пути и
+  `ca_file`); `sard-agent check` — строка `secret.bound` по каждому секрету;
+  подсказки `secret.readable` и `config.references` включают `--plugin` и
+  `--target`.
+- SDK: `sdk.TargetKeyword` = `x-sard-target`; схемы postgresql (бэкап и
+  восстановление) помечают `host`, `port`, `database`.
+- Сервер: `SecretEntry` в `AgentSnapshot`, правила снимка (имя, плагин, до 64
+  целей и методов, тексты до 1024 байт без NUL), `agents.secret_bindings`
+  (миграция `V202610271000`), `SecretBindings` — та же грамматика целей, что у
+  агента; `SourceView.secretWarnings`, REST `Source.secretWarnings`
+  (обязательное поле).
+- Веб: на странице источника — предупреждение со строками сервера и командой
+  для хоста; моки и схемы postgresql в моках обновлены.
+- sard-self: образ кладёт `secret-bindings/sard-db.yaml` (postgresql,
+  `postgres:5432/sard`, `allow_tls: disable`); как поменять цель —
+  `docs/operations/self-agent.md`.
+- e2e: `AgentHost(bindings = …)`, `AgentHost.binding(...)`, привязка `pg-app`
+  в `PgAgent` к серверам стенда; новый `SecretBindingTest` (цель вне привязки
+  и отсутствие подключений на сервере, предупреждение консоли, md5,
+  tls_mode disable без разрешения, секрет без привязки, бэкап с привязкой).
+- Документация: `docs/plugins/postgresql.md` (привязка, аутентификация и TLS,
+  сообщения), `docs/operations/agent-host-setup.md`, `docs/operator/05-agents.md`,
+  `09-troubleshooting.md` (`secret.bound`), `docs/operations/self-agent.md`,
+  ADR-черновик, спецификация.
+
+### Проверено
+- `./gradlew :server:test` для `SecretBindingsTest` (mutflow),
+  `SnapshotRulesTest`, `SourcesIntegrationTest`, `RegisterIntegrationTest`,
+  `SardServerIntegrationTest` (OpenAPI) — зелёные (Testcontainers, Docker
+  поднят в контейнере сессии).
+- `./scripts/gate.sh web` — PASSED. `make breaking-proto`, `buf lint` — без ошибок.
+
+### Не проверено: e2e
+Образы стенда не собираются в этой сессии.
+- Maven Central отвечал 429 из сборки `server-jar`. Обход: jar собран
+  локально (`./gradlew :server:bootJar`).
+- Политика сети окружения отвечает 403 на `deb.debian.org` и не резолвит
+  `apt.postgresql.org`. Без них не собираются образы агента на `postgres:18` и
+  `postgres:14` (`-pg18`, `sard-agent-pg18:e2e`, `sard-agent-pg14:e2e`).
+
+Поэтому сценарии 5 (бэкап, R2 и V5 с привязанным секретом) и 6, а также
+`SecretBindingTest` и `PostgresqlSourceTest` с клиентом 14 **не запускались**.
+Для них нужны разрешённые хосты в Network access окружения или прогон в CI.
+Для сценария 4 стоит посмотреть e2e «pg_dump 14 против сервера 18»: в образе
+postgres:14 libpq из PGDG может быть новее 16 — тогда шаг падает по версиям,
+как раньше. Если libpq окажется 14, шаг упадёт на `require_auth`, и тест надо
+будет поправить под новое сообщение.

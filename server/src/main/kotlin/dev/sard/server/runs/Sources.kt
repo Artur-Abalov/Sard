@@ -134,7 +134,11 @@ class Sources(
     fun get(
         tenantId: UUID,
         sourceId: UUID,
-    ): SourceView = sessions.inTenant(tenantId) { session -> viewOf(session, liveSource(session, sourceId, LockModeType.NONE)) }
+    ): SourceView =
+        sessions.inTenant(tenantId) { session ->
+            val record = liveSource(session, sourceId, LockModeType.NONE)
+            viewOf(session, record)
+        }
 
     /** Live sources, newest first, after the position [after] if given, of [agentId] if given; at most [limit]. */
     fun list(
@@ -194,6 +198,8 @@ class Sources(
     ): List<String> {
         val agent = session.find(Agent::class.java, record.agentId) ?: return emptyList()
         val plugin = session.find(AgentPluginRecord::class.java, AgentOwnedKey(record.agentId, record.plugin))
-        return plugin?.let { SecretBindings.warnings(record.plugin, it.configSchema, record.config, agent.secretBindings) }.orEmpty()
+        return plugin
+            ?.let { SecretBindings.warnings(record.plugin, it.configSchema, record.config, agent.secretBindings) }
+            .orEmpty()
     }
 }

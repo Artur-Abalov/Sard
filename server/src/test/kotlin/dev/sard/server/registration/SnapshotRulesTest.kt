@@ -405,11 +405,10 @@ class SnapshotRulesTest {
     @Test
     fun `secrets with their bindings at the limits are accepted`() {
         val long = "h".repeat(SnapshotRules.MAX_SECRET_TEXT_BYTES)
-        val bound =
-            SecretEntry("pg-prod", "postgresql", List(SnapshotRules.MAX_SECRET_TARGETS) { "db$it" }, listOf("md5"), "require", true)
-        assertNull(
-            refusalOf(snapshot(secrets = listOf(bound, SecretEntry("old", problem = long), SecretEntry("t", targets = listOf(long))))),
-        )
+        val targets = List(SnapshotRules.MAX_SECRET_TARGETS) { "db$it" }
+        val bound = SecretEntry("pg-prod", "postgresql", targets, listOf("md5"), "require", true)
+        val secrets = listOf(bound, SecretEntry("old", problem = long), SecretEntry("t", targets = listOf(long)))
+        assertNull(refusalOf(snapshot(secrets = secrets)))
     }
 
     @Test
@@ -422,7 +421,10 @@ class SnapshotRulesTest {
             Refusal(Reason.NAME_DUPLICATE, mapOf("field" to "secrets[1].name")),
             refusalOf(snapshot(secrets = listOf(SecretEntry("a"), SecretEntry("a")))),
         )
-        assertEquals(invalid("secrets[0].plugin"), refusalOf(snapshot(secrets = listOf(SecretEntry("a", plugin = "pg sql")))))
+        assertEquals(
+            invalid("secrets[0].plugin"),
+            refusalOf(snapshot(secrets = listOf(SecretEntry("a", plugin = "pg sql")))),
+        )
     }
 
     @Test

@@ -88,11 +88,17 @@ func ReadFile(path string) ([]byte, secrets.Info, error) {
 	if !st.Mode().IsRegular() {
 		return nil, info, nil
 	}
-	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
-	if err == nil && len(data) > maxFileBytes {
-		return nil, info, fmt.Errorf("the file is larger than %d bytes", maxFileBytes)
-	}
+	data, err := readBounded(f)
 	return data, info, err
+}
+
+// readBounded reads the whole file, or fails if it is longer than a binding.
+func readBounded(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxFileBytes+1))
+	if err == nil && len(data) > maxFileBytes {
+		return nil, fmt.Errorf("the file is larger than %d bytes", maxFileBytes)
+	}
+	return data, err
 }
 
 // withoutPath drops the path from a file error: only names leave the host.
