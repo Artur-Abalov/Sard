@@ -14,6 +14,9 @@
 #   mutant), and reported on a "mutate-exec: TIMEOUT" line.
 # - A package whose unmutated tests fail or hang cannot judge mutants: that is
 #   an error (exit 3), never a kill.
+# - Test binaries run with -test.failfast: the first failing test kills the
+#   mutant, so no later test of the package is started for it. It changes the
+#   time of a kill, never whether a mutant is killed.
 # - Test binaries run with at most MEMORY_LIMIT_MB of address space: a
 #   mutant that allocates without end is killed by "out of memory", not the
 #   runner by the kernel.
@@ -45,7 +48,7 @@ now_ms() { echo $(($(date +%s%N) / 1000000)); }
 run_tests() {
   local start status
   start="$(now_ms)"
-  (ulimit -v $((MEMORY_LIMIT_MB * 1024)) && cd "$2" && timeout --signal=KILL "$3" "$1" -test.count=1 -test.timeout=0 >/dev/null 2>&1)
+  (ulimit -v $((MEMORY_LIMIT_MB * 1024)) && cd "$2" && timeout --signal=KILL "$3" "$1" -test.count=1 -test.timeout=0 -test.failfast >/dev/null 2>&1)
   status=$?
   echo $(($(now_ms) - start))
   [ "$status" -eq 137 ] && status=124
