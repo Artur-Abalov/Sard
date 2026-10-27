@@ -35,6 +35,8 @@ const sections = [
   { path: '/sources/7/edit', routeId: '/_app/sources/$sourceId/edit' },
   { path: '/runs', routeId: '/_app/runs/' },
   { path: '/runs/42', routeId: '/_app/runs/$runId' },
+  { path: '/verifications/42', routeId: '/_app/verifications/$verificationId' },
+  { path: '/verifiers', routeId: '/_app/verifiers' },
   { path: '/settings', routeId: '/_app/settings' },
   { path: '/settings/recovery-card', routeId: '/_app/settings_/recovery-card' },
 ] as const
@@ -89,6 +91,32 @@ describe('routing', () => {
       status: ['failed'],
     })
     expect(validate({ status: 'done' })).toEqual({})
+  })
+
+  test('the tab of the verifications and the role of a token are read from the address', async () => {
+    expect((await load('/sources/7?tab=verifications')).state.matches.at(-1)?.search).toEqual({
+      tab: 'verifications',
+    })
+    const router = await load('/sources/7')
+    const validate = router.routesById['/_app/sources/$sourceId/'].options.validateSearch as (
+      search: Record<string, unknown>,
+    ) => unknown
+    expect(validate({ tab: 'nothing' })).toEqual({})
+    expect((await load('/tokens?create=true&role=verifier')).state.matches.at(-1)?.search).toEqual({
+      create: true,
+      role: 'verifier',
+    })
+  })
+
+  test('the report opens outside the shell of the console, behind the guard, with its period', async () => {
+    const router = await load('/sources/7/verification-report?from=2026-10-01&to=2026-10-21')
+
+    expect(router.state.matches.map((match) => match.routeId)).toEqual([
+      '__root__',
+      '/sources_/$sourceId/verification-report',
+    ])
+    expect(router.state.matches.at(-1)?.search).toEqual({ from: '2026-10-01', to: '2026-10-21' })
+    expect(guard).toHaveBeenCalledOnce()
   })
 
   test('a single status in the address is a filter of one', async () => {

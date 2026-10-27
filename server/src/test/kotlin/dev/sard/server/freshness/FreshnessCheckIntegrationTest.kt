@@ -63,6 +63,7 @@ class FreshnessCheckIntegrationTest(
     fun `drop both tenants`() {
         for (id in listOf(tenant.id, other.id)) {
             jdbc.update("delete from notification_deliveries where tenant_id = ?", id)
+            jdbc.update("delete from no_verifier_episodes where tenant_id = ?", id)
             jdbc.update("delete from overdue_episodes where tenant_id = ?", id)
             jdbc.update("delete from schedule_fires where tenant_id = ?", id)
             jdbc.update("delete from schedules where tenant_id = ?", id)

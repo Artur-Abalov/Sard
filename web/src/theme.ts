@@ -121,7 +121,11 @@ export const reducedMotionCss = `@media (prefers-reduced-motion: reduce) { :root
 
 // The recovery card prints without the shell of the console (F4b, Рк15): no header, no navigation, and nothing marked
 // data-no-print (banners, buttons). main.tsx puts this in a <style> beside the reduced-motion override.
-export const printCss = '@media print { header, nav, [data-no-print] { display: none !important } }'
+export const printCss =
+  '@media print { header, nav, [data-no-print] { display: none !important } ' +
+  '@page { size: A4; margin: 15mm } ' +
+  '.mantine-AppShell-main { padding: 0 !important } ' +
+  'table { width: 100% } tr { break-inside: avoid } thead { display: table-header-group } }'
 
 // The node of the logo mark is the accent of the scheme.
 export const logoNodeFill = 'var(--sard-accent)'
@@ -432,6 +436,20 @@ export const tones = {
   success: 'ok',
   neutral: 'paused',
 } as const
+
+// The drawing of a verification outcome (V6): told apart by shape, not by color alone. A failed backup and a check
+// that did not take place never share one.
+const OUTCOME_ICONS: Record<components['schemas']['VerificationOutcome'], IconName> = {
+  passed: 'check',
+  failed: 'x-circle',
+  cannot_verify: 'hourglass',
+  infrastructure_failure: 'clock-dashed',
+  no_verifier: 'minus',
+}
+
+export function outcomeIcon(status: components['schemas']['VerificationOutcome']): IconName {
+  return OUTCOME_ICONS[status]
+}
 
 // The mark of an agent certificate by the state the server reports; null: no mark.
 // The only place where the console tells the states apart.

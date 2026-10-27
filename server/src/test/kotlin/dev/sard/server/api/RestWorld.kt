@@ -299,6 +299,7 @@ class RestWorld(
         val TENANT_TABLES =
             listOf(
                 "notification_deliveries",
+                "no_verifier_episodes",
                 "overdue_episodes",
                 "verification_stale_episodes",
                 "restore_verifications",

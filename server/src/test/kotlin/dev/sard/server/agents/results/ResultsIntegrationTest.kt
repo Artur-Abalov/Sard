@@ -93,7 +93,7 @@ class ResultsIntegrationTest(
         TestAdmin.of(jdbc).update("drop trigger if exists snapshots_fail on snapshots")
         for (tenant in listOf(clients, other)) {
             tenant.closeChannels()
-            val runTables = listOf("snapshots", "step_logs", "run_steps", "runs", "sources")
+            val runTables = listOf("no_verifier_episodes", "snapshots", "step_logs", "run_steps", "runs", "sources")
             val tables = runTables + listOf("agent_plugins", "agent_repositories")
             for (table in tables) jdbc.update("delete from $table where tenant_id = ?", tenant.tenant)
             tenant.close()

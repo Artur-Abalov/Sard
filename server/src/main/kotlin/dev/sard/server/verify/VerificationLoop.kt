@@ -37,12 +37,14 @@ class VerificationLoop(
     private val queued: StepsQueued,
     private val schedule: VerificationSchedule,
     private val stale: StaleEpisodes,
+    private val noVerifier: NoVerifierEpisodes,
 ) {
     fun tick() {
         val now = clock.instant()
-        val (tenants, moments) = sessions.system { session -> tenants(session) to schedule.moments(session, now) }
+        val (tenants, cycle) = sessions.system { session -> tenants(session) to schedule.current(session) }
+        val moments = VerificationSchedule.moments(cycle, now)
         for (tenantId in tenants.filter { it != HibernateTenantBridge.SYSTEM_TENANT_ID }) {
-            runCatching { tick(tenantId, moments, now) }
+            runCatching { tick(tenantId, moments, cycle, now) }
                 .onFailure { log.warn("verification of tenant {} waits for the next tick", tenantId, it) }
         }
     }
@@ -51,12 +53,14 @@ class VerificationLoop(
     private fun tick(
         tenantId: UUID,
         moments: CycleMoments,
+        cycle: CycleSchedule,
         now: Instant,
     ) {
         val woken =
             sessions.inTenant(tenantId) { session ->
                 settlement.settle(session, tenantId, now)
-                stale.update(session, tenantId, now)
+                stale.update(session, tenantId, now, cycle)
+                noVerifier.update(session, tenantId, now)
                 val before = queue.assign(session, tenantId, now)
                 val made = cycles.fire(session, tenantId, moments, now)
                 before + if (made > 0) queue.assign(session, tenantId, now) else emptySet()

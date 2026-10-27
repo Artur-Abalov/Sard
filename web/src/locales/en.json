@@ -1,6 +1,5 @@
 {
   "app": {
-    "title": "sard",
     "language": "Language",
     "colorScheme": "Theme",
     "light": "Light",
@@ -43,7 +42,8 @@
     }
   },
   "nav": {
-    "toggle": "Toggle navigation"
+    "toggle": "Toggle navigation",
+    "verifiers": "Verifiers"
   },
   "agents": {
     "title": "Agents",
@@ -618,6 +618,17 @@
       "keysUnconfirmed": "The key copy of this storage is not confirmed yet.",
       "keysConfirmedAt": "The key copy is confirmed: {{time}}",
       "done": "The storage is changed."
+    },
+    "verification": {
+      "title": "Restore verification",
+      "next": "Next cycle",
+      "cron": "Time of the daily cycle (cron)",
+      "timezone": "Time zone",
+      "staleAfterDays": "Not verified for longer than, days",
+      "staleAfterHint": "From 1 to 90. A source with no successful verification for longer than this joins «not verified for too long».",
+      "save": "Save",
+      "saved": "Saved.",
+      "selfBackup": "The self-backup of Sard is verified like any other source"
     }
   },
   "schedule": {
@@ -817,5 +828,227 @@
     "unsafeName": "The repository name cannot be put into a command safely: rename the repository on the source host.",
     "empty": "Nothing to set up: the verifier holds every repository of the sources.",
     "source": "Source"
+  },
+  "verification": {
+    "levels": {
+      "1": "integrity",
+      "2": "extraction",
+      "3": "application start",
+      "4": "data matches",
+      "5": "restore time measured"
+    },
+    "outcome": {
+      "passed": "passed",
+      "failed": "failed",
+      "cannot_verify": "cannot verify",
+      "infrastructure_failure": "infrastructure failure",
+      "no_verifier": "no fitting verifier"
+    },
+    "reason": {
+      "offline": "offline",
+      "outdated": "agent older than V4",
+      "no_key": "no key to the repository",
+      "no_plugin": "no plugin to verify",
+      "same_host": "the same machine as the source",
+      "low_space": "not enough space",
+      "busy": "busy with another verification",
+      "space_unknown": "free space unknown"
+    },
+    "stage": {
+      "snapshot": "snapshot",
+      "fingerprint_tag": "fingerprint tag",
+      "work_volume": "work volume",
+      "restic_check": "storage integrity",
+      "sandbox": "sandbox",
+      "restore": "extraction",
+      "start": "application start",
+      "fingerprint": "fingerprint comparison",
+      "cleanup": "cleanup"
+    },
+    "stageHint": {
+      "work_volume": "The verifier is out of space or its work volume is not noexec — see the output",
+      "sandbox": "There is no container runtime or sandbox image — see the output",
+      "restore": "The sandbox image lacks an extension of the source — add it to the image, its name is in the output",
+      "start": "The copy did not start in the sandbox — see the output"
+    },
+    "metric": {
+      "verified": "verified {{when}}",
+      "verifiedLevel": "verified {{when}} — {{level}}",
+      "never": "not verified yet",
+      "off": "verification is off",
+      "offLast": "verification is off, the last one was {{when}}",
+      "title": "Restore verification"
+    },
+    "ago": {
+      "now": "just now",
+      "suffix": "{{value}} ago",
+      "exact": {
+        "minute": "a minute",
+        "hour": "an hour",
+        "day": "a day"
+      },
+      "minute": {
+        "one": "{{count}} minute",
+        "few": "{{count}} minutes",
+        "many": "{{count}} minutes",
+        "other": "{{count}} minutes"
+      },
+      "hour": {
+        "one": "{{count}} hour",
+        "few": "{{count}} hours",
+        "many": "{{count}} hours",
+        "other": "{{count}} hours"
+      },
+      "day": {
+        "one": "{{count}} day",
+        "few": "{{count}} days",
+        "many": "{{count}} days",
+        "other": "{{count}} days"
+      }
+    },
+    "mismatch": {
+      "rows": "table {{subject}}: {{expected}} rows in the source, {{actual}} in the copy",
+      "tables": "tables: {{expected}} in the source, {{actual}} in the copy",
+      "controlEmpty": "control path {{subject}} is empty",
+      "controlMissing": "control path {{subject}} is missing in the copy",
+      "files": "files: {{expected}} in the source, {{actual}} in the copy",
+      "bytes": "size: {{expected}} in the source, {{actual}} in the copy",
+      "other": "{{name}}: {{expected}} in the source, {{actual}} in the copy"
+    },
+    "noVerifier": {
+      "title": "Restore verification is not working: no verifier",
+      "text": "No source is verified: there is not one verifier. Until there is, no restore is proven."
+    },
+    "instruction": {
+      "title": "How to turn restore verification on",
+      "noPasswords": "No password goes through the console: they are typed on the hosts only.",
+      "show": "Show the instruction",
+      "token": "Issue a token with the verifier role.",
+      "issueToken": "Issue a token",
+      "install": "Install an agent on a separate machine and enroll it with that token.",
+      "keys": "On the host of each source, issue a key for the verifier:",
+      "noRepositories": "No source has verification on yet.",
+      "repoAdd": "On the verifier, connect each repository:",
+      "readOnly": "The storage account of the verifier is read-only."
+    },
+    "overview": {
+      "title": "Restore verification",
+      "noSources": "There are no sources yet, so nothing to verify.",
+      "verifiedLastDay": "verified in the last day",
+      "failed": "failed",
+      "notHeld": "did not take place",
+      "stale": "not verified for too long",
+      "neverVerified": "not verified yet",
+      "disabled": "not verified on purpose",
+      "attention": "Needs attention",
+      "outcome": "Outcome"
+    },
+    "tab": {
+      "title": "Verifications",
+      "overview": "Source",
+      "enabled": "Verify the restore",
+      "report": "Report",
+      "empty": "There have been no verifications yet.",
+      "nextCycle": "Next cycle: {{time}}",
+      "fitting": "Which verifiers can check this source",
+      "noVerifiers": "There are no verifiers.",
+      "fits": "fits",
+      "hint": {
+        "key_tables_missing": "Set the key tables: now the 10 largest are verified.",
+        "control_paths_missing": "Add control paths: they catch an unmounted disk, when the copy looks whole but is empty."
+      },
+      "verifyNow": {
+        "button": "Verify now",
+        "title": "Verify the restore",
+        "snapshot": "Snapshot",
+        "latest": "The latest snapshot",
+        "confirm": "Verify"
+      },
+      "job": {
+        "queued": "The verification is queued.",
+        "running": "The verification is running.",
+        "deadline": "Deadline: {{time}}."
+      },
+      "columns": {
+        "time": "Time",
+        "snapshot": "Snapshot",
+        "verifier": "Verifier",
+        "outcome": "Outcome",
+        "level": "Level",
+        "duration": "Duration",
+        "restoreTime": "Time to restore"
+      }
+    },
+    "record": {
+      "title": "Restore verification",
+      "notFound": "Verification not found",
+      "reason": "Reason",
+      "exitCode": "Exit code",
+      "imageDigest": "Image",
+      "stages": "Stages",
+      "stage": "Stage",
+      "status": "Status",
+      "evidence": "Evidence",
+      "noStages": "There are no stages.",
+      "stageStatus": {
+        "passed": "passed",
+        "failed": "failed",
+        "cannot_run": "could not run",
+        "not_applicable": "not applicable"
+      },
+      "mismatches": "Mismatches",
+      "fingerprint": "Fingerprint of the source and of the copy",
+      "field": "Field",
+      "rule": "Rule",
+      "source": "Source",
+      "copy": "Copy",
+      "rules": {
+        "exact": "exact",
+        "info": "info"
+      },
+      "outcomes": {
+        "matched": "matched",
+        "mismatched": "differs",
+        "not_compared": "not compared"
+      },
+      "hiddenFacts": "{{count}} more facts of the file sample are only counted.",
+      "unsuitable": "Why no verifier fitted",
+      "keyHolders": "Hosts with a key",
+      "singleKey": "— the key is on one host only",
+      "infrastructure": "Three attempts without a verdict: the verifier went missing.",
+      "openVerifier": "Open the verifier",
+      "tagMismatch": "The fingerprint does not match the snapshot."
+    },
+    "verifiers": {
+      "title": "Verifiers",
+      "none": "There are no verifiers: restore verification is not working.",
+      "host": "Host",
+      "state": "State",
+      "repositories": "Keys to repositories",
+      "freeSpace": "Free space",
+      "sandbox": "Sandbox",
+      "done": "Done",
+      "ownFailures": "Their own failures",
+      "online": "online",
+      "offline": "offline",
+      "unknown": "unknown"
+    }
+  },
+  "report": {
+    "title": "{{product}} — restore verification report: {{source}}",
+    "from": "From",
+    "to": "To",
+    "print": "Print",
+    "back": "Back to the verifications of the source",
+    "period": "{{from}} — {{to}} ({{zone}})",
+    "summary": "Verifications in the period: {{total}}; passed: {{passed}}; failed: {{failed}}; did not take place: {{notHeld}}.",
+    "empty": "There were no verifications in this period.",
+    "failures": "Failures and their fix",
+    "noFailures": "There were no failures in the period.",
+    "failureStarted": "First failure",
+    "failureRecords": "Records",
+    "failureFixed": "Fixed",
+    "notFixed": "not fixed",
+    "generated": "Generated {{time}}. Version: {{version}}."
   }
 }

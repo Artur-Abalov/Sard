@@ -321,4 +321,11 @@ class NoticeFormatterConfiguration {
         @Value("\${sard.notify.language:en}") language: String,
         @Value("\${sard.console.public-url:}") publicUrl: String,
     ): CertificateFormatter = CertificateNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
+
+    /** Restore verification (V6): the same language and console address. */
+    @Bean
+    fun verificationFormatter(
+        @Value("\${sard.notify.language:en}") language: String,
+        @Value("\${sard.console.public-url:}") publicUrl: String,
+    ): VerificationFormatter = VerificationNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
 }

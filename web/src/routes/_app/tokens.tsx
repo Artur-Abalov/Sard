@@ -6,9 +6,11 @@ import { Tokens } from '../../pages/Tokens'
 
 export const Route = createFileRoute('/_app/tokens')({
   // create: open the new token window; hint=enroll: explain the enroll command.
-  validateSearch: (search): { create?: true; hint?: 'enroll' } => ({
+  // role=verifier: the window opens with the role of a verifier chosen (the instruction for the first verifier).
+  validateSearch: (search): { create?: true; hint?: 'enroll'; role?: 'verifier' } => ({
     ...(search.create === true || search.create === 'true' ? { create: true as const } : {}),
     ...(search.hint === 'enroll' ? { hint: 'enroll' as const } : {}),
+    ...(search.role === 'verifier' ? { role: 'verifier' as const } : {}),
   }),
   component: Tokens,
 })

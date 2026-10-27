@@ -50,6 +50,13 @@ export function describeError(error: unknown): Message {
     : { key: 'errors.generic', params: { detail: 'client' } }
 }
 
+// The object is not there (404): a page of one object says so in its own words.
+export function isNotFound(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.failure.kind === 'problem' && error.failure.status === 404
+  )
+}
+
 // The server refused the values (422): the fields it names are told by [fieldFailures].
 export function isRefusedValues(error: unknown): boolean {
   return (

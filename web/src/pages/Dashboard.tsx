@@ -10,6 +10,7 @@ import { buildChecklist, type ChecklistItem } from '../checklist'
 import { EmptyState } from '../components/EmptyState'
 import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
+import { NoVerifierNotice, VerificationSummary } from '../components/VerificationOverview'
 import { RunsTable } from '../components/RunsTable'
 import { runListPollInterval } from '../polling'
 
@@ -100,6 +101,7 @@ function OverviewBlocks() {
               )}
             </Card>
             {checklist && <Checklist items={checklist} />}
+            <VerificationSummary block={data.verification} />
           </>
         )
       }}
@@ -148,6 +150,7 @@ export function Dashboard() {
   return (
     <Stack>
       <Title order={2}>{t('dashboard.title')}</Title>
+      <NoVerifierNotice />
       <Group>
         <ButtonLink to="/tokens" search={{ create: true }}>
           {t('dashboard.issueToken')}

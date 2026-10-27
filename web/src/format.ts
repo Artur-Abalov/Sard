@@ -23,12 +23,12 @@ const dictionaries: Record<string, typeof en> = { en, ru }
 const BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const
 const BINARY = 1024
 
-function dictionary(language: string) {
+export function dictionary(language: string) {
   return dictionaries[language] ?? en
 }
 
 // "{{name}}" placeholders of the locale files, for the pure functions that cannot use i18next.
-function fill(template: string, values: Record<string, string>): string {
+export function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) => values[name] ?? '')
 }
 
@@ -191,7 +191,7 @@ export function formatScheduleTime(
 }
 
 // A count with the space of its language between thousands, a plain one, so that it can be searched for.
-function formatCount(count: number, language: string): string {
+export function formatCount(count: number, language: string): string {
   return new Intl.NumberFormat(language).format(count).replace(/[  ]/g, ' ')
 }
 

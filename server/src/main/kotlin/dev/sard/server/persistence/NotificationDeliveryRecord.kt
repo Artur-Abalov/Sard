@@ -13,7 +13,8 @@ import java.util.UUID
 
 /**
  * One notification through one channel, of one run, of one schedule fire that raised an alert (F3b) or of an
- * overdue episode (F6) or of a certificate event (C1 phase 3);
+ * overdue episode (F6), of a certificate event (C1 phase 3), of a verification record, a stale episode or the
+ * «no verifier» state (V6);
  * migrations V202610021200 (S9a) and V202610101300. Rows are written and moved only by guarded native
  * statements in `notify/Deliveries`, so the entity serves reads and the schema validation.
  */
@@ -51,6 +52,15 @@ class NotificationDeliveryRecord(
     /** An agent certificate event (C1 phase 3, migration V202610191200). */
     @Column(name = "certificate_event_id", updatable = false)
     val certificateEventId: UUID? = null,
+    /** A restore verification record (V6, migration V202610261200). */
+    @Column(name = "verification_id", updatable = false)
+    val verificationId: UUID? = null,
+    /** An episode of «not verified for longer than N days» that opened (V6). */
+    @Column(name = "stale_episode_id", updatable = false)
+    val staleEpisodeId: UUID? = null,
+    /** The installation entering the «no verifier» state (V6). */
+    @Column(name = "no_verifier_episode_id", updatable = false)
+    val noVerifierEpisodeId: UUID? = null,
 ) {
     override fun toString() = "NotificationDeliveryRecord(id=$id, run=$runId, fire=$fireId, $channel, $status)"
 }

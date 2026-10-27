@@ -21,6 +21,30 @@ describe('locales', () => {
   })
 })
 
+describe('the texts of restore verification', () => {
+  const section = (dictionary: typeof ru) => dictionary.verification
+
+  test('both dictionaries have the same keys and no empty value', () => {
+    expect(new Set(keyPaths(section(ru)))).toEqual(new Set(keyPaths(section(en))))
+    for (const dictionary of [ru, en]) {
+      const values = JSON.stringify(section(dictionary)).match(/"[^"]*"/g) ?? []
+      expect(values.filter((value) => value === '""')).toEqual([])
+    }
+  })
+
+  test('every outcome, level, reason and stage of the contract has its words', () => {
+    for (const dictionary of [ru, en]) {
+      const { verification } = dictionary
+      expect(Object.keys(verification.outcome).sort()).toEqual(
+        ['cannot_verify', 'failed', 'infrastructure_failure', 'no_verifier', 'passed'].sort(),
+      )
+      expect(Object.keys(verification.levels)).toEqual(['1', '2', '3', '4', '5'])
+      expect(Object.keys(verification.reason)).toHaveLength(8)
+      expect(Object.keys(verification.stage)).toHaveLength(9)
+    }
+  })
+})
+
 describe('certificate texts', () => {
   const paths = [
     'agents.certificate',
