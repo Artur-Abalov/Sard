@@ -43,6 +43,97 @@ class BootstrapScriptTest {
         assertEquals("", inherited)
     }
 
+    private val loFunctions =
+        "lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea), lo_import(text), lo_import(text, oid)"
+
+    private fun admin(
+        vararg sql: String,
+        database: String = cluster.container.databaseName,
+    ) = cluster.admin(database).use { c -> c.createStatement().use { s -> sql.forEach(s::execute) } }
+
+    /** The privileges on the functions of pg_catalog are kept per database. */
+    private fun revokeLargeObjectFunctionsFromPublic(database: String) =
+        admin("revoke execute on function $loFunctions from public", database = database)
+
+    /** A role with CREATEROLE and the rights bootstrap.sql asks of it, owner of a database of its own (its name). */
+    private fun createroleDatabase(): String {
+        admin(
+            "create role dba login createrole password 'dba'",
+            "grant pg_read_all_data to dba with admin option",
+            "grant pg_monitor to dba with admin option",
+        )
+        val db = cluster.newDatabase()
+        admin("alter database $db owner to dba")
+        return db
+    }
+
+    private fun runAsDba(database: String) =
+        java.sql.DriverManager.getConnection(cluster.url(database), "dba", "dba").use {
+            it.createStatement().execute(BootstrapScript.text)
+        }
+
+    private fun members(role: String) =
+        cluster.query(
+            "select coalesce(string_agg(g.rolname, ',' order by g.rolname), '') from pg_auth_members m " +
+                "join pg_roles g on g.oid = m.roleid where m.member = '$role'::regrole",
+        ) { it.getString(1) }
+
+    private fun nothingCreated(database: String) {
+        assertEquals(0, cluster.query("select count(*) from pg_roles where rolname like 'sard\\_%'") { it.getInt(1) })
+        assertEquals(
+            0,
+            cluster.query("select count(*) from pg_namespace where nspname = 'sard'", database) { it.getInt(1) },
+        )
+    }
+
+    @Test
+    fun `sard_app, уже состоявший в чужих ролях, после запуска суперпользователя не член ничего`() {
+        admin(
+            "create role sard_owner nologin",
+            "create role sard_app login",
+            "grant sard_owner to sard_app",
+            "grant pg_write_all_data to sard_app",
+        )
+
+        cluster.bootstrap()
+
+        assertEquals("", members("sard_app"))
+    }
+
+    @Test
+    fun `Роль с CREATEROLE при EXECUTE у PUBLIC на lo_ функции получает отказ с лечением и ничего не создаёт`() {
+        val byDba = createroleDatabase()
+
+        val failure = runCatching { runAsDba(byDba) }.exceptionOrNull()
+
+        val message = failure?.message.orEmpty()
+        listOf("lo_create(oid)", "lo_creat(integer)", "lo_from_bytea(oid, bytea)")
+            .forEach { assertTrue(it in message, "$it in: $message") }
+        assertTrue("REVOKE EXECUTE ON FUNCTION" in message && "FROM PUBLIC" in message, message)
+        nothingCreated(byDba)
+    }
+
+    @Test
+    fun `Роль с CREATEROLE, у которой нет ADMIN на роль, где состоит sard_app, получает отказ с именем роли`() {
+        val byDba = createroleDatabase()
+        revokeLargeObjectFunctionsFromPublic(byDba)
+        admin(
+            "create role sard_app login",
+            "grant sard_app to dba with admin option",
+            "grant pg_write_all_data to sard_app",
+        )
+
+        val failure = runCatching { runAsDba(byDba) }.exceptionOrNull()
+
+        val message = failure?.message.orEmpty()
+        assertTrue("pg_write_all_data" in message && "REVOKE pg_write_all_data FROM sard_app" in message, message)
+        assertEquals(
+            0,
+            cluster.query("select count(*) from pg_namespace where nspname = 'sard'", byDba) { it.getInt(1) },
+        )
+        assertEquals("pg_write_all_data", members("sard_app"))
+    }
+
     @Test
     fun `Повторный запуск скрипта bootstrap ничего не меняет`() {
         cluster.bootstrap()
@@ -102,6 +193,7 @@ class BootstrapScriptTest {
         }
         val byDba = cluster.newDatabase()
         cluster.admin().use { it.createStatement().use { s -> s.execute("alter database $byDba owner to dba") } }
+        revokeLargeObjectFunctionsFromPublic(byDba)
 
         fun run() =
             java.sql.DriverManager.getConnection(cluster.url(byDba), "dba", "dba").use {

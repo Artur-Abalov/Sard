@@ -21,8 +21,13 @@
 --
 -- Needs a superuser. A role with CREATEROLE but without SUPERUSER works too if it owns the database, has the ADMIN
 -- option on pg_read_all_data and pg_monitor, and the Sard roles do not exist yet or it has the ADMIN option on them
--- (it has it on the ones it creates). Then the one thing left undone is taking EXECUTE on the large-object functions
--- from PUBLIC, which only a superuser can: it says so in a warning. Any other role is refused.
+-- (it has it on the ones it creates). Two things are then up to a superuser, once per database, before the first run, and
+-- the script fails (changing nothing) if they are not done:
+--   * PUBLIC must no longer have EXECUTE on the large-object functions (server-side file read and write); the error
+--     lists the functions and the REVOKE to run;
+--   * sard_app must be a member of no role the caller cannot revoke it from (the script revokes every membership of
+--     sard_app); the error names the role and the REVOKE to run.
+-- Any other role is refused (docs/operator/16-postgresql.md).
 -- This is the one psql meta-command of the file: the script stops at the first error, and as it is one transaction,
 -- nothing is left half done.
 \set ON_ERROR_STOP on
@@ -36,6 +41,30 @@ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolcreaterole)) THEN
         RAISE EXCEPTION 'bootstrap.sql needs a role with SUPERUSER or CREATEROLE (the latter must own the database and have the ADMIN option on pg_read_all_data and pg_monitor); % has neither (docs/operator/16-postgresql.md)',
             current_user;
+    END IF;
+END
+$bootstrap$;
+
+-- Before anything is created: a caller who is not a superuser cannot take EXECUTE on the large-object functions
+-- from PUBLIC (they belong to the bootstrap superuser; the privilege is kept per database), so while PUBLIC holds it, the script stops.
+DO $bootstrap$
+DECLARE
+    open_to_public text;
+BEGIN
+    IF (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+        RETURN;
+    END IF;
+    SELECT string_agg(f.signature, ', ' ORDER BY f.signature) INTO open_to_public
+    FROM (VALUES ('lo_create(oid)'), ('lo_creat(integer)'), ('lo_from_bytea(oid, bytea)'), ('lo_import(text)'),
+                 ('lo_import(text, oid)')) AS f (signature)
+    WHERE has_function_privilege('public', f.signature::regprocedure, 'EXECUTE');
+    IF open_to_public IS NOT NULL THEN
+        RAISE EXCEPTION '%', concat_ws(E'\n',
+            'PUBLIC can still execute ' || open_to_public || ' in database ' || current_database() || '.',
+            'Any database user could then read and write files of the database server through large objects, and a non-superuser cannot take that right away.',
+            'A superuser must run this once in database ' || current_database() || ' (connected to it, or to template1 before the database is created), then run bootstrap.sql again:',
+            '    REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea), lo_import(text), lo_import(text, oid) FROM PUBLIC;',
+            '(docs/operator/16-postgresql.md)');
     END IF;
 END
 $bootstrap$;
@@ -93,7 +122,27 @@ ALTER ROLE sard_app SET search_path = sard;
 ALTER ROLE sard_backup SET search_path = sard;
 
 -- Membership. The migrations run as sard_owner through SET ROLE and never inherit its rights otherwise;
--- sard_app is a member of nothing of Sard's.
+-- sard_app is a member of nothing at all: whatever it was made a member of (in a cluster that has been used before)
+-- is revoked, and if the caller cannot, the script stops and names the role.
+DO $bootstrap$
+DECLARE
+    granted record;
+BEGIN
+    FOR granted IN SELECT DISTINCT roleid::regrole::text AS role FROM pg_auth_members WHERE member = 'sard_app'::regrole
+    LOOP
+        BEGIN
+            EXECUTE format('REVOKE %s FROM sard_app', granted.role);
+        EXCEPTION WHEN insufficient_privilege THEN
+            NULL;
+        END;
+    END LOOP;
+    FOR granted IN SELECT DISTINCT roleid::regrole::text AS role FROM pg_auth_members WHERE member = 'sard_app'::regrole
+    LOOP
+        RAISE EXCEPTION 'sard_app is a member of %, and % cannot revoke it: a superuser must run REVOKE % FROM sard_app, then bootstrap.sql again (docs/operator/16-postgresql.md)',
+            granted.role, current_user, granted.role;
+    END LOOP;
+END
+$bootstrap$;
 GRANT sard_owner TO sard_migrator WITH INHERIT FALSE, SET TRUE;
 GRANT pg_read_all_data TO sard_backup;
 GRANT pg_monitor TO sard_monitor;
@@ -109,14 +158,12 @@ END
 $bootstrap$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 -- The large-object functions belong to the bootstrap superuser of the cluster: only a superuser may take their
--- rights from PUBLIC. Any other caller is told what is left to do.
+-- rights from PUBLIC. For any other caller PUBLIC has lost them already (checked at the top).
 DO $bootstrap$
 BEGIN
     IF (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
         REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea),
             lo_import(text), lo_import(text, oid) FROM PUBLIC;
-    ELSE
-        RAISE WARNING 'EXECUTE on the large-object functions is left with PUBLIC: a superuser must run bootstrap.sql once (docs/operator/16-postgresql.md)';
     END IF;
 END
 $bootstrap$;

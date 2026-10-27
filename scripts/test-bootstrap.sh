@@ -11,8 +11,12 @@
 #      owned by sard_owner, and no password anywhere (the script text has none either)
 #   3  a second run exits 0 and changes nothing: the catalog is the same, row by row
 #   5  in a cluster of its own, a role with CREATEROLE but not SUPERUSER, the owner of the database and
-#      holding ADMIN OPTION on pg_read_all_data and pg_monitor, runs the script twice: both runs exit 0
-#      and the catalog is the superuser's, with the role's name for the superuser's
+#      holding ADMIN OPTION on pg_read_all_data and pg_monitor, is refused while PUBLIC still holds
+#      EXECUTE on the large-object functions of the database (the message names them and the fix, nothing is created);
+#      after a superuser revoked it once, it runs the script twice: both runs exit 0 and the catalog
+#      is the superuser's, with the role's name for the superuser's
+#   6  sard_app a member of a role the CREATEROLE role has no ADMIN on: the run is refused naming the
+#      role, and nothing is created
 #   4  (SARD_IMAGE and SARD_VERSION set) the passwords of sard_migrator and sard_app are set, the
 #      migrate command of the server image applies the migrations as sard_migrator, and the server
 #      started as sard_app answers /api/v1/status without a warning about its role
@@ -66,12 +70,44 @@ createrole_run() {
   "${as_postgres[@]}" -c "create role dba login createrole password 'dba'" -c "grant pg_read_all_data to dba with admin option" \
     -c "grant pg_monitor to dba with admin option" -c "alter database sard owner to dba" >/dev/null
   as_dba=(docker exec -i -e PGPASSWORD=dba "$name" psql -X -q -At -U dba -h 127.0.0.1 -d sard -v ON_ERROR_STOP=1)
+  local refused
+  if refused="$("${as_dba[@]}" <"$script" 2>&1)"; then
+    fail "$major: bootstrap.sql ran for a CREATEROLE role while PUBLIC can execute lo_import"; return
+  elif ! grep -q 'lo_create(oid)' <<<"$refused" || ! grep -q 'REVOKE EXECUTE ON FUNCTION' <<<"$refused"; then
+    fail "$major: the lo_* refusal names neither the functions nor the fix: $refused"; return
+  elif [ "$("${as_postgres[@]}" -c "select (select count(*) from pg_roles where rolname like 'sard\\_%') + (select count(*) from pg_namespace where nspname = 'sard')")" != 0 ]; then
+    fail "$major: the lo_* refusal left roles or the schema"; return
+  fi
+  pass "$major: PUBLIC with EXECUTE on lo_* refuses a CREATEROLE role, nothing is created"
+  "${as_postgres[@]}" -c "revoke execute on function lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea), lo_import(text), lo_import(text, oid) from public" >/dev/null
   "${as_dba[@]}" <"$script" >/dev/null 2>&1 || { fail "$major: bootstrap.sql failed for a CREATEROLE role"; return; }
   "${as_dba[@]}" <"$script" >/dev/null 2>&1 || { fail "$major: the second run for a CREATEROLE role failed"; return; }
   catalog="$("${as_postgres[@]}" -c "$catalog_sql")"
   [ "${catalog//dba/postgres}" = "$expected" ] \
     && pass "$major: a CREATEROLE role without SUPERUSER gets the superuser's catalog, twice" \
     || fail "$major: the catalog of the CREATEROLE role differs from the superuser's"
+  member_without_admin "$major" "$name" "${as_postgres[@]}"
+}
+
+# 6: sard_app is a member of pg_write_all_data, which dba cannot revoke. Needs a fresh database and roles
+# dba has ADMIN on, so it uses its own cluster-level names: the second cluster already holds the Sard roles,
+# hence the membership is added there and the schema is dropped to start the script from scratch.
+member_without_admin() {
+  local major="$1" name="$2"
+  shift 2
+  local as_postgres=("$@") refused
+  local as_dba=(docker exec -i -e PGPASSWORD=dba "$name" psql -X -q -At -U dba -h 127.0.0.1 -d sard6 -v ON_ERROR_STOP=1)
+  "${as_postgres[@]}" -c "create database sard6 owner dba" -c "grant pg_write_all_data to sard_app" >/dev/null
+  docker exec -i "$name" psql -X -q -At -U postgres -d sard6 -v ON_ERROR_STOP=1 -c "revoke execute on function lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea), lo_import(text), lo_import(text, oid) from public" >/dev/null
+  if refused="$("${as_dba[@]}" <"$script" 2>&1)"; then
+    fail "$major: bootstrap.sql ran with a membership of sard_app the role cannot revoke"
+  elif ! grep -q 'REVOKE pg_write_all_data FROM sard_app' <<<"$refused"; then
+    fail "$major: the refusal does not name the role and the fix: $refused"
+  elif [ "$(docker exec -i "$name" psql -X -q -At -U postgres -d sard6 -c "select count(*) from pg_namespace where nspname = 'sard'")" != 0 ]; then
+    fail "$major: the refused script left the schema"
+  else
+    pass "$major: a membership of sard_app the CREATEROLE role cannot revoke is refused, naming the role"
+  fi
 }
 
 one_version() {
