@@ -19,8 +19,10 @@
 --   sard_backup    LOGIN, read-only; the agent next to the server dumps the database with it
 --   sard_monitor   LOGIN without a password; pg_monitor, for a monitoring system of the operator's
 --
--- Needs a superuser. A role with CREATEROLE works too if it has the ADMIN option on pg_read_all_data and
--- pg_monitor and may create objects in the database; any other role is refused before anything is changed.
+-- Needs a superuser. A role with CREATEROLE but without SUPERUSER works too if it owns the database, has the ADMIN
+-- option on pg_read_all_data and pg_monitor, and the Sard roles do not exist yet or it has the ADMIN option on them
+-- (it has it on the ones it creates). Then the one thing left undone is taking EXECUTE on the large-object functions
+-- from PUBLIC, which only a superuser can: it says so in a warning. Any other role is refused.
 -- This is the one psql meta-command of the file: the script stops at the first error, and as it is one transaction,
 -- nothing is left half done.
 \set ON_ERROR_STOP on
@@ -32,30 +34,42 @@ SET LOCAL client_min_messages = warning;
 DO $bootstrap$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolcreaterole)) THEN
-        RAISE EXCEPTION 'bootstrap.sql needs a role with SUPERUSER or CREATEROLE; % has neither (docs/operator/16-postgresql.md)',
+        RAISE EXCEPTION 'bootstrap.sql needs a role with SUPERUSER or CREATEROLE (the latter must own the database and have the ADMIN option on pg_read_all_data and pg_monitor); % has neither (docs/operator/16-postgresql.md)',
             current_user;
     END IF;
 END
 $bootstrap$;
 
--- The roles, with the attributes of D26 set on every run, so a role changed by hand is brought back.
+-- The roles, with the attributes of D26 set on every run, so a role changed by hand is brought back. Only what
+-- differs is altered: PostgreSQL refuses to a caller without SUPERUSER even a NOSUPERUSER (and the like) that
+-- changes nothing.
 DO $bootstrap$
 DECLARE
     spec record;
+    changes text;
 BEGIN
     FOR spec IN
         SELECT * FROM (VALUES
-            ('sard_owner', 'NOLOGIN'),
-            ('sard_migrator', 'LOGIN'),
-            ('sard_app', 'LOGIN'),
-            ('sard_backup', 'LOGIN'),
-            ('sard_monitor', 'LOGIN')) AS r (name, login)
+            ('sard_owner', false),
+            ('sard_migrator', true),
+            ('sard_app', true),
+            ('sard_backup', true),
+            ('sard_monitor', true)) AS r (name, login)
     LOOP
         IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = spec.name) THEN
             EXECUTE format('CREATE ROLE %I', spec.name);
         END IF;
-        EXECUTE format('ALTER ROLE %I %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
-                       spec.name, spec.login);
+        SELECT concat_ws(' ',
+                   CASE WHEN rolcanlogin <> spec.login THEN CASE WHEN spec.login THEN 'LOGIN' ELSE 'NOLOGIN' END END,
+                   CASE WHEN rolsuper THEN 'NOSUPERUSER' END,
+                   CASE WHEN rolcreatedb THEN 'NOCREATEDB' END,
+                   CASE WHEN rolcreaterole THEN 'NOCREATEROLE' END,
+                   CASE WHEN rolreplication THEN 'NOREPLICATION' END,
+                   CASE WHEN rolbypassrls THEN 'NOBYPASSRLS' END)
+          INTO changes FROM pg_roles WHERE rolname = spec.name;
+        IF changes <> '' THEN
+            EXECUTE format('ALTER ROLE %I %s', spec.name, changes);
+        END IF;
     END LOOP;
 END
 $bootstrap$;
@@ -94,8 +108,18 @@ BEGIN
 END
 $bootstrap$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea),
-    lo_import(text), lo_import(text, oid) FROM PUBLIC;
+-- The large-object functions belong to the bootstrap superuser of the cluster: only a superuser may take their
+-- rights from PUBLIC. Any other caller is told what is left to do.
+DO $bootstrap$
+BEGIN
+    IF (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+        REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea),
+            lo_import(text), lo_import(text, oid) FROM PUBLIC;
+    ELSE
+        RAISE WARNING 'EXECUTE on the large-object functions is left with PUBLIC: a superuser must run bootstrap.sql once (docs/operator/16-postgresql.md)';
+    END IF;
+END
+$bootstrap$;
 
 -- The schema.
 CREATE SCHEMA IF NOT EXISTS sard AUTHORIZATION sard_owner;

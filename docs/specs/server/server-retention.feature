@@ -152,14 +152,13 @@
 #   sard.retention.interval                  1h
 #   sard.retention.batch-size                500
 #   Значения тега kind: step_log_partition, notification_delivery,
-#   schedule_fire, restore_verification, verification_job, run_step, run.
+#   schedule_fire, verification_evidence, run_step, run.
 #   (Поправка DB2, Р4, ADR 0069: записи проверок и их задания больше не
 #   удаляются; вместо kind restore_verification и verification_job — один
 #   kind verification_evidence, число записей, у которых очищены улики.)
 #   Строка итога — INFO, логгер уборки, вида
 #   «Retention pass deleted step_log_partition=N notification_delivery=N
-#   schedule_fire=N restore_verification=N verification_job=N run_step=N
-#   run=N».
+#   schedule_fire=N verification_evidence=N run_step=N run=N».
 #
 # Ответы владельца 2026-10-21 (переданы координатором):
 #   В1.  Вариант A — ХР10a. В перечне «живых ссылок» «открытый overdue_episode
@@ -231,9 +230,13 @@
         | завершённый запуск backup без снимка         |
         | завершённый запуск restore                   |
         | завершённый запуск verify без записи проверки |
-        | запись проверки V4                           |
         | срабатывание расписания                      |
         | доставка уведомления                         |
+
+      @заменено-db2
+      Примеры:
+        | тип                                          |
+        | запись проверки V4                           |
 
     @server
     Структура сценария: Старый запуск без снимка удаляется при любом итоге
@@ -542,8 +545,9 @@
       Когда проходит уборка
       Тогда запуск, его шаг, запись проверки и её задание на месте
 
-    @server
+    @заменено-db2 @server
     Сценарий: Запуск проверки удаляется после своей записи проверки
+      # ЗАМЕНЕНО DB2 (Р4, ADR 0069): запись проверки и её задание не удаляются, значит, держат шаг и запуск всегда.
       Дано старый запуск verify и старая запись проверки его шага, не последняя ни в одном классе
       Когда проходит уборка
       Тогда нет ни записи проверки, ни задания, ни шага, ни запуска
@@ -861,10 +865,11 @@
 
     @server @qa
     Сценарий: Проход пишет одну строку итога с числом удалённого по каждому типу
-      Дано 501 старая доставка, 2 старые секции логов, 3 старых срабатывания, 4 старые проверки с заданиями и 5 старых запусков по 2 шага
+      # Поправка DB2 (Р4, ADR 0069): вместо restore_verification и verification_job — verification_evidence.
+      Дано 4 старые доставки, 2 старые секции логов, 3 старых срабатывания и 5 старых запусков по 2 шага
       Когда проходит уборка
       Тогда в журнале сервера ровно одна строка итога этого прохода
-      И в ней notification_delivery=501 step_log_partition=2 schedule_fire=3 restore_verification=4 verification_job=4 run_step=10 run=5
+      И в ней step_log_partition=2 notification_delivery=4 schedule_fire=3 verification_evidence=0 run_step=10 run=5
 
     @server
     Сценарий: Счётчик удалённого растёт по тегу kind

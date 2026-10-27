@@ -204,8 +204,12 @@ docker compose exec postgres psql -U sard -d sard
 репозитория по тегу вашей версии:
 `curl -fsSLO https://raw.githubusercontent.com/Artur-Abalov/Sard/<тег>/deploy/db/bootstrap.sql`). Внешний кластер как
 поддерживаемый режим — после 0.1.0; скрипт и его проверка в CI на 16, 17 и 18 —
-уже сейчас. Нужны суперпользователь (или роль с `CREATEROLE` и правом `ADMIN`
-на `pg_read_all_data` и `pg_monitor`) и пустая база `sard`:
+уже сейчас. Нужны суперпользователь (или роль с `CREATEROLE` без `SUPERUSER`,
+которая владеет базой `sard`, имеет право `ADMIN` на `pg_read_all_data` и
+`pg_monitor`, а ролей `sard_*` в кластере ещё нет или на них у неё тоже есть
+`ADMIN`) и пустая база `sard`. Роль без `SUPERUSER` не может отозвать у `PUBLIC`
+`EXECUTE` на функции больших объектов (`lo_create`, `lo_import` и другие):
+скрипт предупредит об этом, и это нужно сделать один раз суперпользователем:
 
 ```bash
 # 1. роли и схема (повторимо: второй запуск ничего не меняет); пароли скрипт не задаёт

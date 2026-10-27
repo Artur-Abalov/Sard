@@ -86,6 +86,35 @@ class BootstrapScriptTest {
     }
 
     @Test
+    fun `Скрипт bootstrap под ролью с CREATEROLE без SUPERUSER даёт то же, что под суперпользователем`() {
+        // Roles belong to the cluster, so the superuser's run is in a cluster of its own.
+        val expected = Cluster().use {
+            it.bootstrap()
+            it.catalog()
+        }
+        cluster.admin().use {
+            it.createStatement().use { s ->
+                s.execute("create role dba login createrole password 'dba'")
+                s.execute("grant pg_read_all_data to dba with admin option")
+                s.execute("grant pg_monitor to dba with admin option")
+            }
+        }
+        val byDba = cluster.newDatabase()
+        cluster.admin().use { it.createStatement().use { s -> s.execute("alter database $byDba owner to dba") } }
+        fun run() =
+            java.sql.DriverManager.getConnection(cluster.url(byDba), "dba", "dba").use {
+                it.createStatement().execute(BootstrapScript.text)
+            }
+
+        run()
+        val first = cluster.catalog(byDba)
+        run()
+
+        assertEquals(first, cluster.catalog(byDba), "the rerun changes nothing")
+        assertEquals(expected, first.replace("dba", cluster.container.username))
+    }
+
+    @Test
     fun `Повторный db-init на базе, развёрнутой суперпользователем, возвращает владение sard_owner`() {
         val installed = cluster.newDatabase()
         cluster.bootstrap(installed)

@@ -34,7 +34,7 @@ compose (`$NET`).
    cp .env.example .env
    sed -i "s/^SARD_VERSION=.*/SARD_VERSION=<версия>/" .env
    PSQL='docker compose exec -T postgres psql -U sard -d sard -Atc'
-   NET='docker run --rm -i --network sard_default postgres:18.6-alpine psql -h postgres -d sard'
+   NET='docker run --rm -i --network sard_default -e PGPASSWORD postgres:18.6-alpine psql -h postgres -d sard'
    ```
 
    → `grep -c DB_PASSWORD .env` печатает `0`.
@@ -70,8 +70,8 @@ compose (`$NET`).
 
 8. `docker compose exec postgres psql -U sard -d sard -c 'select current_user'`
    → код 0, без запроса пароля, печатает `sard`.
-9. `$NET -U sard -c 'select 1'` с `-e PGPASSWORD=` каждого из трёх паролей и
-   пустым → каждый раз `password authentication failed` (или отказ `pg_hba`);
+9. `PGPASSWORD=<значение> $NET -U sard -c 'select 1'` для каждого из трёх
+   паролей и для пустого значения → каждый раз `password authentication failed` (или отказ `pg_hba`);
    вход по сети суперпользователем невозможен.
 
 ## Часть 3. sard_app только читает и пишет строки
