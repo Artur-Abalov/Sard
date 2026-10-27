@@ -197,7 +197,7 @@ SFTP: в обёртке из образа вместо `--env-file` смонти
   (снимок базы появляется только после успешного дампа);
 - **K** — снимок ключей и конфигурации: последний снимок путей
   `--path /var/lib/sard/pki --path /etc/sard/install`, в котором есть `ca.key`,
-  `ca.crt`, `.env` и `docker-compose.yml`. Упавший шаг мог оставить неполный
+  `ca.crt`, `.env`, `docker-compose.yml` и четыре файла `db/`. Упавший шаг мог оставить неполный
   снимок, поэтому блок проверяет полноту сам и берёт первый полный, считая от
   новых.
 
@@ -216,7 +216,9 @@ list() { ./restic snapshots --json "$@" | grep -oE '"(time|id)":"[^"]*"' | cut -
 complete() {
   local L
   L=$(./restic ls "$1")
-  for F in /var/lib/sard/pki/ca/ca.key /var/lib/sard/pki/ca/ca.crt /etc/sard/install/.env /etc/sard/install/docker-compose.yml; do
+  for F in /var/lib/sard/pki/ca/ca.key /var/lib/sard/pki/ca/ca.crt /etc/sard/install/.env /etc/sard/install/docker-compose.yml \
+      /etc/sard/install/db/bootstrap.sql /etc/sard/install/db/db-init.sh /etc/sard/install/db/pg_hba.conf \
+      /etc/sard/install/db/postgres-entrypoint.sh; do
     if ! grep -qxF "$F" <<<"$L"; then echo "snapshot $1 lacks $F" >&2; return 1; fi
   done
 }

@@ -214,7 +214,7 @@ snapshots of two sources:
   dump);
 - **K**, the keys and configuration snapshot: the last snapshot of the paths
   `--path /var/lib/sard/pki --path /etc/sard/install` that has `ca.key`,
-  `ca.crt`, `.env` and `docker-compose.yml`. A failed step could leave an
+  `ca.crt`, `.env`, `docker-compose.yml` and the four `db/` files. A failed step could leave an
   incomplete snapshot, so the block checks completeness itself and takes the
   first complete one, newest first.
 
@@ -234,7 +234,9 @@ list() { ./restic snapshots --json "$@" | grep -oE '"(time|id)":"[^"]*"' | cut -
 complete() {
   local L
   L=$(./restic ls "$1")
-  for F in /var/lib/sard/pki/ca/ca.key /var/lib/sard/pki/ca/ca.crt /etc/sard/install/.env /etc/sard/install/docker-compose.yml; do
+  for F in /var/lib/sard/pki/ca/ca.key /var/lib/sard/pki/ca/ca.crt /etc/sard/install/.env /etc/sard/install/docker-compose.yml \
+      /etc/sard/install/db/bootstrap.sql /etc/sard/install/db/db-init.sh /etc/sard/install/db/pg_hba.conf \
+      /etc/sard/install/db/postgres-entrypoint.sh; do
     if ! grep -qxF "$F" <<<"$L"; then echo "snapshot $1 lacks $F" >&2; return 1; fi
   done
 }
