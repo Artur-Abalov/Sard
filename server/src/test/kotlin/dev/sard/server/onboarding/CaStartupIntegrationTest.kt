@@ -4,6 +4,7 @@
 package dev.sard.server.onboarding
 
 import ch.qos.logback.classic.Level.WARN
+import dev.sard.server.TestAdmin
 import dev.sard.server.api.SETUP_COOKIE
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CaImportFixtures
@@ -614,11 +615,11 @@ class CaStartupIntegrationTest {
         running.clear()
         installation.pkiDir.toFile().deleteRecursively()
         jdbc.update("delete from ca_origins")
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             "create function refuse_origin() returns trigger as \$\$ " +
                 "begin raise exception 'no origins'; end \$\$ language plpgsql",
         )
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             "create trigger refuse_origin before insert on ca_origins " +
                 "for each row execute function refuse_origin()",
         )
@@ -631,8 +632,8 @@ class CaStartupIntegrationTest {
             emptyList(),
             names(installation.pkiDir),
         )
-        jdbc.execute("drop trigger refuse_origin on ca_origins")
-        jdbc.execute("drop function refuse_origin()")
+        TestAdmin.of(jdbc).execute("drop trigger refuse_origin on ca_origins")
+        TestAdmin.of(jdbc).execute("drop function refuse_origin()")
     }
 
     @Test
@@ -677,11 +678,8 @@ class CaStartupIntegrationTest {
         Thread.sleep(600)
         assertEquals(0, jdbc().queryForObject("select count(*) from enrollment_tokens where builtin", Int::class.java))
         assertFalse(Files.exists(installation.selfDir.resolve("enroll-token")))
-        assertTrue(Files.exists(installation.selfDir.resolve("db-password")), "the role password is not set")
-        val password = Files.readString(installation.selfDir.resolve("db-password"))
-        java.sql.DriverManager
-            .getConnection(installation.database.url, "sard_self", password)
-            .use { assertTrue(it.isValid(5)) }
+        // The password of the neighbour's database role is db-init's (DB2), the server writes none into the channel.
+        assertFalse(Files.exists(installation.selfDir.resolve("db-password")))
 
         val session = server.client.setupSession()
         assertEquals(204, server.client.confirmCa(session).status)

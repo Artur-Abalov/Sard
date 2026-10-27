@@ -81,8 +81,9 @@
 | spring-boot-starter-actuator | 4.1.2 | Apache-2.0 | runtime | `/actuator/health` |
 | io.micrometer:micrometer-registry-prometheus (+ io.prometheus:prometheus-metrics-* транзитивно) | 1.17.2 (BOM Spring Boot 4.1.2) | Apache-2.0 | runtime | текстовая экспозиция Prometheus 0.0.4 для слушателя метрик (`GET /metrics` на `sard.metrics.*`, не на порту консоли): метрики `sard_`, `jvm_`, `process_`; HTTP-сервер слушателя — `com.sun.net.httpserver` из JDK, без новых зависимостей (H1, фаза 3) |
 | spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.2 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
-| spring-boot-starter-flyway + flyway-database-postgresql | 4.1.2 / 12.4.0 | Apache-2.0 | runtime | миграции |
-| org.postgresql:postgresql | 42.7.14 | BSD-2-Clause | runtime; в коде — только PGConnection.alterUserPassword (пароль роли sard_self, SCRAM на стороне клиента) | JDBC-драйвер |
+| spring-boot-starter-flyway + flyway-database-postgresql | 4.1.2 / 12.4.0 | Apache-2.0 | runtime | миграции: применяет команда `migrate` образа сервера (DB2, ADR 0069), сервер только читает историю |
+| org.postgresql:postgresql | 42.7.14 | BSD-2-Clause | runtime | JDBC-драйвер сервера и команды `migrate` |
+| org.yaml:snakeyaml | 2.6 (BOM Spring Boot 4.1.2) | Apache-2.0 | runtime, транзитивно от Spring Boot (чтение `application.yaml`); в тестах — разбор `deploy/docker-compose.yml` (DeployDatabaseComposeTest, DB2) | YAML |
 | org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
 | org.springframework.security:spring-security-crypto | 7.1.2 (BOM Spring Boot 4.1.2) | Apache-2.0 | runtime; в коде — только `Argon2PasswordEncoder` (хэш пароля администратора, m=19456 КиБ, t=2, p=1; использует bcprov, уже на classpath) | хэш Argon2id пароля администратора в базе (F4a, ответ владельца на П3); остальной Spring Security не подключается, вход остаётся на своём `SessionAuthFilter` (ADR 0021) |
 | spring-boot-starter-grpc-server (spring-grpc-core 1.1.2, grpc-netty 1.84.1) | 4.1.2 | Apache-2.0 | runtime | gRPC-сервер `AgentService`; `grpc-services` из него — health-check (`HealthGrpc` в списке открытых сервисов S3) |

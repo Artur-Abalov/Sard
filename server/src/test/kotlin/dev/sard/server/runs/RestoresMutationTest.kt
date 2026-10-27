@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RestoreScene.Companion.DESTINATION
@@ -43,7 +44,7 @@ private const val REQUIRED = """violates "required" of the schema"""
  * restore makes.
  */
 @Tag("mutflow-isolated")
-@MutFlowTest
+@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0"],

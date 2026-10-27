@@ -3,6 +3,7 @@
 
 package dev.sard.server.retention
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.api.ApiSession
 import dev.sard.server.api.RestApiTest
 import dev.sard.server.api.RestWorld
@@ -59,8 +60,8 @@ class RetentionRestApiIntegrationTest(
     @AfterTest
     fun `drop the tenant and restore the partitions`() {
         world.close()
-        jdbc.execute("drop table if exists step_logs_2027_01")
-        jdbc.execute("drop table if exists step_logs_2027_03")
+        TestAdmin.of(jdbc).execute("drop table if exists step_logs_2027_01")
+        TestAdmin.of(jdbc).execute("drop table if exists step_logs_2027_03")
         restorePartitions(logPartitions)
     }
 
@@ -84,10 +85,7 @@ class RetentionRestApiIntegrationTest(
         val run = scene.run(source, old(RUNS_TERM), status = "succeeded")
         scene.snapshot(run.steps.single(), source)
         if (lines > 0) {
-            jdbc.execute(
-                "create table if not exists step_logs_2027_01 partition of step_logs " +
-                    "for values from ('2027-01-01 00:00:00+00') to ('2027-02-01 00:00:00+00')",
-            )
+            jdbc.createPartition("2027_01")
             scene.logLines(run.steps.single(), lines, JANUARY)
         }
         jdbc.update(
@@ -101,10 +99,7 @@ class RetentionRestApiIntegrationTest(
 
     @Test
     fun `Строка лога, пришедшая после завершения шага, читается и лежит в секции месяца получения`() {
-        jdbc.execute(
-            "create table if not exists step_logs_2027_03 partition of step_logs " +
-                "for values from ('2027-03-01 00:00:00+00') to ('2027-04-01 00:00:00+00')",
-        )
+        jdbc.createPartition("2027_03")
         val run = scene.run(scene.source(), Instant.parse("2027-02-27T23:59:00Z"), status = "succeeded")
         scene.logLines(run.steps.single(), 1, Instant.parse("2027-03-01T00:01:00Z"))
         jdbc.update("update run_steps set log_lines = 1 where id = ?", run.steps.single())

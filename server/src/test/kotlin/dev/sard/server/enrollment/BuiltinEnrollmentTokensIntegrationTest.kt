@@ -38,7 +38,7 @@ private val MARGIN: Duration = Duration.ofMinutes(10)
  * "Проверка выпускает встроенный токен..." (the token side) of docs/specs/server/self-agent.feature.
  */
 @Tag("mutflow-isolated")
-@MutFlowTest
+@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0"],

@@ -20,22 +20,62 @@ CREATE TABLE step_logs (
     CONSTRAINT step_logs_step_fkey FOREIGN KEY (tenant_id, step_id) REFERENCES run_steps (tenant_id, id)
 ) PARTITION BY RANGE (received_at);
 
--- Monthly partitions; the server creates the next ones ahead (sard.logs), these cover the
--- month the migration runs in and the one after it.
-DO $$
+-- Monthly partitions (DB2, docs/adr/0069-database-roles.md). The server is sard_app and may not create or drop a
+-- table, so two functions owned by sard_owner (SECURITY DEFINER) do it for it, and nothing else: they take a month or
+-- the name of a partition of step_logs, and they wait for a lock at most two seconds, so a reader of the table does
+-- not make the writing of log lines of every tenant wait for long. The drop does not use DETACH ... CONCURRENTLY:
+-- PostgreSQL refuses it inside a function or a procedure. A lock that is not got in time is an error, and the caller
+-- tries again at its next pass. Both take the same advisory lock, so servers that start together make a partition
+-- once and drop it once. There is no DEFAULT partition: a line of a month without a partition fails its chunk, which
+-- is how a server that was down too long shows it.
+CREATE FUNCTION create_step_log_partition(month DATE) RETURNS TEXT
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = pg_catalog, sard, pg_temp
+    SET lock_timeout = '2s'
+AS $$
 DECLARE
-    month DATE;
+    first_day DATE := date_trunc('month', month)::date;
+    partition_name TEXT := 'step_logs_' || to_char(first_day, 'YYYY_MM');
 BEGIN
-    FOR i IN 0..1 LOOP
-        month := (date_trunc('month', now() AT TIME ZONE 'UTC') + make_interval(months => i))::date;
-        EXECUTE format(
-            'CREATE TABLE IF NOT EXISTS %I PARTITION OF step_logs FOR VALUES FROM (%L) TO (%L)',
-            'step_logs_' || to_char(month, 'YYYY_MM'),
-            month::timestamp AT TIME ZONE 'UTC',
-            (month + interval '1 month')::timestamp AT TIME ZONE 'UTC');
-    END LOOP;
+    PERFORM pg_advisory_xact_lock(hashtextextended('sard.step_logs.partitions', 0));
+    IF to_regclass(format('sard.%I', partition_name)) IS NOT NULL THEN
+        RETURN NULL;
+    END IF;
+    EXECUTE format(
+        'CREATE TABLE sard.%I PARTITION OF sard.step_logs FOR VALUES FROM (%L) TO (%L)',
+        partition_name,
+        first_day::timestamp AT TIME ZONE 'UTC',
+        (first_day + interval '1 month')::timestamp AT TIME ZONE 'UTC');
+    RETURN partition_name;
 END
 $$;
+
+CREATE FUNCTION drop_step_log_partition(partition_name TEXT) RETURNS BOOLEAN
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = pg_catalog, sard, pg_temp
+    SET lock_timeout = '2s'
+AS $$
+BEGIN
+    IF partition_name !~ '^step_logs_[0-9]{4}_[0-9]{2}$' THEN
+        RAISE EXCEPTION 'not a log partition: %', partition_name USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended('sard.step_logs.partitions', 0));
+    IF NOT EXISTS (SELECT FROM pg_inherits
+                   WHERE inhparent = 'sard.step_logs'::regclass
+                     AND inhrelid = to_regclass(format('sard.%I', partition_name))) THEN
+        RETURN FALSE;
+    END IF;
+    EXECUTE format('ALTER TABLE sard.step_logs DETACH PARTITION sard.%I', partition_name);
+    EXECUTE format('DROP TABLE sard.%I', partition_name);
+    RETURN TRUE;
+END
+$$;
+
+-- The month the migration runs in and the one after it; the server makes the next ones ahead (sard.logs).
+SELECT create_step_log_partition(date_trunc('month', now() AT TIME ZONE 'UTC')::date);
+SELECT create_step_log_partition((date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month')::date);
 
 -- How much of a step's log the server kept: seq is taken from log_lines by a guarded update,
 -- and the limits of sard.logs count against log_bytes. Written after the step is final too:

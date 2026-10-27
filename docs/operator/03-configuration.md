@@ -22,9 +22,10 @@
 
 | Переменная | Назначение | По умолчанию | Пример |
 |---|---|---|---|
-| `SARD_DB_PASSWORD` | пароль PostgreSQL; compose передаёт его и базе, и серверу | обязательна | `openssl rand -hex 24` |
 | `SARD_DB_URL` | JDBC-адрес базы; в compose задан | `jdbc:postgresql://localhost:5432/sard` | `jdbc:postgresql://postgres:5432/sard` |
-| `SARD_DB_USER` | пользователь базы; в compose задан | `sard` | `sard` |
+| `SARD_DB_USER` | роль базы, под которой работает сервер; в compose задана; только чтение и запись строк ([раздел 16](16-postgresql.md#роли)) | `sard_app` | `sard_app` |
+| `SARD_DB_PASSWORD_FILE` | файл с паролем этой роли; в compose это файл тома, который `db-init` создаёт при первом запуске, в `.env` его не задают | пусто | `/run/sard-db/password` |
+| `SARD_DB_PASSWORD` | то же паролем в переменной: для внешнего кластера, где файл неудобен; если задан `SARD_DB_PASSWORD_FILE`, берётся файл ([раздел 16](16-postgresql.md#внешний-кластер)) | пусто | |
 | `SARD_PKI_SERVER_NAMES` | DNS-имена и IP через запятую, на которые выпускается сертификат порта агентов; каждое — имя хоста или IP-литерал | `localhost,127.0.0.1,::1` | `sard.example.com,203.0.113.10` |
 | `SARD_AGENT_ENDPOINT` | адрес `хост[:порт]`, который агенты набирают; хост обязан быть одним из `SARD_PKI_SERVER_NAMES`, иначе сервер не стартует; попадает в команду регистрации в консоли | первое имя из `SARD_PKI_SERVER_NAMES` и порт 9090 | `sard.example.com:9090` |
 | `SARD_AGENT_HEARTBEAT_INTERVAL` | интервал heartbeat агентов (передаётся им при подключении); агент считается отключённым после 3 интервалов, шаг — потерянным после 2 | `30s` | `15s` |

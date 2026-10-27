@@ -23,10 +23,10 @@ private val MOSCOW: ZoneId = ZoneId.of("Europe/Moscow")
 @MutFlowTest(excludeTargets = [CronSchedule::class, CronSchedule.Companion::class])
 class SelfBackupPropertiesTest {
     @Test
-    fun `По умолчанию база - та же, что у сервера, роль sard_self и секрет sard-db`() {
+    fun `По умолчанию база - та же, что у сервера, роль sard_backup и секрет sard-db`() {
         val settings = MutFlow.underTest { SelfBackupProperties().settings(COMPOSE_URL, MOSCOW) }
         assertEquals(DatabaseTarget("postgres", 5432, "sard"), settings.database)
-        assertEquals("sard_self", settings.databaseUser)
+        assertEquals("sard_backup", settings.databaseUser)
         assertEquals("sard-db", settings.passwordSecret)
         assertEquals("disable", settings.databaseTlsMode)
         assertEquals("/usr/lib/postgresql/18/bin/pg_dump", settings.pgDumpPath)

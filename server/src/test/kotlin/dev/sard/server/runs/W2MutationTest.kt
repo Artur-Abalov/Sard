@@ -46,7 +46,7 @@ private class FixedPresence(
  * a plugin may back, what a run view says of its source and of a partial snapshot (W2 К14, К17, К18).
  */
 @Tag("mutflow-isolated")
-@MutFlowTest
+@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0"],

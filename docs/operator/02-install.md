@@ -2,8 +2,9 @@
 
 Сервер ставится из опубликованного образа `ghcr.io/artur-abalov/sard-server`
 (amd64 и arm64) вместе с PostgreSQL через Docker Compose. Файлы установки —
-`docker-compose.yml` и `sard.env.example` — прикладываются к каждому релизу на
-GitHub. Без доступа к реестру — [раздел 11](11-offline.md).
+`docker-compose.yml`, `sard.env.example` и четыре файла каталога `db/`
+(`db-init.sh`, `bootstrap.sql`, `pg_hba.conf`, `postgres-entrypoint.sh`) —
+прикладываются к каждому релизу на GitHub. Без доступа к реестру — [раздел 11](11-offline.md).
 
 ## 1. Файлы релиза
 
@@ -12,8 +13,18 @@ SARD_TAG=v0.0.1-rc.1        # релиз: https://github.com/Artur-Abalov/Sard/r
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
+mkdir -p db
+curl -fsSL -o db/db-init.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/db-init.sh"
+curl -fsSL -o db/bootstrap.sql "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/bootstrap.sql"
+curl -fsSL -o db/pg_hba.conf "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/pg_hba.conf"
+curl -fsSL -o db/postgres-entrypoint.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/postgres-entrypoint.sh"
 sudo chgrp 10001 .env && chmod 640 .env
 ```
+
+Compose-файл ссылается на файлы `db/` относительными путями (`./db/…`), а не
+держит их копии: релиз не знает каталогов, поэтому каждый файл лежит в нём под
+своим именем, а команды выше кладут его в `db/`. Роли PostgreSQL создаёт
+`db-init` из этих файлов, вручную их создавать не нужно.
 
 В скачанном `.env` уже стоит `SARD_VERSION` этого релиза. Группа 10001 —
 агент-сосед самобэкапа: он читает `.env` (только чтение) и хранит его в
@@ -22,13 +33,15 @@ sudo chgrp 10001 .env && chmod 640 .env
 
 ## 2. Секреты
 
-```bash
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
-```
-
-Секреты живут только в `.env` (права `600`). В образе секретов нет. Пароля
+Делать ничего не нужно. Паролей базы в `.env` нет: при первом
+`docker compose up` служба `db-init` сама создаёт роли PostgreSQL и пароль
+каждой, и кладёт его в том, который видит только одна служба, которой этот
+пароль нужен ([раздел 16](16-postgresql.md#где-пароли)). Пароль
+суперпользователя PostgreSQL случаен и не хранится нигде. Пароля
 администратора в `.env` нет: его задают при первом запуске в консоли
-([шаг 5](#5-первый-запуск-код-настройки-и-мастер)).
+([шаг 5](#5-первый-запуск-код-настройки-и-мастер)). Остальные секреты
+(`SARD_TELEGRAM_BOT_TOKEN`, `SARD_METRICS_TOKEN`) живут в `.env` с правами
+`640`, группа 10001.
 
 ## 3. Имя сервера
 

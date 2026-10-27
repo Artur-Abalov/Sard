@@ -214,7 +214,7 @@ snapshots of two sources:
   dump);
 - **K**, the keys and configuration snapshot: the last snapshot of the paths
   `--path /var/lib/sard/pki --path /etc/sard/install` that has `ca.key`,
-  `ca.crt`, `.env` and `docker-compose.yml`. A failed step could leave an
+  `ca.crt`, `.env`, `docker-compose.yml` and the four `db/` files. A failed step could leave an
   incomplete snapshot, so the block checks completeness itself and takes the
   first complete one, newest first.
 
@@ -234,7 +234,9 @@ list() { ./restic snapshots --json "$@" | grep -oE '"(time|id)":"[^"]*"' | cut -
 complete() {
   local L
   L=$(./restic ls "$1")
-  for F in /var/lib/sard/pki/ca/ca.key /var/lib/sard/pki/ca/ca.crt /etc/sard/install/.env /etc/sard/install/docker-compose.yml; do
+  for F in /var/lib/sard/pki/ca/ca.key /var/lib/sard/pki/ca/ca.crt /etc/sard/install/.env /etc/sard/install/docker-compose.yml \
+      /etc/sard/install/db/bootstrap.sql /etc/sard/install/db/db-init.sh /etc/sard/install/db/pg_hba.conf \
+      /etc/sard/install/db/postgres-entrypoint.sh; do
     if ! grep -qxF "$F" <<<"$L"; then echo "snapshot $1 lacks $F" >&2; return 1; fi
   done
 }
@@ -270,7 +272,7 @@ and the CA backup you made separately.
 ## Step 2. Keys and configuration
 
 Snapshot K is restored into `~/sard-recovery/keys`;
-from there `.env` and the compose files go to `~/sard`, and the CA key and
+from there `.env`, the compose files and the `db/` directory (the database scripts and settings, DB2) go to `~/sard`, and the CA key and
 certificate go straight into the volume `sard_sard-pki`, owner 10001, mode `700`
 (directories) and `600` (files). `.env` is read by group 10001 (the neighbour
 runs under the server's uid): group 10001, mode `640`.
@@ -283,6 +285,7 @@ cd ~/sard-recovery
 ./restic restore "$K" --target keys
 mkdir -p ~/sard
 cp keys/etc/sard/install/.env keys/etc/sard/install/docker-compose.yml ~/sard/
+cp -R keys/etc/sard/install/db ~/sard/
 if [ -f keys/etc/sard/install/docker-compose.override.yml ]; then
   cp keys/etc/sard/install/docker-compose.override.yml ~/sard/
 fi
@@ -310,9 +313,11 @@ snapshot K). No image locally: do step 0.
 
 Only PostgreSQL goes up first: `docker compose up -d --wait postgres`
 (offline, with `--pull never`, as in the block). The empty database `sard` is
-created by the image initialisation from `.env`. The dump from snapshot D is
-restored into it with `pg_restore --no-owner`: the user `sard` owns everything.
-The dump does not contain the role `sard_self`: the server brings it back at start.
+created by the image initialisation. The dump from snapshot D is restored into it
+with `pg_restore --no-owner --no-acl`: the superuser `sard` owns everything and the
+roles of Sard have no rights. The dump holds no roles of Sard and no passwords: in
+step 4 the `db-init` service creates the roles and **new passwords**, gives
+everything back to `sard_owner` and grants what a new installation has.
 
 <!-- drill: database -->
 ```bash
@@ -322,7 +327,7 @@ cd ~/sard-recovery
 ./restic restore "$D" --target dump
 cd ~/sard
 docker compose up -d --wait --pull never postgres
-docker compose exec -T postgres pg_restore -U sard -d sard --no-owner < ~/sard-recovery/dump/sard.dump
+docker compose exec -T postgres pg_restore -U sard -d sard --no-owner --no-acl < ~/sard-recovery/dump/sard.dump
 docker compose exec -T postgres psql -U sard -d sard -Atc 'select count(*) from agents'
 docker compose exec -T postgres psql -U sard -d sard -Atc 'select version from flyway_schema_history order by installed_rank desc limit 1'
 ```
@@ -340,11 +345,12 @@ No `dump/sard.dump`: snapshot D is not a database; check the tag
 
 ## Step 4. The server
 
-`docker compose up -d --wait --pull never server` starts the
-server on the restored database. It does three things that matter for recovery:
-it checks that the database is not newer than itself (otherwise it refuses with
-`DATABASE_NEWER_THAN_SERVER`, changing nothing), it checks the CA directory
-against the database, and it brings back the role `sard_self` that the dump lacks.
+`docker compose up -d --wait --pull never server` first runs `db-init` (roles,
+ownership, new passwords) and `migrate` (the migrations the dump lacks), then the
+server on the restored database. The server does two things that matter for
+recovery: it checks that the database is not newer than itself (otherwise it
+refuses with `DATABASE_NEWER_THAN_SERVER`, changing nothing) and it checks the CA
+directory against the database.
 
 <!-- drill: server -->
 ```bash
@@ -354,14 +360,16 @@ docker compose up -d --wait --pull never server
 docker compose logs server | grep -F 'CA fingerprint=<caFingerprint> origin=existing'
 curl -fsS http://localhost:8080/api/v1/status | grep -F '"version":"<sardVersion>"'
 curl -fsS http://localhost:8080/api/v1/onboarding | grep -o '"restriction":"none"'
-docker compose exec -T postgres psql -U sard -d sard -Atc "select count(*) from pg_roles where rolname = 'sard_self'"
+docker compose exec -T postgres psql -U sard -d sard -Atc "select count(*) from pg_roles where rolname = 'sard_app'"
+docker compose exec -T postgres psql -U sard -d sard -Atc "select distinct tableowner from pg_tables where schemaname = 'sard'"
 ```
 
 **Check.** The log has the line `CA fingerprint=<card fingerprint>
 origin=existing`; the fingerprint must equal the card's `caFingerprint`; the
 version in `/api/v1/status` equals `sardVersion`; `restriction` is `none` (the
-onboarding is done, no setup code is printed); the last command prints `1`: the
-role `sard_self` is in place. If the fingerprint differs it is another CA: stop
+onboarding is done, no setup code is printed); the second to last command prints `1`:
+the role `sard_app` was created by `db-init`; the last prints `sard_owner`, the only
+owner of the tables of the schema `sard`. If the fingerprint differs it is another CA: stop
 the server (`docker compose stop server`), do not switch the name, go back to
 step 1 and take an older snapshot K.
 
@@ -378,9 +386,11 @@ step 1 and take an older snapshot K.
   something other than an empty `sard`, recreate it (step 3).
 - `CA startup refused: … CA_MISSING`: the database says the CA is in use and the
   directory is empty; repeat step 2.
-- `password authentication failed`: `SARD_DB_PASSWORD` in `.env` is not the one
-  the database volume was created with; in a new volume the password comes from
-  `.env` on the first start, so the cause is a mismatch of `.env` and the volume.
+- `MIGRATIONS_NOT_APPLIED` or an error in the log of `db-init`/`migrate`: the
+  database was not prepared and the server is not started; the first line of the
+  service's log (`docker compose logs db-init migrate`) names the cause
+  ([section 16](../../operator/16-postgresql.md)). If the database was loaded some
+  other way than in step 3 (tables already in `sard`), recreate it (step 3).
 
 Other start refusals: [section 9](../../operator/09-troubleshooting.md).
 
@@ -422,8 +432,8 @@ docker compose logs self-agent | grep -c 'waiting for the enrollment token'
 docker compose exec -T server ls /var/lib/sard/self
 ```
 
-One line `waiting for the enrollment token` and only `db-password` in the
-channel, no `enroll-token`: that is as it should be. Now revoke X
+One line `waiting for the enrollment token` and only the empty `db-password` (the
+`db-init` placeholder) in the channel, no `enroll-token`: that is as it should be. Now revoke X
 (`POST /api/v1/agents/<id>/revoke?confirm=sard-self`; in the console, "Revoke"
 and typing `sard-self`). The revocation turns X's steps to `lost` with the
 message `agent revoked`; the server issues a token, the neighbour registers
@@ -551,7 +561,7 @@ issues a token every 15 seconds (`SARD_SELF_CHECK_INTERVAL`), look at
 rebinding: the neighbour has not sent the repository yet; wait a minute.
 `first_backup_pending` on confirmation: both runs have not finished yet. A run
 `failed`: the step message in the console, most often the storage keys or the
-rights of `sard_self` ([the neighbour agent](../../operations/self-agent.md)).
+rights of `sard_backup` ([the neighbour agent](../../operations/self-agent.md)).
 
 ## Step 6. The server name and the agents
 

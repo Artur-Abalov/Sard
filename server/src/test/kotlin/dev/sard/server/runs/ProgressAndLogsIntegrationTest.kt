@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
@@ -234,7 +235,13 @@ class ProgressAndLogsIntegrationTest(
                 )
             assertEquals("FOR VALUES FROM ('2031-05-01 00:00:00+00') TO ('2031-06-01 00:00:00+00')", bounds)
         } finally {
-            for (month in listOf("03", "04", "05")) jdbc.execute("drop table if exists step_logs_2031_$month")
+            for (month in listOf(
+                "03",
+                "04",
+                "05",
+            )) {
+                TestAdmin.of(jdbc).execute("drop table if exists step_logs_2031_$month")
+            }
         }
     }
 
@@ -250,7 +257,7 @@ class ProgressAndLogsIntegrationTest(
             val found = jdbc.queryForObject(sql, Int::class.java, names)
             assertEquals(3, found)
         } finally {
-            for (month in months) jdbc.execute("drop table if exists step_logs_$month")
+            for (month in months) TestAdmin.of(jdbc).execute("drop table if exists step_logs_$month")
         }
     }
 

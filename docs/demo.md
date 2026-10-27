@@ -80,8 +80,12 @@ SARD_NAME=<sard.example.com>
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
+mkdir -p db
+curl -fsSL -o db/db-init.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/db-init.sh"
+curl -fsSL -o db/bootstrap.sql "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/bootstrap.sql"
+curl -fsSL -o db/pg_hba.conf "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/pg_hba.conf"
+curl -fsSL -o db/postgres-entrypoint.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/postgres-entrypoint.sh"
 sudo chgrp 10001 .env && chmod 640 .env
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 cat >> .env <<EOF
 SARD_PKI_SERVER_NAMES=$SARD_NAME
 SARD_AGENT_ENDPOINT=$SARD_NAME:9090

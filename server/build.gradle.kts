@@ -168,6 +168,9 @@ tasks.withType<Test>().configureEach {
     )
     // The PostgreSQL of an installation (DB1): the test databases use its image and initdb arguments.
     systemProperty("sard.test.postgres-pin-file", rootProject.file("deploy/postgres.env").path)
+    // The script that prepares a cluster for Sard (DB2): the tests run it as db-init and a DBA do.
+    systemProperty("sard.test.bootstrap-sql", rootProject.file("deploy/db/bootstrap.sql").path)
+    inputs.file(rootProject.file("deploy/db/bootstrap.sql"))
     // Every other image the tests run, pinned by digest (SC1).
     systemProperty("sard.test.images-file", rootProject.file("test/images.env").path)
     inputs.file(rootProject.file("test/images.env"))

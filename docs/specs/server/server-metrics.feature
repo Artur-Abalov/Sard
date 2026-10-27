@@ -540,6 +540,7 @@
       Когда клиент делает scrape
       Тогда в экспозиции есть sard_agents_connected, sard_agent_duplicate_sessions_total, sard_agent_clock_skew_seconds_count, sard_run_steps_queued, sard_run_steps_dispatched, sard_run_steps_redispatched_total, sard_run_steps_dispatch_failed_total, sard_run_step_logs_dropped_lines_total, sard_run_step_logs_truncated_total, sard_notify_pending, sard_scheduler_lag_seconds
       И sard_retention_deleted_total с каждым kind из step_log_partition, notification_delivery, schedule_fire, restore_verification, verification_job, run_step, run
+      # Поправка DB2 (ADR 0069): вместо restore_verification и verification_job — kind verification_evidence.
 
     @server
     Структура сценария: Существующая метрика с меткой появляется после своего события

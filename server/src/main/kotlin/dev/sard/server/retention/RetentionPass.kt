@@ -43,7 +43,8 @@ class RetentionTotals {
 
 /**
  * One pass of the cleaning (H1 phase 2): everything older than its term, bottom up along the foreign keys (log
- * partitions, deliveries, schedule fires, verifications with their jobs, run steps with their runs), batch by batch,
+ * partitions, deliveries, schedule fires, the evidence of old verifications, run steps with their runs), batch by
+ * batch,
  * until nothing eligible is left. The tenants are read across tenants (ADR 0013, system callers) and each batch is
  * one transaction of the tenant of its rows. Rows nothing may delete, and the rules that keep them, are in the SQL.
  */
@@ -76,7 +77,9 @@ class RetentionPass(
         for (name in logs.expired(now.minus(settings.stepLogs))) {
             runCatching { logs.drop(name) }
                 .onSuccess { dropped -> if (dropped) count(RetentionKind.STEP_LOG_PARTITION, 1, totals) }
-                .onFailure { log.error("Retention could not drop log partition {}: {}", name, describe(it)) }
+                .onFailure {
+                    log.warn("Retention could not drop log partition {}: {}; again next pass", name, describe(it))
+                }
         }
     }
 
@@ -99,9 +102,7 @@ class RetentionPass(
         batches(tenantId, totals, RetentionKind.NOTIFICATION_DELIVERY) { delete(it, DELIVERIES, tenantId, deliveries) }
         batches(tenantId, totals, RetentionKind.SCHEDULE_FIRE) { delete(it, DOWNTIME_FIRES, tenantId, fires) }
         batches(tenantId, totals, RetentionKind.SCHEDULE_FIRE) { delete(it, OTHER_FIRES, tenantId, fires) }
-        batches(tenantId, totals, RetentionKind.RESTORE_VERIFICATION, RetentionKind.VERIFICATION_JOB) {
-            deleteWith(it, VERIFICATIONS, tenantId, verifications)
-        }
+        batches(tenantId, totals, RetentionKind.VERIFICATION_EVIDENCE) { clearEvidence(it, tenantId, verifications) }
         batches(tenantId, totals, RetentionKind.RUN, RetentionKind.RUN_STEP) { deleteWith(it, RUNS, tenantId, runs) }
     }
 
@@ -137,6 +138,16 @@ class RetentionPass(
         tenantId: UUID,
         cutoff: Instant,
     ): List<Int> = listOf(session.createNativeMutationQuery(sql).bound(tenantId, cutoff).executeUpdate())
+
+    /** The records stay for good; what the verifier found in the older ones is cleared by the database (DB2, Р4). */
+    private fun clearEvidence(
+        session: Session,
+        tenantId: UUID,
+        cutoff: Instant,
+    ): List<Int> {
+        val cleared = session.createNativeQuery(CLEAR_VERIFICATION_EVIDENCE, Int::class.javaObjectType)
+        return listOf(cleared.bound(tenantId, cutoff).singleResult)
+    }
 
     private fun deleteWith(
         session: Session,

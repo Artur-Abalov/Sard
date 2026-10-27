@@ -14,33 +14,25 @@ import java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
 import java.nio.file.attribute.PosixFilePermissions
 
 private const val DOCS = "docs/operations/self-agent.md"
-private const val PASSWORD_FILE = "db-password"
 private const val TOKEN_FILE = "enroll-token"
 private const val STAGING = ".tmp-"
-private val PASSWORD_FORMAT = Regex("[0-9a-f]{64}")
 private val OWNER_FILE = PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE))
 
 /**
- * The directory shared with the agent next to the server (SARD_SELF_DIR): `db-password` and
- * `enroll-token`, each written whole through a staging file in the same directory and a rename, so a
- * reader sees the old content or the new one, never half. Throws [IllegalStateException] naming [dir]
- * when the server cannot write there.
+ * The directory shared with the agent next to the server (SARD_SELF_DIR): `enroll-token`, written whole through a
+ * staging file in the same directory and a rename, so a reader sees the old content or the new one, never half.
+ * The password of the agent's database role is not here: db-init puts it into a volume of its own (DB2), and the
+ * server neither writes nor reads it. Throws [IllegalStateException] naming [dir] when the server cannot write there.
  */
 class SelfChannel(
     private val dir: Path,
 ) {
     val tokenFile: Path = dir.resolve(TOKEN_FILE)
-    private val passwordFile: Path = dir.resolve(PASSWORD_FILE)
 
     init {
         check(Files.isDirectory(dir)) { unusable("is not a directory") }
         check(writable()) { unusable("is not writable by the server") }
     }
-
-    /** The password in the file, or null when there is none or it is not exactly 64 characters of 0-9a-f. */
-    fun readPassword(): String? = read(passwordFile)?.takeIf { PASSWORD_FORMAT.matches(it) }
-
-    fun writePassword(password: String) = write(passwordFile, password)
 
     /** The token string in the file, or null when there is no file. */
     fun readToken(): String? = read(tokenFile)

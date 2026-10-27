@@ -14,13 +14,16 @@ services:
   postgres:
     image: ${SARD_POSTGRES_IMAGE:-postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5}
     restart: unless-stopped
+    # The superuser sard has a password made at the start from /dev/urandom, kept nowhere, and pg_hba.conf refuses it
+    # on the network (DB2); see deploy/db/postgres-entrypoint.sh. An administrator comes in over the local socket:
+    # docker compose exec postgres psql -U sard.
+    entrypoint: ["sh", "/etc/sard/postgres-entrypoint.sh"]
     # The settings come from the file below, not from the one initdb wrote into the volume, so a new
     # value takes effect on a restart of this service.
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     environment:
       POSTGRES_DB: sard
       POSTGRES_USER: sard
-      POSTGRES_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
       # Read by initdb on an empty volume only (D25): page checksums, UTF8, the built-in C.UTF-8 locale.
       # A database created before stays as it was; the server warns about it at start.
       POSTGRES_INITDB_ARGS: --data-checksums --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C.UTF-8
@@ -28,13 +31,62 @@ services:
     configs:
       - source: postgresql-conf
         target: /etc/postgresql/postgresql.conf
+      - source: postgresql-hba
+        target: /etc/postgresql/pg_hba.conf
+      - source: postgres-entrypoint
+        target: /etc/sard/postgres-entrypoint.sh
     volumes:
       - postgres-data:/var/lib/postgresql
+      # The local socket, shared with db-init (the superuser's only way in).
+      - postgres-socket:/var/run/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sard -d sard"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+  # db-init (DB2, docs/operator/16-postgresql.md): once per `docker compose up`, as the superuser over the local
+  # socket: the roles, the schema "sard", who owns what, and a password for each role that logs in, written into the
+  # volume of the one service that reads it. The script and bootstrap.sql are files next to this one, in db/ (a release
+  # ships them beside docker-compose.yml, docs/operator/02-install.md). Repeatable: what exists stays. A failure stops the start here.
+  db-init:
+    image: ${SARD_POSTGRES_IMAGE:-postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5}
+    restart: "no"
+    entrypoint: ["sh", "/etc/sard/db-init.sh"]
+    configs:
+      - source: db-init-script
+        target: /etc/sard/db-init.sh
+      - source: bootstrap-sql
+        target: /etc/sard/bootstrap.sql
+    volumes:
+      - postgres-socket:/var/run/postgresql
+      - sard-db-migrate:/run/sard-db/migrate
+      - sard-db-app:/run/sard-db/app
+      - sard-db-backup:/run/sard-db/backup
+      - sard-self-channel:/run/sard-db/channel
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # migrate (DB2): the migrations as sard_migrator, which becomes sard_owner for them (lock_timeout 5 s). The server
+  # starts only after it succeeds and never migrates itself; only this service has the password of sard_migrator.
+  migrate:
+    # allow-unpinned: the release image of SARD_VERSION, signed with cosign (docs/operator/10-security.md)
+    image: ${SARD_IMAGE:-ghcr.io/artur-abalov/sard-server}:${SARD_VERSION:?set SARD_VERSION in .env}
+    restart: "no"
+    command: ["migrate"]
+    environment:
+      SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
+      SARD_MIGRATE_USER: sard_migrator
+      SARD_MIGRATE_PASSWORD_FILE: /run/sard-db/password
+    volumes:
+      - sard-db-migrate:/run/sard-db:ro
+    # A command, not a server: the image's HTTP check would fail.
+    healthcheck:
+      disable: true
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
 
   server:
     # allow-unpinned: the release image of SARD_VERSION, signed with cosign (docs/operator/10-security.md)
@@ -42,8 +94,9 @@ services:
     restart: unless-stopped
     environment:
       SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
-      SARD_DB_USER: sard
-      SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
+      # sard_app only reads and writes rows; its password is a file db-init wrote into a volume only this service has.
+      SARD_DB_USER: sard_app
+      SARD_DB_PASSWORD_FILE: /run/sard-db/password
       # "server", the name of this service, is always among them: the agent next to it (self-agent) dials it.
       SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1},server
       # A CA to take at the first start (a move to a new machine, ADR 0052): the path inside the container
@@ -79,13 +132,14 @@ services:
       SARD_METRICS_PORT: ${SARD_METRICS_PORT:-8081}
       SARD_METRICS_TOKEN: ${SARD_METRICS_TOKEN:-}
       SARD_METRICS_STATE_INTERVAL: ${SARD_METRICS_STATE_INTERVAL:-60s}
-      # The channel to self-agent: the server writes the password of the sard_self role and the agent's
-      # enrollment token here; only this service and self-agent mount the volume.
+      # The channel to self-agent: the server writes the agent's enrollment token here; only this service and
+      # self-agent mount the volume.
       SARD_SELF_DIR: /var/lib/sard/self
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
       - sard-self-channel:/var/lib/sard/self
+      - sard-db-app:/run/sard-db:ro
     ports:
       # REST API and console sessions. Plain HTTP, so by default only on the
       # host's loopback; SARD_HTTP_PUBLISH widens it.
@@ -96,6 +150,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
     # The image's HEALTHCHECK with a shorter interval, so `up --wait` returns
     # soon after the server is ready.
     healthcheck:
@@ -105,7 +163,7 @@ services:
       start_period: 10s
 
   # sard-self: the agent that backs up this installation (docs/operations/self-agent.md).
-  # It reads the database through a read-only role and the CA directory through a
+  # It reads the database as sard_backup, a read-only role whose password db-init put into a volume of its own, and the CA directory through a
   # read-only mount, and dials the server over this compose network, as any agent does.
   # It enrolls itself: the server writes its one-time token into the sard-self-channel
   # volume, which this service mounts read-only (no SARD_ENROLL_TOKEN here).
@@ -128,8 +186,15 @@ services:
       # container is the same agent.
       - sard-self-state:/var/lib/sard-self
       - sard-pki:/var/lib/sard/pki:ro
-      # The server's channel: the enrollment token and the database role's password, read-only.
+      # The server's channel: the enrollment token, read-only.
       - sard-self-channel:/run/sard-self:ro
+      # The password of sard_backup, laid over the placeholder db-init left in the channel (Docker Engine 26.0+, Compose 2.26+).
+      - type: volume
+        source: sard-db-backup
+        target: /run/sard-self/db-password
+        read_only: true
+        volume:
+          subpath: password
       # This installation's directory (.env, this file, docker-compose.override.yml), read-only: the
       # self-backup keeps it with the CA (F6). .env must be readable by uid/gid 10001:
       # chgrp 10001 .env && chmod 640 .env (docs/operator/02-install.md).
@@ -163,9 +228,27 @@ configs:
       log_lock_waits = on
       log_autovacuum_min_duration = 10s
       track_io_timing = on
+      hba_file = '/etc/postgresql/pg_hba.conf'
+
+  # The files of db/ next to this one; a release ships them under the same relative paths (docs/operator/02-install.md).
+  # postgresql-hba: who may connect how (DB2); db-init-script, bootstrap-sql: the db-init service;
+  # postgres-entrypoint: the random password of the superuser.
+  postgresql-hba:
+    file: ./db/pg_hba.conf
+  postgres-entrypoint:
+    file: ./db/postgres-entrypoint.sh
+  db-init-script:
+    file: ./db/db-init.sh
+  bootstrap-sql:
+    file: ./db/bootstrap.sql
 
 volumes:
   postgres-data:
+  postgres-socket:
+  # The passwords of the roles, one volume for each service that reads one (DB2): a service sees its own file only.
+  sard-db-migrate:
+  sard-db-app:
+  sard-db-backup:
   sard-pki:
   sard-self-channel:
   sard-self-config:

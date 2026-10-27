@@ -79,7 +79,7 @@ main `545331b0`.
 6. «Ломать текущие установки можно, делать как правильно»: к серверу в сети
    по умолчанию verify-full, `require` и `disable` — только по `--allow-tls`.
 7. CA в привязке (`--ca-file`); пути, которые задаёт сервер, — отдельный
-   пункт: OQ-261.
+   пункт: OQ-262.
 8. libpq < 16: сеть — отказ с подсказкой, сокет — работает. — да.
 9. Секретов без привязки нет, старых установок нет: переходного режима и
    предупреждений нет, привязка обязательна.
@@ -107,7 +107,7 @@ main `545331b0`.
   [--ca-file] [--allow-no-channel-binding]`, `PLUGIN_UNKNOWN`; `secret list`
   (BOUND_TO, `binding` в `--json`); `secret remove` удаляет привязку.
 - Спецификация `docs/specs/agent/secret-binding.feature`, черновик ADR
-  `docs/adr/00XX-draft-secret-binding.md`, OQ-261.
+  `docs/adr/00XX-draft-secret-binding.md`, OQ-262.
 
 ### Проверено
 - Сценарий 1 (цель вне привязки → отказ до подключения): `binding_test.go`,

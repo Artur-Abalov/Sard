@@ -45,7 +45,7 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
    → завершается с кодом 0 не позднее чем через 3 минуты; `$DC ps` — `postgres`,
    `server`, `self-agent` в состоянии `running`, у `postgres` и `server` —
    `healthy`.
-2. До мастера в канале нет токена (`chan` — только `db-password`) и сосед ждёт. Мастер
+2. До мастера в канале нет токена (`chan` — только пустой `db-password`, заглушка `db-init`) и сосед ждёт. Мастер
    по коду из лога (F4a; шаг CA выдаёт встроенный токен): `source scripts/lib/setup-wizard.sh;
    sard_complete_wizard http://localhost:8080 qa-admin-password-2026 $DC logs server`
    → код возврата 0; `login` → `204`.
@@ -59,15 +59,15 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
 6. `$DC logs self-agent | grep -c 'waiting for the enrollment token in /run/sard-self/enroll-token'`
    → `0` или `1` (не больше одной строки за запуск контейнера).
 7. `chan`
-   → в каталоге только `db-password` (`-rw-------`, владелец uid 10001);
-   файла `enroll-token` нет; каталог `drwx------`, владелец uid 10001.
-8. `$DC exec -T server sh -c 'wc -c < /var/lib/sard/self/db-password; grep -Ec "^[0-9a-f]{64}$" /var/lib/sard/self/db-password'`
-   → `64` и `1`.
-9. `P=$($DC exec -T server cat /var/lib/sard/self/db-password); $DC exec -T -e PGPASSWORD="$P" postgres psql -h localhost -U sard_self -d sard -At -c 'select 1'`
+   → в каталоге только пустой `db-password` (заглушка `db-init`, ADR 0069); файла
+   `enroll-token` нет; каталог `drwx------`, владелец uid 10001.
+8. `$DC exec -T self-agent sh -c 'wc -c < /run/sard-self/db-password; grep -Ec "^[0-9a-f]{64}$" /run/sard-self/db-password'`
+   → `64` и `1` (пароль `sard_backup`, файл тома `sard-db-backup`, смонтированный поверх заглушки).
+9. `P=$($DC exec -T self-agent cat /run/sard-self/db-password); $DC exec -T -e PGPASSWORD="$P" postgres psql -h localhost -U sard_backup -d sard -At -c 'select 1'`
    → `1`.
-10. `$DC exec -T -e PGPASSWORD=wrong postgres psql -h localhost -U sard_self -d sard -At -c 'select 1'`
-    → `password authentication failed for user "sard_self"`.
-11. `$PSQL "select left(rolpassword, 14) from pg_authid where rolname = 'sard_self'"`
+10. `$DC exec -T -e PGPASSWORD=wrong postgres psql -h localhost -U sard_backup -d sard -At -c 'select 1'`
+    → `password authentication failed for user "sard_backup"`.
+11. `$PSQL "select left(rolpassword, 14) from pg_authid where rolname = 'sard_backup'"`
     → `SCRAM-SHA-256$`.
 12. `$DC logs | grep -cF "$P"` → `0`.
 13. `$PSQL "select count(*) from agents where builtin and revoked_at is null"` → `1`;
@@ -86,7 +86,7 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
     → `id` = `$X`, `status` = `online`; `btokens` → `$B`.
 17. `$DC restart server`; дождаться `healthy`; `login`; через 30 с `builtin`
     → `id` = `$X`; `btokens` → `$B`; `chan` → `enroll-token` нет;
-    `$DC exec -T server cat /var/lib/sard/self/db-password` → равно `$P` (пароль
+    `$DC exec -T self-agent cat /run/sard-self/db-password` → равно `$P` (пароль
     переживает перезапуск); шаг 9 снова → `1`.
 
 ## Часть 3. Встроенный токен и канал (проверка 4)
@@ -132,11 +132,12 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
     `$DC exec -T self-agent sh -c 'rm /run/sard-self/db-password'` → `Read-only file system`;
     `$DC exec -T self-agent sh -c 'touch /var/lib/sard/pki/ca/x'` → `Read-only file system`.
 27. `$DC config --format json | jq -c '[.services | to_entries[] | {svc: .key, m: [.value.volumes[]? | select(.source == "sard-self-channel") | {target, read_only}]} | select(.m | length > 0)]'`
-    → ровно `server` (target `/var/lib/sard/self`, без `read_only`) и
-    `self-agent` (target `/run/sard-self`, `read_only: true`); у `postgres` тома нет.
+    → ровно `server` (target `/var/lib/sard/self`, без `read_only`), `self-agent`
+    (target `/run/sard-self`, `read_only: true`) и `db-init` (target `/run/sard-db/channel`, разово,
+    кладёт заглушку `db-password`); у `postgres` тома нет.
 28. `$DC config --format json | jq -r '.services["self-agent"].command | join(" ")'`
     → `--config /etc/sard/self/agent.yaml --enroll-token-file /run/sard-self/enroll-token`.
-29. `$DC logs | grep -cF "$S"` → `0`; `$DC logs | grep -cF "$($DC exec -T server cat /var/lib/sard/self/db-password)"` → `0`.
+29. `$DC logs | grep -cF "$S"` → `0`; `$DC logs | grep -cF "$($DC exec -T self-agent cat /run/sard-self/db-password)"` → `0`.
 
 ## Часть 4. Отзыв встроенного агента и повторная регистрация
 

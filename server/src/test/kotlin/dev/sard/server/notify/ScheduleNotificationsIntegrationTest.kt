@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.notify.telegram.FakeBotApi
 import dev.sard.server.notify.telegram.TEST_TOKEN
@@ -129,7 +130,7 @@ class ScheduleNotificationsIntegrationTest(
 
     @AfterTest
     fun `drop the tenant`() {
-        jdbc.execute("drop trigger if exists fail_alert_fires on schedule_fires")
+        TestAdmin.of(jdbc).execute("drop trigger if exists fail_alert_fires on schedule_fires")
         jdbc.update("delete from notification_deliveries where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedule_fires where tenant_id = ?", tenant.id)
         jdbc.update("update runs set schedule_id = null where tenant_id = ?", tenant.id)
@@ -412,13 +413,13 @@ class ScheduleNotificationsIntegrationTest(
         runs.start(tenant.id, source)
         fireNight(1)
         fireNight(2)
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             """
             create or replace function fail_alert_fire() returns trigger language plpgsql as
             ${'$'}${'$'} begin if new.alert then raise exception 'server stopped'; end if; return new; end ${'$'}${'$'}
             """.trimIndent(),
         )
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             "create trigger fail_alert_fires before insert on schedule_fires " +
                 "for each row execute function fail_alert_fire()",
         )
@@ -436,11 +437,11 @@ class ScheduleNotificationsIntegrationTest(
     fun `Сбой базы во время отправки алерта не теряет его`() {
         val (_, schedule) = scheduleOf()
         alertRow(schedule)
-        jdbc.execute("alter table notification_deliveries rename to notification_deliveries_off")
+        TestAdmin.of(jdbc).execute("alter table notification_deliveries rename to notification_deliveries_off")
         try {
             assertFailsWith<Exception> { tick() }
         } finally {
-            jdbc.execute("alter table notification_deliveries_off rename to notification_deliveries")
+            TestAdmin.of(jdbc).execute("alter table notification_deliveries_off rename to notification_deliveries")
         }
 
         ticks(1)

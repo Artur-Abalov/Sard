@@ -72,7 +72,7 @@ class ExistingMetricsExpositionTest {
         for (kind in RetentionKind.entries) {
             assertEquals(0.0, now.value("sard_retention_deleted_total", "kind" to kind.tag), kind.tag)
         }
-        assertEquals(7, now.series("sard_retention_deleted_total").size)
+        assertEquals(6, now.series("sard_retention_deleted_total").size)
     }
 
     @Test

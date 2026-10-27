@@ -5,6 +5,7 @@ package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.HibernateTenantBridge
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RestoreScene.Companion.PG_BACKUP
@@ -41,7 +42,7 @@ private val SQ_AT: Instant = Instant.parse("2026-10-11T03:00:00Z")
  * a plugin.
  */
 @Tag("mutflow-isolated")
-@MutFlowTest
+@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0"],

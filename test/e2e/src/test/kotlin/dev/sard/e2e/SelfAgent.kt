@@ -28,7 +28,7 @@ internal class SelfAgent(
     private val installVolume = sard.volume()
 
     /** What `.env` holds; its content must come back from the snapshot byte for byte. */
-    val envFile = "SARD_VERSION=e2e\nSARD_DB_PASSWORD=${UUID.randomUUID()}\nSARD_TELEGRAM_BOT_TOKEN=123:${UUID.randomUUID()}\n"
+    val envFile = "SARD_VERSION=e2e\nSARD_TELEGRAM_BOT_TOKEN=123:${UUID.randomUUID()}\n"
 
     val container: GenericContainer<*> =
         sard.track(
@@ -50,7 +50,6 @@ internal class SelfAgent(
 
     init {
         sard.secret(envFile.lines()[1].substringAfter('='))
-        sard.secret(envFile.lines()[2].substringAfter('='))
         fillInstallDirectory()
     }
 
