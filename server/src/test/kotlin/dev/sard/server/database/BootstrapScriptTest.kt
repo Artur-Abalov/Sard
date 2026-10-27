@@ -257,4 +257,50 @@ class BootstrapScriptTest {
             cluster.catalog(restored).replace(restored, "DB"),
         )
     }
+
+    @Test
+    fun `Отзыв функций больших объектов в template1 до создания базы позволяет роли с CREATEROLE пройти скрипт`() {
+        admin(
+            "create role dba login createrole password 'dba'",
+            "grant pg_read_all_data to dba with admin option",
+            "grant pg_monitor to dba with admin option",
+        )
+        revokeLargeObjectFunctionsFromPublic("template1")
+        val db = cluster.newDatabase()
+        admin("alter database $db owner to dba")
+
+        runAsDba(db)
+
+        assertTrue("schema sard owner=sard_owner" in cluster.catalog(db), cluster.catalog(db))
+    }
+
+    @Test
+    fun `Неудачный запуск скрипта bootstrap оставляет базу как была`() {
+        val byDba = createroleDatabase()
+        revokeLargeObjectFunctionsFromPublic(byDba)
+        admin(
+            "create role sard_owner login",
+            "create role sard_app nologin createrole connection limit 3",
+            "create role sard_backup login",
+            "grant sard_owner to dba with admin option",
+            "grant sard_app to dba with admin option",
+            "grant sard_backup to dba with admin option",
+            "grant pg_write_all_data to sard_app",
+        )
+        admin(
+            "create schema sard authorization sard_owner",
+            "create table sard.stray (id int)",
+            "alter schema sard owner to dba",
+            "grant all on schema sard to public",
+            database = byDba,
+        )
+        val before = cluster.catalog(byDba)
+
+        val failure = runCatching { runAsDba(byDba) }.exceptionOrNull()
+
+        assertTrue("sard_app is a member of pg_write_all_data" in failure?.message.orEmpty(), failure?.message)
+        assertEquals(before, cluster.catalog(byDba))
+        val stray = "stray kind=r owner=${cluster.container.username}"
+        assertTrue("role sard_app login=false" in before && stray in before, before)
+    }
 }
