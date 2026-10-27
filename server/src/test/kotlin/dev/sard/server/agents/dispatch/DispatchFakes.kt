@@ -31,6 +31,7 @@ internal fun step(
     dispatchedAt: Instant? = null,
     agent: UUID = AGENT.agentId,
     action: Action = Action.BACKUP,
+    cancelRequested: Boolean = false,
 ) = StepView(
     id = UUID(0, n),
     ordinal = 0,
@@ -44,6 +45,7 @@ internal fun step(
     queuedAt = DISPATCH_NOW,
     dispatchedAt = dispatchedAt,
     runId = UUID(8, n),
+    cancelRequested = cancelRequested,
 )
 
 /**
@@ -182,6 +184,10 @@ internal class FakeLinks : AgentLinks {
     val sent = mutableListOf<RunStep>()
     val answers = ArrayDeque<SendResult>()
 
+    /** The command ids of the CancelSteps the sessions queued; [cancelAnswers] says what each send returns. */
+    val cancelled = mutableListOf<String>()
+    val cancelAnswers = ArrayDeque<SendResult>()
+
     override fun connected() = sessions.toList()
 
     override fun online(agentId: UUID) = agentId in online
@@ -194,6 +200,17 @@ internal class FakeLinks : AgentLinks {
         if (answer == SendResult.Queued) sent += step
         return answer
     }
+
+    override fun cancel(
+        agentId: UUID,
+        commandId: String,
+    ): SendResult {
+        val answer = cancelAnswers.removeFirstOrNull() ?: SendResult.Queued
+        if (answer == SendResult.Queued) cancelled += commandId
+        return answer
+    }
+
+    fun cancelledIds() = cancelled.map { UUID.fromString(it).leastSignificantBits }
 
     fun sentIds() = sent.map { UUID.fromString(it.commandId).leastSignificantBits }
 }

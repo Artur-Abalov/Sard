@@ -14,7 +14,15 @@ import java.util.UUID
 private val log = LoggerFactory.getLogger(StepResults::class.java)
 
 private const val OWN_STEP = "from RunStepRecord where id = :step and agentId = :agent"
-private const val STATUS = "select status from run_steps where tenant_id = :tenant and id = :step"
+private const val STATUS =
+    "select s.status, r.cancel_result from run_steps s join runs r on r.tenant_id = s.tenant_id and r.id = s.run_id " +
+        "where s.tenant_id = :tenant and s.id = :step"
+
+// What the agent sent after the server closed the step as cancelled (its agent did not confirm the cancel, J1a):
+// its status is kept once, with the output when there is one; the step's and the run's status stay.
+private const val KEEP_LATE_CANCELLED =
+    "update run_steps set late_status = :late, output = cast(:output as jsonb) " +
+        "where tenant_id = :tenant and id = :step and status = 'cancelled' and late_status is null"
 private const val KEEP_LATE =
     "update run_steps set output = cast(:output as jsonb) " +
         "where tenant_id = :tenant and id = :step and status = 'lost' and output is null"
@@ -130,24 +138,60 @@ class StepResults(
         step: RunStepRecord,
         verdict: Verdict,
     ): Recorded =
-        when (status(session, tenantId, step.id)) {
-            StepState.LOST -> Recorded.Late(keepLate(session, step, verdict))
-            StepState.QUEUED -> Recorded.NotDispatched
-            else -> Recorded.Repeated
+        closed(session, tenantId, step.id).let { (state, cancel) ->
+            when (state) {
+                StepState.LOST -> Recorded.Late(keepLate(session, step, verdict))
+                StepState.QUEUED -> Recorded.NotDispatched
+                StepState.CANCELLED -> afterCancel(session, step, verdict, cancel)
+                else -> Recorded.Repeated
+            }
         }
 
-    private fun status(
+    /**
+     * A step cancelled whose agent never confirmed it keeps what the agent sends later (J1a, Р-J8); one the agent
+     * confirmed, or cancelled in the queue, had its result already.
+     */
+    private fun afterCancel(
+        session: Session,
+        step: RunStepRecord,
+        verdict: Verdict,
+        cancelResult: String?,
+    ): Recorded {
+        if (cancelResult != CancelResult.UNCONFIRMED.stored) return Recorded.Repeated
+        return keepLateCancelled(session, step, verdict)
+    }
+
+    private fun keepLateCancelled(
+        session: Session,
+        step: RunStepRecord,
+        verdict: Verdict,
+    ): Recorded {
+        val output = verdict.output
+        val moved =
+            session
+                .createNativeMutationQuery(KEEP_LATE_CANCELLED)
+                .setParameter("late", verdict.outcome.status.stored)
+                .setParameter("output", output?.json(), String::class.java)
+                .setParameter("tenant", step.tenantId)
+                .setParameter("step", step.id)
+                .executeUpdate() == 1
+        if (moved) snapshot(session, step, verdict)
+        return Recorded.Late(moved && output != null)
+    }
+
+    /** The step's status, and how the cancel of its run ended if there was one. */
+    private fun closed(
         session: Session,
         tenantId: UUID,
         stepId: UUID,
-    ): StepState {
-        val stored =
+    ): Pair<StepState, String?> {
+        val row =
             session
-                .createNativeQuery(STATUS, String::class.java)
+                .createNativeQuery(STATUS, Array<Any?>::class.java)
                 .setParameter("tenant", tenantId)
                 .setParameter("step", stepId)
                 .singleResult
-        return StepState.of(stored)
+        return StepState.of(row[0] as String) to row[1] as String?
     }
 
     /** A lost step keeps its status; the output of its late result is stored once (S7a, answer 1). */

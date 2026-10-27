@@ -600,6 +600,7 @@ function backupStep(facts: StepFacts): Schemas['RunStep'] {
     backup: null,
     restore: null,
     restoreOutcome: null,
+    lateStatus: null,
     queuedAt: facts.queuedAt,
     dispatchedAt: facts.startedAt === null ? null : facts.queuedAt,
     startedAt: facts.startedAt,
@@ -612,6 +613,15 @@ const NAMES: Record<string, string> = {
   [ids.homeSource]: 'web2 /home',
   [ids.srvSource]: 'web2 /srv',
   [ids.oldSource]: 'db1 old',
+}
+
+/** What the server calls the run: a failed one is told by its step (timed out, rejected, lost). */
+function outcomeOf(
+  status: Schemas['RunStatus'],
+  step: Schemas['StepStatus'],
+): Schemas['RunOutcome'] {
+  const failures: Schemas['StepStatus'][] = ['timed_out', 'rejected', 'lost']
+  return status === 'failed' && failures.includes(step) ? (step as Schemas['RunOutcome']) : status
 }
 
 /** A run of [sourceId] with one backup step; the run's times and message follow the step's. */
@@ -640,6 +650,8 @@ function runOf(
     kind: 'backup',
     requestedBy: (extra.trigger ?? 'manual') === 'manual' ? 'admin' : null,
     restore: null,
+    outcome: outcomeOf(status, step.status),
+    cancellation: null,
     ...extra,
   }
 }

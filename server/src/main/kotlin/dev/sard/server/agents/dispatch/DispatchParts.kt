@@ -29,6 +29,12 @@ interface AgentLinks {
         agentId: UUID,
         step: RunStep,
     ): SendResult
+
+    /** Queues a CancelStep for the step [commandId] on the agent's session (J1a); the same meaning of Queued. */
+    fun cancel(
+        agentId: UUID,
+        commandId: String,
+    ): SendResult
 }
 
 /** `sard.run.steps.*` (S6a). */

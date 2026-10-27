@@ -131,6 +131,19 @@ class RunsConfiguration {
     ) = Runs(sessions, clock, UuidV7(clock, SecureRandom()), queued.getIfUnique { StepsQueued.NONE })
 }
 
+/** Cancel of a run (J1a): the endpoint's service; the dispatcher, if there is one, sends the agent its CancelStep. */
+@Configuration(proxyBeanMethods = false)
+class RunCancelsConfiguration {
+    @Bean
+    fun runCancels(
+        sessions: TenantSessions,
+        runs: Runs,
+        clock: Clock,
+        cancelled: ObjectProvider<StepsCancelled>,
+        announcer: RunAnnouncer,
+    ) = RunCancels(sessions, runs, clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer)
+}
+
 /** Restore from the console (R2a): the service behind the restore endpoints. */
 @Configuration(proxyBeanMethods = false)
 class RestoresConfiguration {

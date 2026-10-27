@@ -30,6 +30,8 @@ const KNOWN: Record<ErrorCode, true> = {
   snapshot_not_restorable: true,
   invalid_config: true,
   run_active: true,
+  run_finished: true,
+  run_not_cancellable: true,
   token_used: true,
   token_expired: true,
   not_implemented: true,

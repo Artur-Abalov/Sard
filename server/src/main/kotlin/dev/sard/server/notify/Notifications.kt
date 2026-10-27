@@ -48,6 +48,8 @@ data class RunNotice(
     val kind: RunKind = RunKind.BACKUP,
     /** What a restore restored; null for a backup. */
     val restore: RestoreNotice? = null,
+    /** A person asked to cancel the run (J1a): what became of the cancel is not told (ВJ4). */
+    val cancelRequested: Boolean = false,
 )
 
 /** The snapshot a restore run restores and what its step reported of it; [result] is null when it reported none. */
@@ -88,12 +90,18 @@ enum class Telling {
     ;
 
     companion object {
-        /** Null when the run needs no notification: a scheduled run in the middle of a series, a verification. */
+        /**
+         * Null when the run needs no notification: a scheduled run in the middle of a series, a verification, a run
+         * its person cancelled and it ended cancelled (J1a, ВJ4: the person knows; this overrides ВК39 and S9b).
+         */
         fun of(notice: RunNotice): Telling? =
-            if (notice.kind == RunKind.RESTORE) {
-                RESULT // a restore is a person's act and is always told: no series, no skipping (ВК39)
-            } else {
-                ofBackup(notice)
+            when {
+                notice.cancelRequested && notice.status == RunState.CANCELLED -> null
+
+                notice.kind == RunKind.RESTORE -> RESULT
+
+                // a restore is a person's act and is always told (ВК39)
+                else -> ofBackup(notice)
             }
 
         private fun ofBackup(notice: RunNotice): Telling? =

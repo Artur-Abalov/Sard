@@ -17,6 +17,7 @@ import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunViews
+import dev.sard.server.runs.StepView
 import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.FireOutcome
 import dev.sard.server.scheduler.FireReason
@@ -151,14 +152,18 @@ internal object Notices {
             failuresBefore = failuresBefore(session, run),
             notifyOnSuccess = notifiesOnSuccess(session, run),
             kind = RunKind.of(run.kind),
-            restore =
-                run.restore
-                    ?.let {
-                        RunViews.restoreInfo(
-                            it,
-                        )
-                    }?.let { RestoreNotice(it.snapshotId, it.snapshotCreatedAt, stepView.restore) },
+            cancelRequested = run.cancelRequestedAt != null,
+            restore = restoreNotice(run, stepView),
         )
+    }
+
+    /** What a restore run restored; null for a backup. */
+    private fun restoreNotice(
+        run: RunRecord,
+        step: StepView,
+    ): RestoreNotice? {
+        val info = run.restore?.let(RunViews::restoreInfo) ?: return null
+        return RestoreNotice(info.snapshotId, info.snapshotCreatedAt, step.restore)
     }
 
     private fun notifiesOnSuccess(

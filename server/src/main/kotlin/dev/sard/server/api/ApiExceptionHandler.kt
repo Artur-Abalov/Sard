@@ -8,6 +8,9 @@ import dev.sard.server.runs.AgentRevoked
 import dev.sard.server.runs.AgentRoleMismatch
 import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RunActive
+import dev.sard.server.runs.RunAlreadyFinished
+import dev.sard.server.runs.RunNotCancellable
+import dev.sard.server.runs.RunNotFound
 import dev.sard.server.runs.SourceNameTaken
 import dev.sard.server.runs.SourceNotFound
 import dev.sard.server.runs.SystemSourceProtected
@@ -186,6 +189,22 @@ class SourceExceptionHandler {
         field: String,
         message: String,
     ) = unprocessableResponse(code, listOf(FieldError(field, message)))
+}
+
+/** Cancel of a run (J1a): what the domain refuses. */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+class RunExceptionHandler {
+    @ExceptionHandler(RunNotFound::class)
+    fun notFound(): ResponseEntity<Problem> = notFoundResponse()
+
+    @ExceptionHandler(RunAlreadyFinished::class)
+    fun finished(): ResponseEntity<Problem> = conflict(ErrorCode.RUN_FINISHED)
+
+    @ExceptionHandler(RunNotCancellable::class)
+    fun notCancellable(): ResponseEntity<Problem> = conflict(ErrorCode.RUN_NOT_CANCELLABLE)
+
+    private fun conflict(code: ErrorCode) = problemResponse(HttpStatus.CONFLICT, "Conflict", code)
 }
 
 /** The self-backup (F6): its system sources, what binding its repository and "back up now" refuse. */

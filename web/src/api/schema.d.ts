@@ -310,6 +310,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a run
+         * @description A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished; a restore verification answers 409 run_not_cancellable.
+         */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/setup-session": {
         parameters: {
             query?: never;
@@ -877,7 +897,7 @@ export interface components {
             timezone: string;
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable" | "run_finished" | "run_not_cancellable";
         /** @description A field of the request that failed validation */
         FieldError: {
             /** @description JSON name of the field, e.g. repositoryName */
@@ -1256,6 +1276,17 @@ export interface components {
             /** @description What the server noticed: the number of files or the size fell by more than 30% since the last snapshot of the source. The backup still succeeded */
             warnings: string[];
         };
+        /** @enum {string} */
+        CancelResult: "pending" | "cancelled" | "unconfirmed" | "finished_first";
+        /** @description A cancel somebody asked for */
+        Cancellation: {
+            /** Format: date-time */
+            requestedAt: string;
+            /** @description "admin" for any session of the open core, which has one administrator */
+            requestedBy: string;
+            /** @description pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result */
+            result: components["schemas"]["CancelResult"];
+        };
         /** @description What a catch-up run stands for: the fires missed while the server was down */
         CatchUp: {
             /**
@@ -1352,9 +1383,15 @@ export interface components {
             requestedBy: string | null;
             /** @description Set for a restore run; null for a backup */
             restore: components["schemas"]["RunRestore"] | null;
+            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed) */
+            outcome: components["schemas"]["RunOutcome"];
+            /** @description Set once somebody asked to cancel the run; null otherwise */
+            cancellation: components["schemas"]["Cancellation"] | null;
         };
         /** @enum {string} */
         RunKind: "backup" | "restore";
+        /** @enum {string} */
+        RunOutcome: "queued" | "dispatched" | "running" | "cancelling" | "succeeded" | "failed" | "timed_out" | "rejected" | "lost" | "cancelled" | "cancel_unconfirmed";
         /** @description What a restore run restores */
         RunRestore: {
             /** @description restic snapshot id */
@@ -1426,6 +1463,8 @@ export interface components {
             startedAt: string | null;
             /** Format: date-time */
             finishedAt: string | null;
+            /** @description What the agent reported after the server closed the step as cancelled (its agent did not confirm the cancel); null when nothing came. The step's and the run's status do not change */
+            lateStatus: components["schemas"]["StepStatus"] | null;
         };
         /** @enum {string} */
         StepAction: "backup" | "restore" | "verify" | "run";
@@ -2066,6 +2105,8 @@ export interface components {
             kind: components["schemas"]["RunKind"];
             /** @description Who started a manual run: "admin" in the open core, which has one administrator; null for a schedule */
             requestedBy: string | null;
+            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed) */
+            outcome: components["schemas"]["RunOutcome"];
         };
         /** @enum {string} */
         LogLevel: "debug" | "info" | "warn" | "error";
@@ -3813,6 +3854,73 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description run_finished: the run is final, nothing to cancel; run_not_cancellable: the server does not cancel this kind of run yet (a restore verification). Nothing was changed; or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */

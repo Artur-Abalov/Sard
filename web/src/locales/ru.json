@@ -127,6 +127,8 @@
     "unknown_repository": "Агент не сообщает этот репозиторий",
     "invalid_config": "Конфигурация источника не подходит",
     "run_active": "У источника уже идёт запуск",
+    "run_finished": "Запуск уже завершён: отменять нечего",
+    "run_not_cancellable": "Сервер пока не умеет отменять запуски такого вида",
     "token_used": "Токен уже использован",
     "token_expired": "Срок токена истёк",
     "origin_rejected": "Запрос отклонён: адрес страницы не совпадает",
@@ -289,6 +291,25 @@
       "succeeded": "успешно",
       "failed": "ошибка",
       "cancelled": "отменён"
+    },
+    "RunOutcome": {
+      "queued": "в очереди",
+      "dispatched": "передан агенту",
+      "running": "выполняется",
+      "cancelling": "отменяется",
+      "succeeded": "успешно",
+      "failed": "ошибка",
+      "timed_out": "превышен срок",
+      "rejected": "отклонён",
+      "lost": "потерян",
+      "cancelled": "отменён",
+      "cancel_unconfirmed": "отменён (агент не подтвердил)"
+    },
+    "CancelResult": {
+      "pending": "ждём агента",
+      "cancelled": "отменён",
+      "unconfirmed": "агент не подтвердил",
+      "finished_first": "агент завершил раньше"
     },
     "StepStatus": {
       "queued": "в очереди",

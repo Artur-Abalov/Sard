@@ -13,6 +13,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.retention.RetentionPass
 import dev.sard.server.runs.PLUGIN
 import dev.sard.server.runs.RUNS_NOW
+import dev.sard.server.runs.RunCancels
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
@@ -78,6 +79,7 @@ class RunNotificationsIntegrationTest(
     @Autowired private val runs: Runs,
     @Autowired private val steps: StepTransitions,
     @Autowired private val results: StepResults,
+    @Autowired private val cancels: RunCancels,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val retention: RetentionPass,
@@ -526,6 +528,59 @@ class RunNotificationsIntegrationTest(
         assertFalse("no NotificationFormatter bean" in output.all)
     }
 
+    // --- J1a: a person's cancel is never told (ВJ4)
+
+    /** The run's person cancelled it; its agent confirmed, or never did and the lost window closed the step. */
+    private fun cancelledAfterStart(
+        run: UUID,
+        step: UUID,
+        confirmed: Boolean,
+    ) {
+        cancels.cancel(tenant.id, run)
+        clock.now = clock.now.plusSeconds(150)
+        if (confirmed) {
+            results.record(tenant.id, tenant.agentId, step, StepReport(StepState.CANCELLED, null, null))
+        } else {
+            jdbc.update("update run_steps set lost_deadline = ? where id = ?", Timestamp.from(clock.now), step)
+            assertTrue(steps.lost(tenant.id, step))
+        }
+    }
+
+    @Test
+    fun `Отмена человеком не уведомляет`() {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        for (confirmed in listOf(true, false)) {
+            clock.now = RUNS_NOW
+            val backup = runs.start(tenant.id, sources.create(tenant.id, tenant.draft("db-$confirmed")).id)
+            val backupStep = backup.steps.single().id
+            assertTrue(steps.claim(tenant.id, backupStep))
+            assertTrue(steps.accepted(tenant.id, backupStep, "accepted"))
+            cancelledAfterStart(backup.id, backupStep, confirmed)
+            val (restore, restoreStep) = restoring(source, 1)
+            cancelledAfterStart(restore, restoreStep, confirmed)
+
+            ticks()
+
+            assertEquals(listOf("skipped", "skipped"), listOf(backup.id, restore).map(::status), "confirmed $confirmed")
+        }
+        assertEquals(0, fake.requests.size)
+    }
+
+    @Test
+    fun `Ошибка по расписанию после отмены человеком уведомляет как первая ошибка серии`() {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        val failure = StepReport(StepState.FAILED, "disk full", null)
+        scheduled(source, failure, 0)
+        clock.now = RUNS_NOW.plusSeconds(3600)
+        val cancelled = runs.start(tenant.id, source)
+        jdbc.update("update runs set trigger = 'schedule' where id = ?", cancelled.id)
+        cancels.cancel(tenant.id, cancelled.id)
+
+        val last = scheduled(source, failure, 2)
+
+        assertEquals("delivered", status(last))
+    }
+
     // --- R2a: a restore is told always, and is not a part of the series of a source
 
     /** A restore run of [sourceId] that ends with [report] 2 min 30 s after it was queued, [hour] hours after T0. */
@@ -534,6 +589,17 @@ class RunNotificationsIntegrationTest(
         report: StepReport,
         hour: Long,
     ): UUID {
+        val (run, step) = restoring(sourceId, hour)
+        clock.now = clock.now.plusSeconds(150)
+        results.record(tenant.id, tenant.agentId, step, report)
+        return run
+    }
+
+    /** A restore run (and its step) of [sourceId] queued [hour] hours after T0 that its agent is running. */
+    private fun restoring(
+        sourceId: UUID,
+        hour: Long,
+    ): Pair<UUID, UUID> {
         clock.now = RUNS_NOW.plusSeconds(3600 * hour)
         val run = UUID.randomUUID()
         val step = UUID.randomUUID()
@@ -564,9 +630,7 @@ class RunNotificationsIntegrationTest(
         )
         assertTrue(steps.claim(tenant.id, step))
         assertTrue(steps.accepted(tenant.id, step, "restoring"))
-        clock.now = clock.now.plusSeconds(150)
-        results.record(tenant.id, tenant.agentId, step, report)
-        return run
+        return run to step
     }
 
     private val restoredFiles = StepOutput.Restore("/r/etc/x", filesRestored = 2, bytesRestored = 1536)

@@ -42,6 +42,7 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     backup: null,
     restore: null,
     restoreOutcome: null,
+    lateStatus: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,
@@ -64,6 +65,8 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     kind: 'backup',
     requestedBy: 'admin',
     restore: null,
+    outcome: 'queued',
+    cancellation: null,
   }
   return run
 }

@@ -98,6 +98,7 @@ class ApiSerializationIntegrationTest(
             at,
             at,
             at,
+            lateStatus = StepStatus.SUCCEEDED,
         )
     private val queuedStep =
         RunStep(
@@ -122,6 +123,7 @@ class ApiSerializationIntegrationTest(
             dispatchedAt = null,
             startedAt = null,
             finishedAt = null,
+            lateStatus = null,
         )
     private val source =
         Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null, true, null, null, null)
@@ -218,6 +220,7 @@ class ApiSerializationIntegrationTest(
             catchUp = null,
             kind = RunKind.BACKUP,
             requestedBy = "admin",
+            outcome = RunOutcome.TIMED_OUT,
         )
 
     private fun onboarding(
@@ -465,6 +468,8 @@ class ApiSerializationIntegrationTest(
                 kind = RunKind.RESTORE,
                 requestedBy = "admin",
                 restore = RunRestore("4f1c", at, "main", mapOf("destination" to "etc/x"), "/r/etc/x"),
+                outcome = RunOutcome.CANCELLING,
+                cancellation = Cancellation(at, "admin", CancelResult.PENDING),
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
             LogPage(
@@ -594,6 +599,7 @@ class ApiSerializationIntegrationTest(
                 "ReleaseKey",
                 "FirstSteps",
                 "AgentCertificate",
+                "Cancellation",
                 "AgentPlugin",
                 "AgentRepository",
                 "VerifierSetupEntry",

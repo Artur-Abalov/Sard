@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents.dispatch
 
+import dev.sard.proto.agent.v1.CancelStep
 import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.proto.agent.v1.RunStep
 import dev.sard.server.agents.stream.AgentConnections
@@ -19,6 +20,7 @@ import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepCounts
 import dev.sard.server.runs.StepDeadlines
 import dev.sard.server.runs.StepTransitions
+import dev.sard.server.runs.StepsCancelled
 import dev.sard.server.runs.StepsQueued
 import dev.sard.server.runs.WaitingSteps
 import io.micrometer.core.instrument.Counter
@@ -78,6 +80,14 @@ class ConnectionLinks(
         agentId: UUID,
         step: RunStep,
     ): SendResult = connections.send(agentId, ConnectResponse.newBuilder().setRunStep(step).build())
+
+    override fun cancel(
+        agentId: UUID,
+        commandId: String,
+    ): SendResult {
+        val cancel = CancelStep.newBuilder().setCommandId(commandId)
+        return connections.send(agentId, ConnectResponse.newBuilder().setCancelStep(cancel).build())
+    }
 }
 
 /** Micrometer meters; the gauges read the counts of the last check. */
@@ -158,6 +168,9 @@ class DispatchConfiguration {
 
     @Bean
     fun stepsQueued(dispatcher: StepDispatcher) = StepsQueued(dispatcher::onQueued)
+
+    @Bean
+    fun stepsCancelled(dispatcher: StepDispatcher) = StepsCancelled(dispatcher::onCancelled)
 
     @Bean
     fun dispatchSweeper(

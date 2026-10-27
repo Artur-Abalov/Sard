@@ -27,8 +27,9 @@ private const val STEPS_OF = "from RunStepRecord where runId = :run order by ord
 private const val FORGOTTEN =
     "select s.stepId from SnapshotRecord s where s.stepId = :step and s.forgottenAt is not null"
 private const val LIST_RUNS =
-    "select r, s.agentId, src from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
+    "select r, s.agentId, src, s.status from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
         "join SourceRecord src on src.id = r.sourceId"
+private const val LIST_STEP_STATUS = 3
 private val JSON = JsonMapper.builder().build()
 
 /** The run history of REST lists backups; verifications have their own (V4). */
@@ -189,10 +190,20 @@ class Runs(
                 )
             filter.bind(query)
             after?.bind(query)
-            query.setMaxResults(limit).list().map {
-                RunViews.of(it[0] as RunRecord, it[1] as UUID, it[2] as SourceRecord, emptyList())
-            }
+            query.setMaxResults(limit).list().map { listed(it) }
         }
+
+    /** A row of [LIST_RUNS]: the run, its step's agent, its source and its step's status. */
+    private fun listed(row: Array<Any?>): RunView {
+        val (run, agent, source) = row
+        return RunViews.of(
+            run as RunRecord,
+            agent as UUID,
+            source as SourceRecord,
+            emptyList(),
+            StepState.of(row[LIST_STEP_STATUS] as String),
+        )
+    }
 
     /**
      * A manual start takes a shared [sourceLock]: concurrent starts race on the index, a delete waits for them (and
@@ -259,6 +270,7 @@ internal object RunViews {
         agentId: UUID,
         source: SourceRecord,
         steps: List<RunStepRecord>,
+        stepStatus: StepState? = null,
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
@@ -275,7 +287,14 @@ internal object RunViews {
         kind = RunKind.of(run.kind),
         requestedBy = run.requestedBy,
         restore = run.restore?.let(::restoreInfo),
+        cancellation = cancellation(run),
+        stepStatus = stepStatus,
     )
+
+    private fun cancellation(run: RunRecord): Cancellation? {
+        val at = run.cancelRequestedAt ?: return null
+        return Cancellation(at, checkNotNull(run.cancelRequestedBy), CancelResult.of(checkNotNull(run.cancelResult)))
+    }
 
     fun step(record: RunStepRecord) =
         StepView(
@@ -303,6 +322,7 @@ internal object RunViews {
             restore = restoreOf(record.output),
             snapshotId = record.snapshotId,
             verifyTask = VerifyTask.of(record.verifyTask),
+            lateStatus = record.lateStatus?.let(StepState::of),
         )
 
     fun restoreInfo(json: String): RestoreInfo {

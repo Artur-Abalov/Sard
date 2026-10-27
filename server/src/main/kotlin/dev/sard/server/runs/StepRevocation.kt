@@ -16,7 +16,8 @@ private const val REVOKE_STEPS =
         "dispatched_at = coalesce(dispatched_at, :now) " +
         "where tenant_id = :tenant and agent_id = :agent and $ACTIVE_STATUSES returning id, run_id"
 private const val REVOKE_RUNS =
-    "update runs set status = 'failed', message = '$REVOKED_MESSAGE', finished_at = :now " +
+    "update runs set status = 'failed', message = '$REVOKED_MESSAGE', finished_at = :now, " +
+        "cancel_result = case when cancel_requested_at is null then null else 'finished_first' end " +
         "where tenant_id = :tenant and id in (:runs) and $ACTIVE_STATUSES"
 
 /** What revoking an agent does to its steps. */

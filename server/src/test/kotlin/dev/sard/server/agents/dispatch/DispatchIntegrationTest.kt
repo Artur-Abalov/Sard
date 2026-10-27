@@ -22,6 +22,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.ProgressReport
 import dev.sard.server.runs.RoleLedger
+import dev.sard.server.runs.RunCancels
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.SourceDraft
@@ -109,6 +110,7 @@ class DispatchIntegrationTest(
     @Autowired private val registry: AgentSessionRegistry,
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
+    @Autowired private val cancels: RunCancels,
     @Autowired private val steps: StepTransitions,
     @Autowired private val roles: RoleLedger,
     @Autowired private val deadlines: StepDeadlines,
@@ -214,6 +216,12 @@ class DispatchIntegrationTest(
         val message = checkNotNull(received.poll(WAIT_SECONDS, TimeUnit.SECONDS)) { "no RunStep" }
         assertEquals(ConnectResponse.MessageCase.RUN_STEP, message.messageCase)
         return message.runStep
+    }
+
+    private fun Connection.nextCancel(): String {
+        val message = checkNotNull(received.poll(WAIT_SECONDS, TimeUnit.SECONDS)) { "no CancelStep" }
+        assertEquals(ConnectResponse.MessageCase.CANCEL_STEP, message.messageCase)
+        return message.cancelStep.commandId
     }
 
     private fun Connection.nothingMore() = assertNull(received.poll(QUIET.toMillis(), TimeUnit.MILLISECONDS))
@@ -719,5 +727,87 @@ class DispatchIntegrationTest(
         badStream.nothingMore()
         val sql = "select status from run_steps where id = ?"
         assertEquals("failed", jdbc.queryForObject(sql, String::class.java, badStep))
+    }
+
+    // --- J1a: cancel
+
+    @Test
+    fun `a cancel reaches the online agent as a CancelStep after its RunStep, in the same session`() {
+        val agent = agent()
+        val connection = greeted(clients, agent)
+        val run = run(agent)
+        val stepId = run.steps.single().id
+        connection.nextStep()
+        steps.accepted(clients.tenant, stepId, "accepted")
+
+        cancels.cancel(clients.tenant, run.id)
+
+        assertEquals(stepId.toString(), connection.nextCancel())
+        connection.nothingMore()
+        dispatcher.tick()
+        connection.nothingMore()
+    }
+
+    @Test
+    fun `a cancel of a queued run of an offline agent sends the agent nothing when it connects`() {
+        val agent = agent()
+        val run = run(agent)
+
+        cancels.cancel(clients.tenant, run.id)
+
+        val connection = greeted(clients, agent)
+        connection.nothingMore()
+        assertEquals("cancelled", runStatus(run.id))
+    }
+
+    @Test
+    fun `an agent that returns after a cancel gets the CancelStep with its Hello, and the deadline goes`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        awaitDeadline(stepId)
+        cancels.cancel(clients.tenant, run.id)
+        clock.now += Duration.ofSeconds(40)
+
+        val connection = greeted(clients, agent, stepId)
+
+        assertEquals(stepId.toString(), connection.nextCancel())
+        assertNull(deadline(stepId))
+        assertEquals("running", runStatus(run.id))
+    }
+
+    @Test
+    fun `an agent that does not return within the window leaves the cancel unconfirmed, not lost`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        val lostAt = awaitDeadline(stepId)
+        cancels.cancel(clients.tenant, run.id)
+        clock.now = lostAt
+
+        dispatcher.tick()
+
+        val row = jdbc.queryForMap("select status, message from run_steps where id = ?", stepId)
+        assertEquals(
+            mapOf("status" to "cancelled", "message" to "the agent did not confirm the cancellation"),
+            row,
+        )
+        assertEquals("cancelled", runStatus(run.id))
+    }
+
+    @Test
+    fun `a dispatched step of a cancelled run the Hello does not list is not sent again`() {
+        val agent = agent()
+        val run = run(agent)
+        val stepId = run.steps.single().id
+        assertTrue(steps.claim(clients.tenant, stepId))
+        cancels.cancel(clients.tenant, run.id)
+        clock.now += Duration.ofSeconds(5)
+
+        val connection = greeted(clients, agent)
+
+        assertEquals(stepId.toString(), connection.nextCancel())
+        connection.nothingMore()
+        assertEquals(clock.now + settings.lostAfter, deadline(stepId))
     }
 }

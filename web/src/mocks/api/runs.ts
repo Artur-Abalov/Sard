@@ -4,7 +4,7 @@
 import type { components } from '../../api/schema'
 import { http } from '../http'
 import { logPage, pageOf } from '../paging'
-import { noSession, notFound, PROBLEM } from '../problems'
+import { noSession, notFound, PROBLEM, problem } from '../problems'
 import { state } from '../state'
 import { settleRuns } from './selfBackup'
 
@@ -51,6 +51,30 @@ function matches(
   )
 }
 
+const IN_PROGRESS: Schemas['RunStatus'][] = ['queued', 'dispatched', 'running']
+
+/** What the server does with a cancel: a queued run is closed at once, one in flight is marked and waits for its agent. */
+function cancelled(run: Schemas['Run']): void {
+  if (run.cancellation !== null) return
+  const now = new Date().toISOString()
+  if (run.status !== 'queued') {
+    run.outcome = 'cancelling'
+    run.cancellation = { requestedAt: now, requestedBy: 'admin', result: 'pending' }
+    return
+  }
+  run.status = 'cancelled'
+  run.outcome = 'cancelled'
+  run.message = 'cancelled before dispatch'
+  run.finishedAt = now
+  run.cancellation = { requestedAt: now, requestedBy: 'admin', result: 'cancelled' }
+  run.steps = run.steps.map((step) => ({
+    ...step,
+    status: 'cancelled',
+    message: run.message,
+    finishedAt: now,
+  }))
+}
+
 export const runHandlers = [
   http.get('/api/v1/runs', ({ query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
@@ -74,6 +98,20 @@ export const runHandlers = [
     return run === undefined
       ? response(404).json(notFound, PROBLEM)
       : response(200).json(named(run))
+  }),
+
+  http.post('/api/v1/runs/{runId}/cancel', ({ params, response }) => {
+    if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    const run = state.runs.find((r) => r.id === params.runId)
+    if (run === undefined) return response(404).json(notFound, PROBLEM)
+    if (run.trigger === 'verification') {
+      return response(409).json(problem(409, 'Conflict', 'run_not_cancellable'), PROBLEM)
+    }
+    if (!IN_PROGRESS.includes(run.status)) {
+      return response(409).json(problem(409, 'Conflict', 'run_finished'), PROBLEM)
+    }
+    cancelled(run)
+    return response(200).json(named(run))
   }),
 
   http.get('/api/v1/runs/{runId}/steps/{stepId}/logs', ({ params, query, response }) => {

@@ -294,6 +294,27 @@ describe('with a session', () => {
     expect(run.steps[0].message).toContain('permission denied')
   })
 
+  test('cancelling a run: in flight it is marked, a queued one is closed, a finished one is 409', async () => {
+    await signIn()
+    const cancel = (runId: string) =>
+      api.POST('/api/v1/runs/{runId}/cancel', { params: { path: { runId } } })
+    const marked = must(await cancel(ids.runningRun))
+    expect(marked.outcome).toBe('cancelling')
+    expect(marked.cancellation).toMatchObject({ requestedBy: 'admin', result: 'pending' })
+    const again = must(await cancel(ids.runningRun))
+    expect(again.cancellation?.requestedAt).toBe(marked.cancellation?.requestedAt)
+    const queued = must(await cancel(ids.queuedRun))
+    expect([queued.status, queued.outcome, queued.cancellation?.result]).toEqual([
+      'cancelled',
+      'cancelled',
+      'cancelled',
+    ])
+    expect(queued.steps[0].status).toBe('cancelled')
+    const finished = await cancel(ids.failedRun)
+    expect([finished.response.status, finished.error?.code]).toEqual([409, 'run_finished'])
+    expect((await cancel(unknownId)).response.status).toBe(404)
+  })
+
   test('a second run of a source with an active run is 409 with the active run', async () => {
     const path = { params: { path: { sourceId: ids.etcSource } } }
     const { response, error } = await api.POST('/api/v1/sources/{sourceId}/runs', path)

@@ -127,6 +127,8 @@
     "unknown_repository": "The agent does not report this repository",
     "invalid_config": "The source config is not valid",
     "run_active": "The source already has a run in progress",
+    "run_finished": "The run is already finished: there is nothing to cancel",
+    "run_not_cancellable": "The server cannot cancel this kind of run yet",
     "token_used": "The token is already used",
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
@@ -289,6 +291,25 @@
       "succeeded": "succeeded",
       "failed": "error",
       "cancelled": "cancelled"
+    },
+    "RunOutcome": {
+      "queued": "queued",
+      "dispatched": "sent to the agent",
+      "running": "running",
+      "cancelling": "cancelling",
+      "succeeded": "succeeded",
+      "failed": "error",
+      "timed_out": "timed out",
+      "rejected": "rejected",
+      "lost": "lost",
+      "cancelled": "cancelled",
+      "cancel_unconfirmed": "cancelled (the agent did not confirm)"
+    },
+    "CancelResult": {
+      "pending": "waiting for the agent",
+      "cancelled": "cancelled",
+      "unconfirmed": "the agent did not confirm",
+      "finished_first": "the agent finished first"
     },
     "StepStatus": {
       "queued": "queued",

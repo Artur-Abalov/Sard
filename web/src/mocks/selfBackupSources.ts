@@ -90,6 +90,7 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     backup: null,
     restore: null,
     restoreOutcome: null,
+    lateStatus: null,
     queuedAt,
     dispatchedAt: queuedAt,
     startedAt: queuedAt,
@@ -112,6 +113,8 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     kind: 'backup',
     requestedBy: 'admin',
     restore: null,
+    outcome: 'succeeded',
+    cancellation: null,
   }
 }
 

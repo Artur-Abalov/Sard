@@ -1816,6 +1816,89 @@
         }
       }
     },
+    "/api/v1/runs/{runId}/cancel" : {
+      "post" : {
+        "tags" : [ "runs" ],
+        "summary" : "Cancel a run",
+        "description" : "A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished; a restore verification answers 409 run_not_cancellable.",
+        "operationId" : "cancelRun",
+        "parameters" : [ {
+          "name" : "runId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "run_finished: the run is final, nothing to cancel; run_not_cancellable: the server does not cancel this kind of run yet (a restore verification). Nothing was changed; or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/onboarding/setup-session" : {
       "post" : {
         "tags" : [ "onboarding" ],
@@ -3874,7 +3957,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable", "run_finished", "run_not_cancellable" ]
       },
       "FieldError" : {
         "type" : "object",
@@ -4623,6 +4706,29 @@
         },
         "required" : [ "addedBytes", "fingerprint", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes", "totalFiles", "warnings" ]
       },
+      "CancelResult" : {
+        "type" : "string",
+        "enum" : [ "pending", "cancelled", "unconfirmed", "finished_first" ]
+      },
+      "Cancellation" : {
+        "type" : "object",
+        "description" : "A cancel somebody asked for",
+        "properties" : {
+          "requestedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "requestedBy" : {
+            "type" : "string",
+            "description" : "\"admin\" for any session of the open core, which has one administrator"
+          },
+          "result" : {
+            "$ref" : "#/components/schemas/CancelResult",
+            "description" : "pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result"
+          }
+        },
+        "required" : [ "requestedAt", "requestedBy", "result" ]
+      },
       "CatchUp" : {
         "type" : "object",
         "description" : "What a catch-up run stands for: the fires missed while the server was down",
@@ -4816,13 +4922,29 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "outcome" : {
+            "$ref" : "#/components/schemas/RunOutcome",
+            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed)"
+          },
+          "cancellation" : {
+            "description" : "Set once somebody asked to cancel the run; null otherwise",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/Cancellation"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
+        "required" : [ "agentId", "cancellation", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
       },
       "RunKind" : {
         "type" : "string",
         "enum" : [ "backup", "restore" ]
+      },
+      "RunOutcome" : {
+        "type" : "string",
+        "enum" : [ "queued", "dispatched", "running", "cancelling", "succeeded", "failed", "timed_out", "rejected", "lost", "cancelled", "cancel_unconfirmed" ]
       },
       "RunRestore" : {
         "type" : "object",
@@ -4957,9 +5079,17 @@
           "finishedAt" : {
             "type" : [ "string", "null" ],
             "format" : "date-time"
+          },
+          "lateStatus" : {
+            "description" : "What the agent reported after the server closed the step as cancelled (its agent did not confirm the cancel); null when nothing came. The step's and the run's status do not change",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/StepStatus"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status" ]
+        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "lateStatus", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status" ]
       },
       "StepAction" : {
         "type" : "string",
@@ -6264,9 +6394,13 @@
           "requestedBy" : {
             "type" : [ "string", "null" ],
             "description" : "Who started a manual run: \"admin\" in the open core, which has one administrator; null for a schedule"
+          },
+          "outcome" : {
+            "$ref" : "#/components/schemas/RunOutcome",
+            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed)"
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
       },
       "LogLevel" : {
         "type" : "string",

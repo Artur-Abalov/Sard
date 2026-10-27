@@ -90,6 +90,16 @@ class RunRecord(
 
     @Column(name = "finished_at")
     val finishedAt: Instant? = null
+
+    /** The cancel somebody asked for (J1a); set by guarded updates only. */
+    @Column(name = "cancel_requested_at", insertable = false, updatable = false)
+    val cancelRequestedAt: Instant? = null
+
+    @Column(name = "cancel_requested_by", insertable = false, updatable = false)
+    val cancelRequestedBy: String? = null
+
+    @Column(name = "cancel_result", insertable = false, updatable = false)
+    val cancelResult: String? = null
 }
 
 /**
@@ -165,6 +175,10 @@ class RunStepRecord(
 
     @Column(name = "finished_at", insertable = false, updatable = false)
     val finishedAt: Instant? = null
+
+    /** What the agent reported after the server closed the step as cancelled (J1a); null if nothing came. */
+    @Column(name = "late_status", insertable = false, updatable = false)
+    val lateStatus: String? = null
 
     override fun toString() = "RunStepRecord(id=$id, runId=$runId, status=$status)"
 }

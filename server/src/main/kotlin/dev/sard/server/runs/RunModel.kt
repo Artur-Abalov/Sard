@@ -208,6 +208,83 @@ data class RestoreResult(
     val leftover: String?,
 )
 
+/** How a cancel of a run ended; pending until the run is final (J1a). */
+enum class CancelResult(
+    val stored: String,
+) {
+    PENDING("pending"),
+
+    /** The agent confirmed, or the run was cancelled before it was sent. */
+    CANCELLED("cancelled"),
+
+    /** The agent did not confirm within the lost window. */
+    UNCONFIRMED("unconfirmed"),
+
+    /** The agent's result came first and is the run's result. */
+    FINISHED_FIRST("finished_first"),
+    ;
+
+    companion object {
+        fun of(stored: String): CancelResult = entries.single { it.stored == stored }
+    }
+}
+
+/** A cancel somebody asked for: when, who (the open core has one administrator) and how it ended. */
+data class Cancellation(
+    val requestedAt: Instant,
+    val requestedBy: String,
+    val result: CancelResult,
+)
+
+/** What a run came to, for a person to read: the server derives it from the run, its step and its cancel. */
+enum class RunOutcome {
+    QUEUED,
+    DISPATCHED,
+    RUNNING,
+    CANCELLING,
+    SUCCEEDED,
+    FAILED,
+    TIMED_OUT,
+    REJECTED,
+    LOST,
+    CANCELLED,
+    CANCEL_UNCONFIRMED,
+    ;
+
+    companion object {
+        /** A failed run is told by its step (ADR 0038: the run has only failed); a cancel in flight is cancelling. */
+        fun of(
+            status: RunState,
+            step: StepState?,
+            cancellation: Cancellation?,
+        ): RunOutcome =
+            when (status) {
+                RunState.QUEUED -> QUEUED
+                RunState.DISPATCHED -> inFlight(DISPATCHED, cancellation)
+                RunState.RUNNING -> inFlight(RUNNING, cancellation)
+                RunState.SUCCEEDED -> SUCCEEDED
+                RunState.FAILED -> failed(step)
+                RunState.CANCELLED -> cancelled(cancellation)
+            }
+
+        private fun inFlight(
+            outcome: RunOutcome,
+            cancellation: Cancellation?,
+        ) = if (cancellation == null) outcome else CANCELLING
+
+        private fun cancelled(cancellation: Cancellation?) =
+            if (cancellation?.result == CancelResult.UNCONFIRMED) CANCEL_UNCONFIRMED else CANCELLED
+
+        private fun failed(step: StepState?): RunOutcome =
+            when (step) {
+                StepState.TIMED_OUT -> TIMED_OUT
+                StepState.REJECTED -> REJECTED
+                StepState.LOST -> LOST
+                else -> FAILED
+            }
+    }
+}
+
 /** A run with its steps; stage 1 runs have exactly one. */
 data class RunView(
     val id: UUID,
@@ -228,7 +305,13 @@ data class RunView(
     val requestedBy: String? = null,
     /** What a restore run restores; null for a backup. */
     val restore: RestoreInfo? = null,
-)
+    /** The cancel somebody asked for; null when none was. */
+    val cancellation: Cancellation? = null,
+    /** The status of the run's step when [steps] is left out (a list), so that [outcome] can still tell failures. */
+    val stepStatus: StepState? = null,
+) {
+    val outcome: RunOutcome get() = RunOutcome.of(status, steps.firstOrNull()?.status ?: stepStatus, cancellation)
+}
 
 /** One step; [id] is the command_id the agent sees. Progress fields stay null until S7 fills them. */
 data class StepView(
@@ -261,6 +344,10 @@ data class StepView(
     val runId: UUID,
     /** What a VERIFY step carries besides its snapshot (V4); null for any other step. */
     val verifyTask: VerifyTask? = null,
+    /** The run's cancel was asked for and is not over: the agent gets a CancelStep, never the step again (J1a). */
+    val cancelRequested: Boolean = false,
+    /** What the agent reported after the server closed the step as cancelled; null if nothing came (J1a). */
+    val lateStatus: StepState? = null,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

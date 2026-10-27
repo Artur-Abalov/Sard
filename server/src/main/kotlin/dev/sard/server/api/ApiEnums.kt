@@ -117,6 +117,62 @@ enum class RunStatus {
     CANCELLED,
 }
 
+/**
+ * What a run came to, for a person to read; the server derives it from the run, its step and its cancel (J1a). A
+ * failed run has only the status failed (ADR 0038): the outcome says timed_out, rejected or lost.
+ */
+@Schema(enumAsRef = true)
+enum class RunOutcome {
+    @JsonProperty("queued")
+    QUEUED,
+
+    @JsonProperty("dispatched")
+    DISPATCHED,
+
+    @JsonProperty("running")
+    RUNNING,
+
+    @JsonProperty("cancelling")
+    CANCELLING,
+
+    @JsonProperty("succeeded")
+    SUCCEEDED,
+
+    @JsonProperty("failed")
+    FAILED,
+
+    @JsonProperty("timed_out")
+    TIMED_OUT,
+
+    @JsonProperty("rejected")
+    REJECTED,
+
+    @JsonProperty("lost")
+    LOST,
+
+    @JsonProperty("cancelled")
+    CANCELLED,
+
+    @JsonProperty("cancel_unconfirmed")
+    CANCEL_UNCONFIRMED,
+}
+
+/** How a cancel of a run ended: pending until the run is final. */
+@Schema(enumAsRef = true)
+enum class CancelResult {
+    @JsonProperty("pending")
+    PENDING,
+
+    @JsonProperty("cancelled")
+    CANCELLED,
+
+    @JsonProperty("unconfirmed")
+    UNCONFIRMED,
+
+    @JsonProperty("finished_first")
+    FINISHED_FIRST,
+}
+
 /** What started a run (ADR 0013, runs.trigger); catch_up is the one run after a server downtime (D16). */
 @Schema(enumAsRef = true)
 enum class RunTrigger {

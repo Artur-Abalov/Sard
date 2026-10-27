@@ -14,9 +14,11 @@ import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.CatchUpPeriod
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
+import dev.sard.server.runs.Cancellation as DomainCancellation
 import dev.sard.server.runs.RestoreInfo as DomainRestoreInfo
 import dev.sard.server.runs.RestoreResult as DomainRestoreResult
 import dev.sard.server.runs.RunKind as DomainRunKind
+import dev.sard.server.runs.RunOutcome as DomainRunOutcome
 
 private val JSON = JsonMapper.builder().build()
 private val CONFIG = object : TypeReference<Map<String, Any?>>() {}
@@ -43,6 +45,8 @@ internal object RunMapping {
         kind(view.kind),
         view.requestedBy,
         view.restore?.let(RestoreMapping::runRestore),
+        CancelMapping.outcome(view.outcome),
+        view.cancellation?.let(CancelMapping::cancellation),
     )
 
     fun summary(
@@ -63,6 +67,7 @@ internal object RunMapping {
         catchUp(period),
         kind(view.kind),
         view.requestedBy,
+        CancelMapping.outcome(view.outcome),
     )
 
     private fun catchUp(period: CatchUpPeriod?) =
@@ -91,6 +96,7 @@ internal object RunMapping {
             view.dispatchedAt,
             view.startedAt,
             view.finishedAt,
+            view.lateStatus?.let(::stepStatus),
         )
 
     // The domain's enums and the contract's have the same constants: one name is one value. RunMappingTest
@@ -110,6 +116,18 @@ internal object RunMapping {
     private fun action(action: Action): StepAction = StepAction.valueOf(action.name)
 
     private fun stepStatus(state: StepState): StepStatus = StepStatus.valueOf(state.name)
+}
+
+/** The outcome of a run and its cancel (J1a), under the wire names. */
+internal object CancelMapping {
+    fun outcome(outcome: DomainRunOutcome): RunOutcome = RunOutcome.valueOf(outcome.name)
+
+    fun cancellation(cancellation: DomainCancellation) =
+        Cancellation(
+            cancellation.requestedAt,
+            cancellation.requestedBy,
+            CancelResult.valueOf(cancellation.result.name),
+        )
 }
 
 /** The restore facts of a run and a step, under the wire names. */
@@ -142,21 +160,28 @@ internal object RestoreMapping {
         when {
             step.action != Action.RESTORE -> null
             !step.restore?.leftover.isNullOrEmpty() -> RestoreOutcome.ROLLBACK_FAILED
-            else -> ended(step.status, step.restore)
+            else -> ended(step.status, step.restore, step.lateStatus)
         }
 
     private fun ended(
         status: StepState,
         result: DomainRestoreResult?,
+        lateStatus: StepState?,
     ): RestoreOutcome? =
         when {
             status == StepState.SUCCEEDED -> if (result == null) null else RestoreOutcome.RESTORED
-            status == StepState.LOST -> late(result)
+            isLate(status, lateStatus) -> late(result)
             status.active -> null
             else -> RestoreOutcome.NOTHING // failed, rejected, timed out, cancelled: all or nothing
         }
 
-    // A lost step is late only when its late output says where the data is.
+    /** The step was closed by the server (lost, or cancelled without its agent's confirmation) before its result. */
+    private fun isLate(
+        status: StepState,
+        lateStatus: StepState?,
+    ) = status == StepState.LOST || (status == StepState.CANCELLED && lateStatus != null)
+
+    // A step closed by the server is late only when its late output says where the data is.
     private fun late(result: DomainRestoreResult?): RestoreOutcome? =
         when {
             result?.target.isNullOrEmpty() -> null

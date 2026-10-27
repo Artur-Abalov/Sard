@@ -227,6 +227,68 @@ class RunMappingTest {
         assertNull(MutFlow.underTest { RunMapping.step(step()) }.restore)
     }
 
+    // --- J1a: the outcome, the cancel and the late status of a step
+
+    @Test
+    fun `every outcome of the domain has its name in the contract, for a run and its summary`() {
+        for (outcome in dev.sard.server.runs.RunOutcome.entries) {
+            assertEquals(outcome.name, MutFlow.underTest { CancelMapping.outcome(outcome) }.name)
+        }
+        val failed = run(RunState.FAILED).copy(steps = emptyList(), stepStatus = StepState.TIMED_OUT)
+        assertEquals(RunOutcome.TIMED_OUT, MutFlow.underTest { RunMapping.run(failed, null) }.outcome)
+        assertEquals(RunOutcome.TIMED_OUT, MutFlow.underTest { RunMapping.summary(failed, null) }.outcome)
+    }
+
+    @Test
+    fun `a run names its cancel, a run without one names none`() {
+        val cancellation =
+            dev.sard.server.runs
+                .Cancellation(AT, "admin", dev.sard.server.runs.CancelResult.UNCONFIRMED)
+        val view = run(RunState.CANCELLED).copy(cancellation = cancellation)
+
+        val mapped = MutFlow.underTest { RunMapping.run(view, null) }
+
+        assertEquals(Cancellation(AT, "admin", CancelResult.UNCONFIRMED), mapped.cancellation)
+        assertEquals(RunOutcome.CANCEL_UNCONFIRMED, mapped.outcome)
+        assertNull(MutFlow.underTest { RunMapping.run(run(), null) }.cancellation)
+    }
+
+    @Test
+    fun `every result of a cancel of the domain has its name in the contract`() {
+        for (result in dev.sard.server.runs.CancelResult.entries) {
+            val view =
+                run().copy(
+                    cancellation =
+                        dev.sard.server.runs
+                            .Cancellation(AT, "admin", result),
+                )
+            assertEquals(
+                result.name,
+                MutFlow
+                    .underTest { RunMapping.run(view, null) }
+                    .cancellation
+                    ?.result
+                    ?.name,
+            )
+        }
+    }
+
+    @Test
+    fun `a step names what its agent reported late, if anything`() {
+        val late = step(StepState.CANCELLED).copy(lateStatus = StepState.SUCCEEDED)
+
+        assertEquals(StepStatus.SUCCEEDED, MutFlow.underTest { RunMapping.step(late) }.lateStatus)
+        assertNull(MutFlow.underTest { RunMapping.step(step(StepState.CANCELLED)) }.lateStatus)
+    }
+
+    @Test
+    fun `a cancelled restore step whose agent reported late says where the data is`() {
+        val late = step(StepState.CANCELLED, Action.RESTORE).copy(restore = written, lateStatus = StepState.SUCCEEDED)
+
+        assertEquals(RestoreOutcome.LATE, MutFlow.underTest { RunMapping.step(late) }.restoreOutcome)
+        assertEquals(RestoreOutcome.NOTHING, outcomeOf(StepState.CANCELLED, written))
+    }
+
     // --- R2a: how a restore step ended is told by the server, not derived by the page
 
     private fun outcomeOf(

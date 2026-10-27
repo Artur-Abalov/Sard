@@ -7,6 +7,7 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
+import dev.sard.server.runs.RunCancels
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
@@ -53,12 +54,13 @@ class RunsApiImplTest(
     @Autowired private val runs: Runs,
     @Autowired private val logs: StepLogs,
     @Autowired private val catchUps: CatchUpPeriods,
+    @Autowired private val cancels: RunCancels,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
 ) {
     private val tenant = RunsTenant(jdbc)
     private val tables = ScheduleTables(jdbc, tenant)
-    private val api = RunsApiImpl(runs, logs, catchUps, TenantResolver { tenant.id })
+    private val api = RunsApiImpl(runs, logs, catchUps, TenantResolver { tenant.id }, cancels)
 
     @BeforeTest
     fun `a tenant with an agent`() {
