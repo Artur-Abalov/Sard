@@ -271,6 +271,8 @@ if [ -z "${UPGRADE_FROM:-}" ]; then
   catalog() { psql_su "select string_agg(x, ';' order by x) from (select 'r ' || rolname || rolcanlogin || rolsuper as x from pg_roles where rolname like 'sard\_%' union all select 'm ' || u.rolname || g.rolname from pg_auth_members m join pg_roles u on u.oid = m.member join pg_roles g on g.oid = m.roleid where u.rolname like 'sard\_%' union all select 'c ' || relname || relowner::regrole || coalesce(relacl::text, '-') from pg_class where relnamespace = 'sard'::regnamespace and relkind in ('r','p') union all select 'd ' || defaclrole::regrole || defaclobjtype::text || defaclacl::text from pg_default_acl) t"; }
   catalog_before="$(catalog)"
   docker compose down >/dev/null 2>&1 && docker compose up -d --wait >/dev/null || fail "15: the restart"
+  # Sessions live in the server's memory: the restart ended ours.
+  login || fail "15: sign-in after the restart"
   [ "$(docker compose exec -T server cat /run/sard-db/password)" = "$app_pw" ] || fail "15: the password of sard_app changed"
   [ "$(docker compose exec -T self-agent cat /run/sard-self/db-password)" = "$pw" ] || fail "15: the password of sard_backup changed"
   [ "$(catalog)" = "$catalog_before" ] || fail "15: the catalog of the roles and the schema sard changed"
