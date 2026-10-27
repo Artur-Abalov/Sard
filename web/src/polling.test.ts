@@ -9,6 +9,7 @@ import {
   schedulePollInterval,
   stepPollInterval,
   tokenPollInterval,
+  verificationPollInterval,
 } from './polling'
 
 describe('the polling decision', () => {
@@ -77,5 +78,14 @@ describe('the polling decision', () => {
   test('a schedule with no run, or none at all, is not polled', () => {
     expect(schedulePollInterval({ lastRun: null })).toBe(false)
     expect(schedulePollInterval(undefined)).toBe(false)
+  })
+})
+
+describe('the polling of a verification tab', () => {
+  test('only an open job needs it', () => {
+    expect(verificationPollInterval(null)).toBe(false)
+    expect(verificationPollInterval(undefined)).toBe(false)
+    expect(verificationPollInterval({ status: 'queued' })).toBe(POLL_INTERVAL_MS)
+    expect(verificationPollInterval({ status: 'running' })).toBe(POLL_INTERVAL_MS)
   })
 })

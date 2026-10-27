@@ -32,8 +32,9 @@ private const val UNWATCHED = """
     join sources s on s.tenant_id = e.tenant_id and s.id = e.source_id
     where e.tenant_id = :tenant and e.closed_at is null and (s.deleted_at is not null or not s.verification_enabled)"""
 private const val OPEN = """
-    insert into verification_stale_episodes (id, tenant_id, source_id, counted_from, opened_at)
-    values (:id, :tenant, :source, :counted, :now) on conflict do nothing"""
+    insert into verification_stale_episodes
+        (id, tenant_id, source_id, counted_from, opened_at, threshold_days, timezone)
+    values (:id, :tenant, :source, :counted, :now, :days, :zone) on conflict do nothing"""
 private const val CLOSE_EPISODE =
     "update verification_stale_episodes set closed_at = :now, closed_by_id = :pass " +
         "where tenant_id = :tenant and id = :id and closed_at is null"
@@ -91,21 +92,29 @@ object Staleness {
     }
 }
 
+/** When an episode opened and under which threshold and zone. */
+private data class Opened(
+    val at: Instant,
+    val cycle: CycleSchedule,
+)
+
 /** Opens and closes the stale episodes of a tenant once per tick, guarded so a second server changes nothing. */
 class StaleEpisodes(
     private val ids: UuidV7,
-    private val after: Duration,
 ) {
+    /** The threshold and the zone of [cycle] are those in force at [now] (the console's, or the property's before). */
     fun update(
         session: Session,
         tenantId: UUID,
         now: Instant,
+        cycle: CycleSchedule,
     ) {
+        val after = Duration.ofDays(cycle.staleAfterDays.toLong())
         for (row in rows(session, WATCHED, tenantId)) {
             val facts = StaleFacts(row[2] as Instant?, row[1] as UUID?, row[3] as Instant?, row[4] as UUID?)
             when (val turn = Staleness.judge(facts, now, after)) {
                 StaleTurn.Keep -> Unit
-                is StaleTurn.Open -> open(session, tenantId, row[0] as UUID, turn.countedFrom, now)
+                is StaleTurn.Open -> open(session, tenantId, row[0] as UUID, turn.countedFrom, Opened(now, cycle))
                 is StaleTurn.Close -> close(session, tenantId, turn, now)
             }
         }
@@ -129,14 +138,16 @@ class StaleEpisodes(
         tenantId: UUID,
         sourceId: UUID,
         countedFrom: Instant,
-        now: Instant,
+        opened: Opened,
     ) = session
         .createNativeMutationQuery(OPEN.trimIndent())
         .setParameter("id", ids.next())
         .setParameter("tenant", tenantId)
         .setParameter("source", sourceId)
         .setParameter("counted", countedFrom)
-        .setParameter("now", now)
+        .setParameter("now", opened.at)
+        .setParameter("days", opened.cycle.staleAfterDays)
+        .setParameter("zone", opened.cycle.timezone)
         .executeUpdate()
 
     private fun close(

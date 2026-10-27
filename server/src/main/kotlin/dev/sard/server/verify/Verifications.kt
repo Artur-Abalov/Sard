@@ -12,15 +12,13 @@ import java.util.UUID
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8).
 private const val SOURCE =
-    "select verification_enabled, plugin, true from sources where tenant_id = :tenant and id = :id and deleted_at is null"
+    "select plugin, cast(config as text), true from sources where tenant_id = :tenant and id = :id and deleted_at is null"
 
-/** The last three columns of SUMMARIES: last pass, its level, open stale episode. */
-private const val SUMMARY_TAIL = 3
 private const val ENABLE =
     "update sources set verification_enabled = :enabled where tenant_id = :tenant and id = :id and deleted_at is null"
 
 // The last record of each source, and its last pass: the state the console shows (V4, for V6).
-private const val SUMMARIES = """
+private const val SUMMARY_COLUMNS = """
     select s.id, s.verification_enabled,
         (select rv.status from restore_verifications rv where rv.tenant_id = s.tenant_id and rv.source_id = s.id
             order by rv.verified_at desc, rv.id desc limit 1),
@@ -31,8 +29,11 @@ private const val SUMMARIES = """
             where rv.tenant_id = s.tenant_id and rv.source_id = s.id and rv.status = 'passed'
             order by rv.verified_at desc, rv.id desc limit 1),
         (select e.counted_from from verification_stale_episodes e
-            where e.tenant_id = s.tenant_id and e.source_id = s.id and e.closed_at is null)
-    from sources s where s.tenant_id = :tenant and s.id in (:ids)"""
+            where e.tenant_id = s.tenant_id and e.source_id = s.id and e.closed_at is null),
+        s.name
+    from sources s"""
+private const val SUMMARIES = "$SUMMARY_COLUMNS where s.tenant_id = :tenant and s.id in (:ids)"
+private const val LIVE_SUMMARIES = "$SUMMARY_COLUMNS where s.tenant_id = :tenant and s.deleted_at is null"
 private const val OPEN_JOB = """
     select id, status, reason, created_at, deadline, failed_attempts, cast(unsuitable as text) from verification_jobs
     where tenant_id = :tenant and source_id = :source and status <> 'closed'"""
@@ -52,6 +53,11 @@ private const val OLDEST_LAST_PASS = """
         where rv.tenant_id = s.tenant_id and rv.source_id = s.id and rv.status = 'passed') pass on true
     where s.tenant_id = :tenant and s.deleted_at is null and s.verification_enabled
     and exists (select 1 from snapshots sn where sn.tenant_id = s.tenant_id and sn.source_id = s.id and not sn.partial)"""
+
+/** The columns of SUMMARY_COLUMNS after the source's id, its switch and its last status. */
+private const val PASSED_AT = 3
+private const val STALE_SINCE = 5
+private const val NAME = 6
 
 /** The verification state of a source as the console shows it. */
 data class VerificationSummary(
@@ -80,6 +86,14 @@ data class OpenJob(
 data class SourceVerification(
     val summary: VerificationSummary,
     val openJob: OpenJob?,
+    /** What the source's config lacks for a better verification (V6). */
+    val hints: List<VerificationHint>,
+)
+
+/** The plugin of a live source and its config as stored. */
+private data class LiveSource(
+    val plugin: String,
+    val config: String,
 )
 
 /** «Verify now» while the source has an open job: 409 with that job. */
@@ -108,9 +122,13 @@ class Verifications(
         sourceId: UUID,
     ): SourceVerification =
         sessions.inTenant(tenantId) { session ->
-            requireSource(session, tenantId, sourceId)
+            val source = requireSource(session, tenantId, sourceId)
             val summary = summaries(session, tenantId, listOf(sourceId)).getValue(sourceId)
-            SourceVerification(summary, openJob(session, tenantId, sourceId))
+            SourceVerification(
+                summary,
+                openJob(session, tenantId, sourceId),
+                VerificationHints.of(source.plugin, source.config),
+            )
         }
 
     /** Summaries of [sourceIds]; a deleted or unknown id is absent. */
@@ -149,7 +167,7 @@ class Verifications(
         snapshotRef: UUID?,
     ): OpenJob =
         sessions.inTenant(tenantId) { session ->
-            val plugin = requireSource(session, tenantId, sourceId)
+            val plugin = requireSource(session, tenantId, sourceId).plugin
             openJob(session, tenantId, sourceId)?.let { throw VerificationActive(it.id) }
             val snapshot = snapshot(session, tenantId, sourceId, snapshotRef)
             val now = clock.instant()
@@ -157,6 +175,19 @@ class Verifications(
             val made = cycles.enqueue(session, tenantId, JobSnapshot(snapshot, plugin), JobReason.MANUAL, now, deadline)
             if (!made) throw VerificationActive(checkNotNull(openJob(session, tenantId, sourceId)).id)
             checkNotNull(openJob(session, tenantId, sourceId))
+        }
+
+    /** The figures of the tenant's overview (V6): every live source's standing, counted and put in order. */
+    fun overview(tenantId: UUID): InstallationVerification =
+        sessions.inTenant(tenantId) { session ->
+            val noVerifier = !pool.any(session, tenantId)
+            val standings =
+                session
+                    .createNativeQuery(LIVE_SUMMARIES.trimIndent(), Array<Any?>::class.java)
+                    .setParameter("tenant", tenantId)
+                    .list()
+                    .map { row -> SourceStanding(row[0] as UUID, row[NAME] as String, summaryOf(row, noVerifier)) }
+            InstallationVerification.of(standings, clock.instant(), anyVerifier = !noVerifier)
         }
 
     /** The oldest last pass over the tenant's verified sources; null if one has none or there is none to verify. */
@@ -198,7 +229,7 @@ class Verifications(
             } else {
                 last?.let { VerificationStatus.of(it as String) }
             }
-        val (passedAt, passedLevel, staleSince) = row.takeLast(SUMMARY_TAIL)
+        val (passedAt, passedLevel, staleSince) = row.slice(PASSED_AT..STALE_SINCE)
         return VerificationSummary(
             enabled as Boolean,
             status,
@@ -231,19 +262,19 @@ class Verifications(
                 )
             }
 
-    /** The live source's plugin; [SourceNotFound] otherwise. */
+    /** The live source's plugin and config; [SourceNotFound] otherwise. */
     private fun requireSource(
         session: Session,
         tenantId: UUID,
         sourceId: UUID,
-    ): String =
+    ): LiveSource =
         session
             .createNativeQuery(SOURCE, Array<Any?>::class.java)
             .setParameter("tenant", tenantId)
             .setParameter("id", sourceId)
             .list()
             .firstOrNull()
-            ?.let { it[1] as String } ?: throw SourceNotFound(sourceId)
+            ?.let { LiveSource(it[0] as String, it[1] as String) } ?: throw SourceNotFound(sourceId)
 
     private fun snapshot(
         session: Session,

@@ -22,7 +22,8 @@ class VerificationPropertiesTest {
         assertEquals(ZoneId.systemDefault().id, settings.defaultTimezone)
         assertEquals(SpaceNeed(2.0, 1L shl 30), settings.space)
         assertEquals(Duration.ofHours(6), settings.stepTimeout)
-        assertEquals(Duration.ofDays(7), settings.staleAfter)
+        assertEquals(Duration.ofDays(2), settings.staleAfter)
+        assertEquals(2, settings.staleAfterDays)
     }
 
     @Test
@@ -44,11 +45,27 @@ class VerificationPropertiesTest {
                 VerificationProperties(spaceHeadroom = -1) to "sard.verification.space-headroom must not be negative",
                 VerificationProperties(stepTimeout = Duration.ZERO) to
                     "sard.verification.step-timeout must be positive",
-                VerificationProperties(staleAfter = Duration.ZERO) to "sard.verification.stale-after must be positive",
             )
         for ((properties, message) in cases) {
             val error = assertFailsWith<IllegalArgumentException> { MutFlow.underTest { properties.settings() } }
             assertEquals(message, error.message)
+        }
+    }
+
+    @Test
+    fun `the stale threshold is whole days from one to ninety`() {
+        val message = "sard.verification.stale-after must be a whole number of days from 1 to 90"
+        val refused = listOf(Duration.ZERO, Duration.ofHours(36), Duration.ofDays(91), Duration.ofDays(-1))
+        for (value in refused) {
+            val error =
+                assertFailsWith<IllegalArgumentException> {
+                    MutFlow.underTest { VerificationProperties(staleAfter = value).settings() }
+                }
+            assertEquals(message, error.message, "$value")
+        }
+        for (days in listOf(1L, 90L)) {
+            val settings = MutFlow.underTest { VerificationProperties(staleAfter = Duration.ofDays(days)).settings() }
+            assertEquals(days.toInt(), settings.staleAfterDays)
         }
     }
 }

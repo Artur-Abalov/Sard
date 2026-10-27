@@ -63,7 +63,7 @@
       "put" : {
         "tags" : [ "verifications" ],
         "summary" : "Set the daily verification cycle",
-        "description" : "The change counts from now: a moment it skipped is not fired. 422 names cron or timezone.",
+        "description" : "The change counts from now: a moment it skipped is not fired. 422 names cron, timezone or staleAfterDays.",
         "operationId" : "setVerificationSchedule",
         "requestBody" : {
           "content" : {
@@ -2489,6 +2489,46 @@
         }
       }
     },
+    "/api/v1/verification-setup" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "How to set up the first verifier",
+        "description" : "The commands for the steps of getting a verifier going: the token role, a key command per repository of the sources, the repo add template for the verifier. No password passes through the console.",
+        "operationId" : "getVerificationSetup",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/VerificationSetup"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/status" : {
       "get" : {
         "tags" : [ "status" ],
@@ -2518,6 +2558,91 @@
           }
         },
         "security" : [ ]
+      }
+    },
+    "/api/v1/sources/{sourceId}/verification-report" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "Verification report of a source for a period",
+        "description" : "from and to are dates, both included, in the zone of the verification cycle; without them the last 30 days up to now; at most 366 days. 422 names from or to. A deleted source keeps its report.",
+        "operationId" : "getVerificationReport",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/VerificationReportResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/sources/{sourceId}/snapshots" : {
@@ -3391,7 +3516,7 @@
       "get" : {
         "tags" : [ "overview" ],
         "summary" : "Overview",
-        "description" : "Agent counts of the tenant and the state of the five first steps.",
+        "description" : "Agent counts of the tenant, the state of the five first steps and the restore verification.",
         "operationId" : "overview",
         "responses" : {
           "200" : {
@@ -3868,6 +3993,12 @@
             "type" : "string",
             "description" : "An IANA time zone",
             "example" : "Europe/Moscow"
+          },
+          "staleAfterDays" : {
+            "type" : [ "integer", "null" ],
+            "description" : "Days without a successful verification after which a source is flagged, 1 to 90; null leaves it. A fraction is refused, not rounded: it is read as it came.",
+            "maximum" : 90,
+            "minimum" : 1
           }
         },
         "required" : [ "cron", "timezone" ]
@@ -3939,9 +4070,14 @@
             "type" : "string",
             "format" : "date-time",
             "description" : "The cycle's next moment"
+          },
+          "staleAfterDays" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Days without a successful verification after which a source is flagged"
           }
         },
-        "required" : [ "cron", "nextRunAt", "timezone" ]
+        "required" : [ "cron", "nextRunAt", "staleAfterDays", "timezone" ]
       },
       "SourceInput" : {
         "type" : "object",
@@ -4128,9 +4264,21 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "hints" : {
+            "type" : "array",
+            "description" : "What the source's config lacks for a better verification; empty when nothing",
+            "items" : {
+              "$ref" : "#/components/schemas/VerificationHintCode"
+            }
           }
         },
-        "required" : [ "enabled", "lastVerifiedAt", "lastVerifiedLevel", "openJob", "staleSince", "status" ]
+        "required" : [ "enabled", "hints", "lastVerifiedAt", "lastVerifiedLevel", "openJob", "staleSince", "status" ]
+      },
+      "VerificationHintCode" : {
+        "type" : "string",
+        "description" : "key_tables_missing: a PostgreSQL source without key tables is verified on its 10 largest tables; control_paths_missing: a files source without control paths cannot tell an unmounted disk from a backup",
+        "enum" : [ "key_tables_missing", "control_paths_missing" ]
       },
       "VerificationJob" : {
         "type" : "object",
@@ -5545,6 +5693,10 @@
               "type" : "null"
             } ]
           },
+          "sandboxVersion" : {
+            "type" : [ "string", "null" ],
+            "description" : "The runtime's version as the verifier reported it; null when unknown"
+          },
           "repositoryIds" : {
             "type" : "array",
             "description" : "restic ids of the repositories it holds a key to",
@@ -5567,6 +5719,16 @@
             "format" : "int32",
             "description" : "Verifications handed to it in the last day"
           },
+          "verificationsDone" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Verifications it did in the last 30 days"
+          },
+          "infrastructureFailures" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Of those, the ones that ended as its own infrastructure failure"
+          },
           "reasons" : {
             "type" : [ "array", "null" ],
             "description" : "With sourceId: why it would not take the source's job now (empty: it would)",
@@ -5575,14 +5737,46 @@
             }
           }
         },
-        "required" : [ "agentId", "busy", "freeBytes", "hostname", "online", "reasons", "recentVerifications", "reported", "repositoryIds", "sandbox", "verifyPlugins" ]
+        "required" : [ "agentId", "busy", "freeBytes", "hostname", "infrastructureFailures", "online", "reasons", "recentVerifications", "reported", "repositoryIds", "sandbox", "sandboxVersion", "verificationsDone", "verifyPlugins" ]
+      },
+      "FingerprintField" : {
+        "type" : "object",
+        "description" : "A field of the fingerprint: the source's value and the restored copy's, side by side",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "rule" : {
+            "$ref" : "#/components/schemas/FingerprintRule"
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "copy" : {
+            "type" : [ "string", "null" ],
+            "description" : "The copy's value; null when it is not compared or not known"
+          },
+          "outcome" : {
+            "$ref" : "#/components/schemas/FingerprintOutcomeKind"
+          }
+        },
+        "required" : [ "copy", "name", "outcome", "rule", "source" ]
       },
       "FingerprintMismatch" : {
         "type" : "object",
         "description" : "A fact of the fingerprint that differs between the source and the restored copy",
         "properties" : {
           "name" : {
-            "type" : "string"
+            "type" : "string",
+            "description" : "The fact's raw name, such as rows:public.orders"
+          },
+          "kind" : {
+            "$ref" : "#/components/schemas/FingerprintMismatchKind",
+            "description" : "What the fact is about; the console and Telegram put it into words"
+          },
+          "subject" : {
+            "type" : "string",
+            "description" : "A table, a path or an extension; empty for a fact about the whole copy"
           },
           "expected" : {
             "type" : "string"
@@ -5591,7 +5785,20 @@
             "type" : "string"
           }
         },
-        "required" : [ "actual", "expected", "name" ]
+        "required" : [ "actual", "expected", "kind", "name", "subject" ]
+      },
+      "FingerprintMismatchKind" : {
+        "type" : "string",
+        "enum" : [ "rows", "tables", "extension", "extension_version", "control_path", "files", "bytes", "file_hash", "other" ]
+      },
+      "FingerprintOutcomeKind" : {
+        "type" : "string",
+        "enum" : [ "matched", "mismatched", "not_compared" ]
+      },
+      "FingerprintRule" : {
+        "type" : "string",
+        "description" : "exact: compared with the copy; info: only shown",
+        "enum" : [ "exact", "info" ]
       },
       "Verification" : {
         "type" : "object",
@@ -5668,6 +5875,11 @@
             "format" : "int64",
             "description" : "The actual time to restore (level 5)"
           },
+          "durationMs" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "From the first stage's start to the last stage's finish; null without stage times"
+          },
           "recovered" : {
             "type" : "boolean",
             "description" : "A pass right after a failure"
@@ -5675,9 +5887,21 @@
           "verifiedAt" : {
             "type" : "string",
             "format" : "date-time"
+          },
+          "fingerprint" : {
+            "type" : "array",
+            "description" : "The snapshot's source fingerprint beside the copy's, in the order of the backup",
+            "items" : {
+              "$ref" : "#/components/schemas/FingerprintField"
+            }
+          },
+          "hiddenFacts" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Facts of the hashed sample of files: counted, never listed"
           }
         },
-        "required" : [ "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
+        "required" : [ "durationMs", "fingerprint", "hiddenFacts", "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
       },
       "VerificationStage" : {
         "type" : "object",
@@ -5725,6 +5949,53 @@
       "VerificationStageStatus" : {
         "type" : "string",
         "enum" : [ "passed", "failed", "cannot_run", "not_applicable" ]
+      },
+      "SetupRepository" : {
+        "type" : "object",
+        "description" : "A repository a source writes to: the key command to run on the source's host",
+        "properties" : {
+          "sourceAgentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceHostname" : {
+            "type" : "string"
+          },
+          "repositoryName" : {
+            "type" : "string"
+          },
+          "keyAddCommand" : {
+            "type" : [ "string", "null" ],
+            "description" : "Null when the repository name cannot be quoted for a shell"
+          }
+        },
+        "required" : [ "keyAddCommand", "repositoryName", "sourceAgentId", "sourceHostname" ]
+      },
+      "VerificationSetup" : {
+        "type" : "object",
+        "description" : "How to get the first verifier going: commands to copy; nothing here is a secret",
+        "properties" : {
+          "tokenRole" : {
+            "$ref" : "#/components/schemas/AgentRole",
+            "description" : "The role of the enrollment token to issue for the verifier"
+          },
+          "repositories" : {
+            "type" : "array",
+            "description" : "One entry per source agent and repository of the sources with verification on",
+            "items" : {
+              "$ref" : "#/components/schemas/SetupRepository"
+            }
+          },
+          "verifierRepoAdd" : {
+            "type" : "string",
+            "description" : "The command for the verifier's host; <name>, <address> and <file> are its own"
+          },
+          "readOnlyNote" : {
+            "type" : "string",
+            "description" : "What to tell the administrator about the storage account of the verifier"
+          }
+        },
+        "required" : [ "readOnlyNote", "repositories", "tokenRole", "verifierRepoAdd" ]
       },
       "StatusResponse" : {
         "type" : "object",
@@ -5774,6 +6045,150 @@
           }
         },
         "required" : [ "items", "nextCursor" ]
+      },
+      "ReportFailure" : {
+        "type" : "object",
+        "description" : "A series of failed verifications and the pass that fixed it",
+        "properties" : {
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The time of the first failure of the series"
+          },
+          "records" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Failed verifications in the series"
+          },
+          "fixedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The pass that ended the series; null while not fixed"
+          }
+        },
+        "required" : [ "fixedAt", "records", "startedAt" ]
+      },
+      "ReportItem" : {
+        "type" : "object",
+        "description" : "A verification of the report: no evidence, no output",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "verifiedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "resticSnapshotId" : {
+            "type" : "string",
+            "description" : "restic's id of the snapshot verified"
+          },
+          "verifierHostname" : {
+            "type" : [ "string", "null" ],
+            "description" : "The verifier's host; null when no verifier took part"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/VerificationOutcome"
+          },
+          "level" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Highest level reached (V-D2): 1 storage integrity, 2 extraction, 3 the application starts, 4 the data matches the fingerprint, 5 the restore time is known; 0 when none"
+          },
+          "durationMs" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "From the first stage's start to the last stage's finish; null without times"
+          },
+          "restoreDurationMs" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "The actual time to restore (level 5)"
+          }
+        },
+        "required" : [ "durationMs", "id", "level", "resticSnapshotId", "restoreDurationMs", "status", "verifiedAt", "verifierHostname" ]
+      },
+      "ReportSummary" : {
+        "type" : "object",
+        "description" : "Verifications of a period counted by outcome",
+        "properties" : {
+          "total" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "passed" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "failed" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "notHeld" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Cannot verify, infrastructure failure or no fitting verifier: no check took place"
+          }
+        },
+        "required" : [ "failed", "notHeld", "passed", "total" ]
+      },
+      "VerificationReportResponse" : {
+        "type" : "object",
+        "description" : "A source's restore verifications for a period, for print",
+        "properties" : {
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceName" : {
+            "type" : "string"
+          },
+          "sourceDeleted" : {
+            "type" : "boolean",
+            "description" : "The source is deleted; its history stays"
+          },
+          "from" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The start of the period, included"
+          },
+          "to" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The end of the period, excluded"
+          },
+          "timezone" : {
+            "type" : "string",
+            "description" : "The zone of the verification cycle, in which the dates of the request are days"
+          },
+          "generatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "serverVersion" : {
+            "type" : "string",
+            "description" : "The version of the server that made the report"
+          },
+          "summary" : {
+            "$ref" : "#/components/schemas/ReportSummary"
+          },
+          "items" : {
+            "type" : "array",
+            "description" : "Newest first",
+            "items" : {
+              "$ref" : "#/components/schemas/ReportItem"
+            }
+          },
+          "failures" : {
+            "type" : "array",
+            "description" : "Series of failures that lasted into the period, oldest first",
+            "items" : {
+              "$ref" : "#/components/schemas/ReportFailure"
+            }
+          }
+        },
+        "required" : [ "failures", "from", "generatedAt", "items", "serverVersion", "sourceDeleted", "sourceId", "sourceName", "summary", "timezone", "to" ]
       },
       "RestoreBlockedReason" : {
         "type" : "string",
@@ -6405,6 +6820,43 @@
         },
         "required" : [ "items", "withoutRecoveryKey" ]
       },
+      "AttentionSource" : {
+        "type" : "object",
+        "description" : "A source with verification on and the figures of its restore verification",
+        "properties" : {
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceName" : {
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "The last verification's status; no_verifier while the installation has no verifier",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/VerificationOutcome"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "lastVerifiedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The last successful verification; null if never"
+          },
+          "lastVerifiedLevel" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The level of the last successful verification"
+          },
+          "staleSince" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Not verified successfully since this moment, for longer than the threshold"
+          }
+        },
+        "required" : [ "lastVerifiedAt", "lastVerifiedLevel", "sourceId", "sourceName", "staleSince", "status" ]
+      },
       "FirstSteps" : {
         "type" : "object",
         "description" : "The first steps of a tenant, each marked by the server by its own rule; recomputed per request",
@@ -6452,9 +6904,65 @@
           },
           "firstSteps" : {
             "$ref" : "#/components/schemas/FirstSteps"
+          },
+          "verification" : {
+            "$ref" : "#/components/schemas/VerificationOverview"
           }
         },
-        "required" : [ "agentsOnline", "agentsTotal", "firstSteps" ]
+        "required" : [ "agentsOnline", "agentsTotal", "firstSteps", "verification" ]
+      },
+      "VerificationOverview" : {
+        "type" : "object",
+        "description" : "Restore verification of the installation: the figures of the overview and who to look at first",
+        "properties" : {
+          "enabled" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Live sources whose verification is on; the figures below count only them"
+          },
+          "verifiedLastDay" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Of those, verified successfully in the last 24 hours"
+          },
+          "failed" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The last verification failed: the backup is bad"
+          },
+          "notHeld" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The last verification did not take place: cannot verify, infrastructure, no verifier"
+          },
+          "stale" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Not verified successfully for longer than the threshold: open episodes"
+          },
+          "neverVerified" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "No verification yet"
+          },
+          "disabled" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Live sources whose verification is off: a decision, neither failed nor stale"
+          },
+          "noVerifier" : {
+            "type" : "boolean",
+            "description" : "There are sources to verify and no verifier agent that is not revoked"
+          },
+          "attention" : {
+            "type" : "array",
+            "description" : "At most 10 sources with verification on, the worst first: the server orders them",
+            "items" : {
+              "$ref" : "#/components/schemas/AttentionSource"
+            }
+          }
+        },
+        "required" : [ "attention", "disabled", "enabled", "failed", "neverVerified", "noVerifier", "notHeld", "stale", "verifiedLastDay" ]
       },
       "CaInfo" : {
         "type" : "object",

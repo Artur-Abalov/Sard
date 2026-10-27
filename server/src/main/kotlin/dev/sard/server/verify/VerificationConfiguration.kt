@@ -51,6 +51,7 @@ class VerificationConfiguration {
         history: VerificationHistory,
         queued: ObjectProvider<StepsQueued>,
         settings: VerificationSettings,
+        pool: VerifierPool,
     ) = VerificationLoop(
         sessions,
         clock,
@@ -59,7 +60,8 @@ class VerificationConfiguration {
         VerificationSettlement(history),
         queued.getIfUnique { StepsQueued.NONE },
         VerificationSchedule(settings),
-        StaleEpisodes(UuidV7(clock, SecureRandom()), settings.staleAfter),
+        StaleEpisodes(UuidV7(clock, SecureRandom())),
+        NoVerifierEpisodes(UuidV7(clock, SecureRandom()), pool),
     )
 
     @Bean
@@ -78,6 +80,13 @@ class VerificationConfiguration {
         pool: VerifierPool,
         settings: VerificationSettings,
     ) = VerificationReads(sessions, clock, pool, settings)
+
+    @Bean
+    fun verificationReports(
+        sessions: TenantSessions,
+        clock: Clock,
+        settings: VerificationSettings,
+    ) = VerificationReports(sessions, clock, VerificationSchedule(settings))
 
     @Bean
     fun verificationTicker(

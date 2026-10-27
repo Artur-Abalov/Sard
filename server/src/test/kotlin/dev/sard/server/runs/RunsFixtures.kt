@@ -96,8 +96,17 @@ internal class RunsTenant(
 
     fun drop() {
         val tables =
-            listOf("notification_deliveries", "overdue_episodes", "run_steps", "runs", "sources", "workflows") +
-                AGENT_TABLES
+            listOf(
+                "notification_deliveries",
+                "overdue_episodes",
+                "run_steps",
+                "runs",
+                "sources",
+                "workflows",
+            ) +
+                AGENT_TABLES +
+                // After the sources: an episode opens while there are sources to verify and no verifier.
+                listOf("notification_deliveries", "no_verifier_episodes")
         for (table in tables) {
             jdbc.update("delete from $table where tenant_id = ?", id)
         }

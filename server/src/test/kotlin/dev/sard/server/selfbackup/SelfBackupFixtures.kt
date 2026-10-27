@@ -126,6 +126,7 @@ internal class SelfBackupTenant(
         val tables =
             listOf(
                 "notification_deliveries",
+                "no_verifier_episodes",
                 "overdue_episodes",
                 "schedule_fires",
                 "run_steps",

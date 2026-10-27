@@ -25,6 +25,14 @@ internal fun verifierKeyAddCommand(
     return shellWordOrNull(name)?.let { "sudo sard-agent repo key add $it --for verifier --label $label" }
 }
 
+/** The command that issues a key for a verifier that is not installed yet; null when [name] cannot be quoted. */
+internal fun firstVerifierKeyAddCommand(name: String): String? =
+    shellWordOrNull(name)?.let { "sudo sard-agent repo key add $it --for verifier" }
+
+/** The command that connects a repository on the first verifier: its name, address and key file are its own. */
+internal const val FIRST_VERIFIER_REPO_ADD =
+    "sudo sard-agent repo add <name> $ADDRESS_PLACEHOLDER --password-from-file $FILE_PLACEHOLDER"
+
 /** The template of the command that connects the repository on a verifier; null when [name] cannot be quoted (КС7). */
 internal fun verifierRepoAddTemplate(name: String): String? =
     shellWordOrNull(name)?.let {

@@ -20,6 +20,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppRepositoriesRouteImport } from './routes/_app/repositories'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTokensRouteImport } from './routes/_app/tokens'
+import { Route as AppVerifiersRouteImport } from './routes/_app/verifiers'
 import { Route as SetupRecoveryCardRouteImport } from './routes/setup_.recovery-card'
 import { Route as AppAgentsIndexRouteImport } from './routes/_app/agents/index'
 import { Route as AppAgentsAgentIdRouteImport } from './routes/_app/agents/$agentId'
@@ -28,6 +29,8 @@ import { Route as AppRunsRunIdRouteImport } from './routes/_app/runs/$runId'
 import { Route as AppSettingsRecoveryCardRouteImport } from './routes/_app/settings_.recovery-card'
 import { Route as AppSourcesIndexRouteImport } from './routes/_app/sources/index'
 import { Route as AppSourcesNewRouteImport } from './routes/_app/sources/new'
+import { Route as AppVerificationsVerificationIdRouteImport } from './routes/_app/verifications/$verificationId'
+import { Route as SourcesSourceIdVerificationReportRouteImport } from './routes/sources_.$sourceId.verification-report'
 import { Route as AppSourcesSourceIdIndexRouteImport } from './routes/_app/sources/$sourceId/index'
 import { Route as AppSourcesSourceIdEditRouteImport } from './routes/_app/sources/$sourceId/edit'
 import { Route as AppSourcesSourceIdSnapshotsSnapshotIdRestoreRouteImport } from './routes/_app/sources/$sourceId/snapshots/$snapshotId/restore'
@@ -64,6 +67,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppTokensRoute = AppTokensRouteImport.update({
   id: '/tokens',
   path: '/tokens',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVerifiersRoute = AppVerifiersRouteImport.update({
+  id: '/verifiers',
+  path: '/verifiers',
   getParentRoute: () => AppRoute,
 } as any)
 const SetupRecoveryCardRoute = SetupRecoveryCardRouteImport.update({
@@ -106,6 +114,18 @@ const AppSourcesNewRoute = AppSourcesNewRouteImport.update({
   path: '/sources/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppVerificationsVerificationIdRoute =
+  AppVerificationsVerificationIdRouteImport.update({
+    id: '/verifications/$verificationId',
+    path: '/verifications/$verificationId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const SourcesSourceIdVerificationReportRoute =
+  SourcesSourceIdVerificationReportRouteImport.update({
+    id: '/sources_/$sourceId/verification-report',
+    path: '/sources/$sourceId/verification-report',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AppSourcesSourceIdIndexRoute = AppSourcesSourceIdIndexRouteImport.update({
   id: '/sources/$sourceId/',
   path: '/sources/$sourceId/',
@@ -130,11 +150,14 @@ export interface FileRoutesByFullPath {
   '/repositories': typeof AppRepositoriesRoute
   '/settings': typeof AppSettingsRoute
   '/tokens': typeof AppTokensRoute
+  '/verifiers': typeof AppVerifiersRoute
   '/setup/recovery-card': typeof SetupRecoveryCardRoute
   '/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/recovery-card': typeof AppSettingsRecoveryCardRoute
   '/sources/new': typeof AppSourcesNewRoute
+  '/verifications/$verificationId': typeof AppVerificationsVerificationIdRoute
+  '/sources/$sourceId/verification-report': typeof SourcesSourceIdVerificationReportRoute
   '/agents/': typeof AppAgentsIndexRoute
   '/runs/': typeof AppRunsIndexRoute
   '/sources/': typeof AppSourcesIndexRoute
@@ -148,12 +171,15 @@ export interface FileRoutesByTo {
   '/repositories': typeof AppRepositoriesRoute
   '/settings': typeof AppSettingsRoute
   '/tokens': typeof AppTokensRoute
+  '/verifiers': typeof AppVerifiersRoute
   '/setup/recovery-card': typeof SetupRecoveryCardRoute
   '/': typeof AppIndexRoute
   '/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/recovery-card': typeof AppSettingsRecoveryCardRoute
   '/sources/new': typeof AppSourcesNewRoute
+  '/verifications/$verificationId': typeof AppVerificationsVerificationIdRoute
+  '/sources/$sourceId/verification-report': typeof SourcesSourceIdVerificationReportRoute
   '/agents': typeof AppAgentsIndexRoute
   '/runs': typeof AppRunsIndexRoute
   '/sources': typeof AppSourcesIndexRoute
@@ -169,12 +195,15 @@ export interface FileRoutesById {
   '/_app/repositories': typeof AppRepositoriesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tokens': typeof AppTokensRoute
+  '/_app/verifiers': typeof AppVerifiersRoute
   '/setup_/recovery-card': typeof SetupRecoveryCardRoute
   '/_app/': typeof AppIndexRoute
   '/_app/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/_app/runs/$runId': typeof AppRunsRunIdRoute
   '/_app/settings_/recovery-card': typeof AppSettingsRecoveryCardRoute
   '/_app/sources/new': typeof AppSourcesNewRoute
+  '/_app/verifications/$verificationId': typeof AppVerificationsVerificationIdRoute
+  '/sources_/$sourceId/verification-report': typeof SourcesSourceIdVerificationReportRoute
   '/_app/agents/': typeof AppAgentsIndexRoute
   '/_app/runs/': typeof AppRunsIndexRoute
   '/_app/sources/': typeof AppSourcesIndexRoute
@@ -191,11 +220,14 @@ export interface FileRouteTypes {
     | '/repositories'
     | '/settings'
     | '/tokens'
+    | '/verifiers'
     | '/setup/recovery-card'
     | '/agents/$agentId'
     | '/runs/$runId'
     | '/settings/recovery-card'
     | '/sources/new'
+    | '/verifications/$verificationId'
+    | '/sources/$sourceId/verification-report'
     | '/agents/'
     | '/runs/'
     | '/sources/'
@@ -209,12 +241,15 @@ export interface FileRouteTypes {
     | '/repositories'
     | '/settings'
     | '/tokens'
+    | '/verifiers'
     | '/setup/recovery-card'
     | '/'
     | '/agents/$agentId'
     | '/runs/$runId'
     | '/settings/recovery-card'
     | '/sources/new'
+    | '/verifications/$verificationId'
+    | '/sources/$sourceId/verification-report'
     | '/agents'
     | '/runs'
     | '/sources'
@@ -229,12 +264,15 @@ export interface FileRouteTypes {
     | '/_app/repositories'
     | '/_app/settings'
     | '/_app/tokens'
+    | '/_app/verifiers'
     | '/setup_/recovery-card'
     | '/_app/'
     | '/_app/agents/$agentId'
     | '/_app/runs/$runId'
     | '/_app/settings_/recovery-card'
     | '/_app/sources/new'
+    | '/_app/verifications/$verificationId'
+    | '/sources_/$sourceId/verification-report'
     | '/_app/agents/'
     | '/_app/runs/'
     | '/_app/sources/'
@@ -248,6 +286,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
   SetupRecoveryCardRoute: typeof SetupRecoveryCardRoute
+  SourcesSourceIdVerificationReportRoute: typeof SourcesSourceIdVerificationReportRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -299,6 +338,13 @@ declare module '@tanstack/react-router' {
       path: '/tokens'
       fullPath: '/tokens'
       preLoaderRoute: typeof AppTokensRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/verifiers': {
+      id: '/_app/verifiers'
+      path: '/verifiers'
+      fullPath: '/verifiers'
+      preLoaderRoute: typeof AppVerifiersRouteImport
       parentRoute: typeof AppRoute
     }
     '/setup_/recovery-card': {
@@ -357,6 +403,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSourcesNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/verifications/$verificationId': {
+      id: '/_app/verifications/$verificationId'
+      path: '/verifications/$verificationId'
+      fullPath: '/verifications/$verificationId'
+      preLoaderRoute: typeof AppVerificationsVerificationIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/sources_/$sourceId/verification-report': {
+      id: '/sources_/$sourceId/verification-report'
+      path: '/sources/$sourceId/verification-report'
+      fullPath: '/sources/$sourceId/verification-report'
+      preLoaderRoute: typeof SourcesSourceIdVerificationReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/sources/$sourceId/': {
       id: '/_app/sources/$sourceId/'
       path: '/sources/$sourceId'
@@ -385,11 +445,13 @@ interface AppRouteChildren {
   AppRepositoriesRoute: typeof AppRepositoriesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTokensRoute: typeof AppTokensRoute
+  AppVerifiersRoute: typeof AppVerifiersRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsAgentIdRoute: typeof AppAgentsAgentIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
   AppSettingsRecoveryCardRoute: typeof AppSettingsRecoveryCardRoute
   AppSourcesNewRoute: typeof AppSourcesNewRoute
+  AppVerificationsVerificationIdRoute: typeof AppVerificationsVerificationIdRoute
   AppAgentsIndexRoute: typeof AppAgentsIndexRoute
   AppRunsIndexRoute: typeof AppRunsIndexRoute
   AppSourcesIndexRoute: typeof AppSourcesIndexRoute
@@ -402,11 +464,13 @@ const AppRouteChildren: AppRouteChildren = {
   AppRepositoriesRoute: AppRepositoriesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTokensRoute: AppTokensRoute,
+  AppVerifiersRoute: AppVerifiersRoute,
   AppIndexRoute: AppIndexRoute,
   AppAgentsAgentIdRoute: AppAgentsAgentIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
   AppSettingsRecoveryCardRoute: AppSettingsRecoveryCardRoute,
   AppSourcesNewRoute: AppSourcesNewRoute,
+  AppVerificationsVerificationIdRoute: AppVerificationsVerificationIdRoute,
   AppAgentsIndexRoute: AppAgentsIndexRoute,
   AppRunsIndexRoute: AppRunsIndexRoute,
   AppSourcesIndexRoute: AppSourcesIndexRoute,
@@ -423,6 +487,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
   SetupRecoveryCardRoute: SetupRecoveryCardRoute,
+  SourcesSourceIdVerificationReportRoute:
+    SourcesSourceIdVerificationReportRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

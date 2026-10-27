@@ -15,6 +15,12 @@ private const val HOLDERS =
     "select r, a from AgentRepositoryRecord r, Agent a " +
         "where a.id = r.agentId and a.revokedAt is null and r.repositoryId is not null and r.repositoryId <> ''"
 
+// The agents and repository names of the live sources that are verified (V6); tenant_id is named (ADR 0013, rule 8).
+private const val VERIFIED_REPOSITORIES = """
+    select distinct a.id, a.hostname, s.repository_name from sources s
+    join agents a on a.tenant_id = s.tenant_id and a.id = s.agent_id
+    where s.tenant_id = :tenant and s.deleted_at is null and s.verification_enabled"""
+
 private const val REPOSITORIES_OF = "from AgentRepositoryRecord where agentId in :agents order by name"
 
 /** The repositories of a tenant as the agents' last Registers describe them, and the count without a recovery key. */
@@ -41,6 +47,18 @@ class Repositories(
         tenantId: UUID,
         verifier: UUID,
     ): List<VerifierSetupItem> = VerifierSetupRules.verifierSetup(holders(tenantId), verifier)
+
+    /** What to do to get the first verifier going: a key command per repository the verified sources write to (V6). */
+    fun firstVerifierSetup(tenantId: UUID): FirstVerifierSetup =
+        sessions.inTenant(tenantId) { session ->
+            val pairs =
+                session
+                    .createNativeQuery(VERIFIED_REPOSITORIES.trimIndent(), Array<Any?>::class.java)
+                    .setParameter("tenant", tenantId)
+                    .list()
+                    .map { SourceRepository(it[0] as UUID, it[1] as String, it[2] as String) }
+            FirstVerifierSetup.of(pairs)
+        }
 
     /** The repositories the given agents announced, by agent, each by name; an agent without any has no entry. */
     fun announcedBy(

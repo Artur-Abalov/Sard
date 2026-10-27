@@ -11,6 +11,7 @@ import { canChangePassword, confirmationMismatch } from '../onboarding/forms'
 import { passwordChangeResult, type Notice } from '../onboarding/outcomes'
 import { tones } from '../theme'
 import { SelfBackupSection } from './settings/SelfBackupSection'
+import { VerificationSection } from './settings/VerificationSection'
 
 type Outcome = { kind: 'changed' } | { kind: 'failed'; notice: Notice } | null
 
@@ -89,6 +90,7 @@ export function Settings() {
         </Stack>
       </form>
       <SelfBackupSection />
+      <VerificationSection />
     </Stack>
   )
 }

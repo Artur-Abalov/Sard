@@ -101,13 +101,19 @@ function CreatedToken({ created }: { created: Created }) {
   )
 }
 
-function CreateForm({ onCreated }: { onCreated: (created: Created) => void }) {
+function CreateForm({
+  initialRole,
+  onCreated,
+}: {
+  initialRole: AgentRole
+  onCreated: (created: Created) => void
+}) {
   const { t } = useTranslation()
   const roleLabel = useRoleLabel()
   const [label, setLabel] = useState('')
   const [ttl, setTtl] = useState<number | string>('')
   const [unit, setUnit] = useState<TtlUnit>('hours')
-  const [role, setRole] = useState<AgentRole>('source')
+  const [role, setRole] = useState<AgentRole>(initialRole)
   const create = useMutation({
     mutationFn: () =>
       call(
@@ -175,7 +181,15 @@ function refused(body: unknown, kind: 'ttl' | 'label' | 'role'): boolean {
   return fieldFailures(body).some((failure) => mapField(failure.field, []).kind === kind)
 }
 
-function CreateTokenModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+function CreateTokenModal({
+  opened,
+  role,
+  onClose,
+}: {
+  opened: boolean
+  role: AgentRole
+  onClose: () => void
+}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [created, setCreated] = useState<Created | null>(null)
@@ -187,6 +201,7 @@ function CreateTokenModal({ opened, onClose }: { opened: boolean; onClose: () =>
     <Modal opened={opened} onClose={close} title={t('tokens.createTitle')} size="lg">
       {created === null ? (
         <CreateForm
+          initialRole={role}
           onCreated={(token) => {
             setCreated(token)
             void queryClient.invalidateQueries({ queryKey: ['tokens'] })
@@ -300,7 +315,7 @@ function CaFingerprint() {
 export function Tokens() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { create, hint } = route.useSearch()
+  const { create, hint, role } = route.useSearch()
   const [opened, setOpened] = useState(create === true)
   const paged = usePaged(['tokens', 'list'], (cursor) =>
     call(
@@ -319,6 +334,7 @@ export function Tokens() {
       {hint === 'enroll' && <Alert color={tones.info}>{t('tokens.enrollHint')}</Alert>}
       <CreateTokenModal
         opened={opened}
+        role={role ?? 'source'}
         onClose={() => {
           setOpened(false)
           if (create === true) void navigate({ to: '/tokens', search: {}, replace: true })

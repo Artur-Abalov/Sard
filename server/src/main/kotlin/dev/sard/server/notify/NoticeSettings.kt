@@ -38,6 +38,11 @@ class ConsoleUrl private constructor(
 
     fun agent(agentId: UUID): String = "$base/agents/$agentId"
 
+    fun verification(verificationId: UUID): String = "$base/verifications/$verificationId"
+
+    /** The overview, where the instruction for the first verifier is (V6). */
+    fun overview(): String = "$base/"
+
     companion object {
         /** The address, or null when the setting is empty; anything but an http(s) address with a host fails. */
         fun parse(setting: String): ConsoleUrl? =
