@@ -3,6 +3,8 @@
 
 package dev.sard.server
 
+import com.github.dockerjava.api.command.InspectContainerResponse
+import dev.sard.server.database.Preparation
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.io.File
@@ -30,4 +32,29 @@ object EmbeddedPostgres {
         PostgreSQLContainer(DockerImageName.parse(image).asCompatibleSubstituteFor("postgres"))
             .withEnv("POSTGRES_INITDB_ARGS", initdbArgs)
             .withEnv("TZ", "UTC")
+
+    /**
+     * A container as [container] makes it, and with the database prepared once it runs (DB2): db-init's bootstrap, the
+     * passwords of the login roles and the migrations. A server connects to it as sard_app ([appUser]); the superuser
+     * of the container stays the tests' way to do what sard_app may not.
+     */
+    fun prepared(image: String = this.image): PostgreSQLContainer =
+        PreparedPostgres(DockerImageName.parse(image).asCompatibleSubstituteFor("postgres"))
+            .withEnv("POSTGRES_INITDB_ARGS", initdbArgs)
+            .withEnv("TZ", "UTC")
+
+    const val APP_USER = "sard_app"
+
+    val appPassword: String get() = Preparation.password(APP_USER)
+}
+
+private class PreparedPostgres(
+    image: DockerImageName,
+) : PostgreSQLContainer(image) {
+    override fun containerIsStarted(containerInfo: InspectContainerResponse) {
+        super.containerIsStarted(containerInfo)
+        TestAdmin.register(this)
+        createConnection("").use(Preparation::bootstrap)
+        Preparation.migrate(jdbcUrl)
+    }
 }

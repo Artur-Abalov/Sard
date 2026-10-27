@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.notify.telegram.BotReply
 import dev.sard.server.notify.telegram.FakeBotApi
@@ -127,7 +128,8 @@ class VerificationNotificationsIntegrationTest(
                 "verification_jobs",
                 "snapshots",
             )
-        for (table in tables) jdbc.update("delete from $table where tenant_id = ?", tenant.id)
+        val admin = TestAdmin.of(jdbc)
+        for (table in tables) admin.update("delete from $table where tenant_id = ?", tenant.id)
         tenant.drop()
     }
 

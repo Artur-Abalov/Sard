@@ -172,6 +172,17 @@ class VerificationNoticeFormatterTest {
     }
 
     @Test
+    fun `a failure whose evidence the database cleared still names the snapshot and the reason`() {
+        val notice = failed(stages = emptyList(), mismatches = emptyList(), reason = "the copy differs")
+
+        val lines = failure(notice).lines()
+
+        assertTrue("Причина: the copy differs" in lines)
+        assertTrue(lines.any { it.startsWith("Снимок: 4f3a9c1e") })
+        assertFalse(lines.any { it.startsWith("Стадия") || it.startsWith("Расхождения") })
+    }
+
+    @Test
     fun `an unknown stage is named as it is`() {
         val lines = failure(failed(stages = listOf(stage("future_stage", StageState.FAILED)))).lines()
 

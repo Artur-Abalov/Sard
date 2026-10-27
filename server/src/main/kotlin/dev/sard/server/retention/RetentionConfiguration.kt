@@ -9,16 +9,10 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.DependsOn
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Clock
 import java.time.Duration
-
-/**
- * How long the drop of a log partition waits for a reader of it. The drop takes `step_logs` itself too while it waits
- * (decision F2), so the writing of log lines of every tenant waits as long: two seconds, then the drop gives up, the
- * pass logs it and goes on, and the next pass drops the partition.
- */
-private val PARTITION_LOCK_TIMEOUT: Duration = Duration.ofSeconds(2)
 
 /** The settings of `sard.retention.*`; a value the cleaning cannot work with stops the start naming the property. */
 @Configuration(proxyBeanMethods = false)
@@ -28,16 +22,33 @@ class RetentionSettingsConfiguration {
     fun retentionSettings(
         properties: RetentionProperties,
         notify: NotifyProperties,
-    ): RetentionSettings = properties.settings(notify.ttl)
+        floor: VerificationEvidenceFloor,
+    ): RetentionSettings = properties.settings(notify.ttl, floor.term())
 }
+
+/** The shortest term the database lets the evidence of a verification be kept for, fixed by a migration (DB2). */
+fun interface VerificationEvidenceFloor {
+    fun term(): Duration
+}
+
+private const val EVIDENCE_FLOOR = "select min_days from retention_floors where name = 'verification_evidence'"
 
 @Configuration(proxyBeanMethods = false)
 class RetentionConfiguration {
+    /** After the migrations are checked: the floor of the evidence term is a row of the database (DB2). */
+    @Bean
+    @DependsOn("flywayInitializer")
+    fun verificationEvidenceFloor(jdbc: JdbcTemplate): VerificationEvidenceFloor {
+        val days = jdbc.queryForObject(EVIDENCE_FLOOR, Int::class.javaObjectType)
+        val term = Duration.ofDays(checkNotNull(days).toLong())
+        return VerificationEvidenceFloor { term }
+    }
+
     @Bean
     fun retentionMetrics(meters: MeterRegistry): RetentionMetrics = MicrometerRetentionMetrics(meters)
 
     @Bean
-    fun stepLogRetention(jdbc: JdbcTemplate) = StepLogRetention(jdbc, PARTITION_LOCK_TIMEOUT)
+    fun stepLogRetention(jdbc: JdbcTemplate) = StepLogRetention(jdbc)
 
     @Bean
     fun retentionPass(

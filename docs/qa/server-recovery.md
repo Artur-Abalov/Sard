@@ -31,7 +31,7 @@
 
 Ожидаемый результат — после «→» в каждом шаге. Любое расхождение — дефект.
 Точные границы (окно потери от старта, проход планировщика, гонка двух
-серверов за роль `sard_self`) вручную не проверяются — это делают тесты
+серверов за секцию журнала) вручную не проверяются — это делают тесты
 `@startup` с управляемыми часами.
 
 ## Подготовка
@@ -67,7 +67,6 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
    SARD_VERSION=e2e
    SARD_IMAGE=sard-server
    SARD_AGENT_IMAGE=sard-agent
-   SARD_DB_PASSWORD=$(openssl rand -hex 24)
    SARD_PKI_SERVER_NAMES=localhost,127.0.0.1,sard.qa.test
    SARD_AGENT_ENDPOINT=sard.qa.test:9090
    EOF
@@ -154,21 +153,23 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
     → `docker compose ps` — только `postgres`, `healthy`;
     `docker compose exec -T postgres psql -U sard -d sard -Atc 'select count(*) from agents'`
     → на 1 больше, чем строк A1, A2 (`sard-self` X) — то есть 3; агента A3 нет;
-    `select count(*) from pg_roles where rolname = 'sard_self'` → `0`.
+    `select count(*) from pg_roles where rolname like 'sard\_%'` → `0` (ролей Sard в дампе нет, их создаст `db-init` на шаге 4).
 15. Шаг 4: сервер.
     → `docker compose logs server | grep 'CA fingerprint='` содержит
     `caFingerprint` карточки и `origin=existing`; `curl -fsS $API/status` —
     версия `e2e`; `curl -fsS $API/onboarding | jq -r .restriction` → `none`; лог
     без `SARD SETUP CODE`.
-16. Роль дампа `[OQ-219]`:
+16. Роли Sard и пароли (DB2, `docs/qa/database-roles.md`):
 
     ```bash
-    pw=$(docker compose exec -T server cat /var/lib/sard/self/db-password)
-    docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_self -d sard -Atc 'select count(*) from agents'
-    docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_self -d sard -c 'set default_transaction_read_only = off; create temp table x (i int)'
+    pw=$(docker compose exec -T self-agent cat /run/sard-self/db-password)
+    docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_backup -d sard -Atc 'select count(*) from agents'
+    docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_backup -d sard -c 'set default_transaction_read_only = off; create temp table x (i int)'
+    docker compose exec -T postgres psql -U sard -d sard -Atc "select distinct tableowner from pg_tables where schemaname = 'sard'"
     ```
 
-    → первая команда печатает `3`; вторая — ошибка прав (`permission denied`).
+    → первая команда печатает `3`; вторая — ошибка прав (`permission denied`); третья —
+    `sard_owner`. Пароль новый, не равный паролю старой машины.
 
 ## Часть 4. Сосед, имя, агенты, история
 

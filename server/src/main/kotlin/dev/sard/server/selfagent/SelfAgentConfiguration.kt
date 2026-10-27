@@ -7,19 +7,14 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.Agents
 import dev.sard.server.onboarding.OnboardingSteps
-import org.postgresql.PGConnection
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import java.security.SecureRandom
 import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadFactory
-import javax.sql.DataSource
-
-private const val SCRAM = "scram-sha-256"
 
 /** A built-in token with less than this left is replaced: the agent must have time to use it (Р1). */
 private val EXPIRY_MARGIN: Duration = Duration.ofMinutes(10)
@@ -40,20 +35,6 @@ private class DefaultTenantAgents(
     private val agents: Agents,
 ) : BuiltinAgents {
     override fun live(): Boolean = agents.builtinLive(TenantResolver.DEFAULT_TENANT_ID)
-}
-
-/** The role's password goes to the server as a SCRAM verifier computed here, never as text in SQL. */
-internal class ScramRolePasswords(
-    private val dataSource: DataSource,
-) : RolePasswords {
-    override fun set(
-        role: String,
-        password: String,
-    ) {
-        dataSource.connection.use {
-            it.unwrap(PGConnection::class.java).alterUserPassword(role, password.toCharArray(), SCRAM)
-        }
-    }
 }
 
 /**
@@ -80,15 +61,8 @@ class SelfAgentConfiguration {
     @ConditionalOnExpression("'\${sard.self-agent.dir:}' != ''")
     fun selfAgentLoop(
         properties: SelfAgentProperties,
-        channel: SelfChannel,
         check: SelfAgentCheck,
-        dataSource: DataSource,
-    ): SelfAgentLoop {
-        val passwords = ScramRolePasswords(dataSource)
-        val role = PostgresDumpRole(dataSource)
-        val setup = SelfAgentSetup(channel, SecureRandom(), passwords, role, AdvisoryLock(dataSource))
-        return SelfAgentLoop(checkNotNull(properties.settings()).checkInterval, ::scheduler, setup::run, check::run)
-    }
+    ) = SelfAgentLoop(checkNotNull(properties.settings()).checkInterval, ::scheduler, check::run)
 
     private fun scheduler(): ScheduledExecutorService {
         val daemon = ThreadFactory { Thread(it, "sard-self-agent").apply { isDaemon = true } }

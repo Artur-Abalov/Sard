@@ -3,9 +3,15 @@
 
 package dev.sard.server.recovery
 
+import dev.sard.server.TestAdmin
+import dev.sard.server.database.MigrationSettings
+import dev.sard.server.database.Preparation
+import dev.sard.server.database.coreConfiguration
+import dev.sard.server.onboarding.Database
 import dev.sard.server.onboarding.Installation
 import dev.sard.server.onboarding.RunningServer
 import dev.sard.server.onboarding.StartOptions
+import dev.sard.server.onboarding.TestPostgres
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.info.BuildProperties
 import org.springframework.jdbc.core.JdbcTemplate
@@ -71,7 +77,8 @@ class DatabaseNewerThanServerIntegrationTest {
         success: Boolean = true,
     ) {
         installation.start().close()
-        jdbc().update(
+        // sard_app may not write the history of migrations: the superuser of the cluster plays the newer server.
+        TestAdmin.of(jdbc()).update(
             "insert into flyway_schema_history (installed_rank, version, description, type, script, checksum, " +
                 "installed_by, installed_on, execution_time, success) " +
                 "select max(installed_rank) + 1, ?, ?, 'SQL', 'V${version}__$description.sql', 1, 'sard', now(), " +
@@ -153,20 +160,30 @@ class DatabaseNewerThanServerIntegrationTest {
         assertEquals(before, history())
     }
 
+    /** The migrations of this build up to and including [target], as migrate would stop there. */
+    private fun coreAt(
+        database: Database,
+        target: String,
+    ) {
+        val settings = MigrationSettings(database.url, "sard_migrator", Preparation.password("sard_migrator"))
+        coreConfiguration(settings).target(target).load().migrate()
+    }
+
     @Test
-    fun `Сервер на базе более старой версии применяет недостающие миграции и стартует`() {
-        installation.database.let {
-            org.flywaydb.core.Flyway
-                .configure()
-                .dataSource(it.url, it.user, it.password)
-                .target("202610111200")
-                .load()
-                .migrate()
-        }
+    fun `Сервер на базе более старой версии стартует, когда migrate применил недостающие миграции`() {
+        val older = TestPostgres.newDatabase(migrated = false)
+        val sandbox = Installation(tmp, older)
+        coreAt(older, "202610111200")
 
-        installation.start().close()
+        val (refused, _) = sandbox.startFailing()
+        assertTrue("MIGRATIONS_NOT_APPLIED" in refused.messages().joinToString("\n"), "the server does not migrate")
+        Preparation.migrate(older.url)
+        sandbox.start().close()
 
-        val applied = jdbc().queryForList("select version from flyway_schema_history where success", String::class.java)
+        val applied =
+            JdbcTemplate(
+                DriverManagerDataSource(older.url, older.user, older.password),
+            ).queryForList("select version from flyway_schema_history where success", String::class.java)
         assertTrue(LAST_MIGRATION in applied, applied.toString())
     }
 

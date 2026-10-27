@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
@@ -61,7 +62,8 @@ class NotificationsWithoutBotIntegrationTest(
                 "verification_jobs",
                 "snapshots",
             )
-        for (table in verification) jdbc.update("delete from $table where tenant_id = ?", tenant.id)
+        val admin = TestAdmin.of(jdbc)
+        for (table in verification) admin.update("delete from $table where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedule_fires where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedules where tenant_id = ?", tenant.id)
         tenant.drop()

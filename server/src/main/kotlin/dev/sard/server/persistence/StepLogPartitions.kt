@@ -6,6 +6,7 @@ package dev.sard.server.persistence
 import org.slf4j.LoggerFactory
 import org.springframework.context.SmartLifecycle
 import org.springframework.jdbc.core.JdbcTemplate
+import java.sql.Date
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -18,7 +19,8 @@ import java.util.concurrent.TimeUnit
 private val log = LoggerFactory.getLogger(StepLogPartitions::class.java)
 
 /**
- * Monthly partitions of `step_logs` (ADR 0013), created ahead by the server: at start, for the
+ * Monthly partitions of `step_logs` (ADR 0013), created ahead by the server through a function of the database
+ * (sard_app may not create a table): at start, for the
  * clock's month and [monthsAhead] after it, then every [interval]. A line whose month has no
  * partition fails its chunk, so the months ahead are the margin for a server that was down.
  * Dropping expired partitions is `retention.StepLogRetention`'s, by `sard.retention.step-logs`.
@@ -63,14 +65,10 @@ class StepLogPartitions(
             .onFailure { log.warn("Log partitions not checked; retrying at the next check", it) }
     }
 
-    private fun create(month: YearMonth): String? {
-        val name = "step_logs_%04d_%02d".format(month.year, month.monthValue)
-        val exists = jdbc.queryForObject("select to_regclass(?) is not null", Boolean::class.java, name) == true
-        if (exists) return null
-        val from = "${month.atDay(1)} 00:00:00+00"
-        val to = "${month.plusMonths(1).atDay(1)} 00:00:00+00"
-        // The name and bounds come from integers, never from input.
-        jdbc.execute("create table if not exists $name partition of step_logs for values from ('$from') to ('$to')")
-        return name
-    }
+    /**
+     * The name of the partition of [month] this call made, or null when it existed: `create_step_log_partition`
+     * does it as sard_owner (DB2, ADR 0069) and serialises servers that start together on one advisory lock.
+     */
+    private fun create(month: YearMonth): String? =
+        jdbc.queryForObject("select create_step_log_partition(?)", String::class.java, Date.valueOf(month.atDay(1)))
 }

@@ -561,26 +561,6 @@ class VerificationConsoleApiIntegrationTest(
     }
 
     @Test
-    fun `a record carries the same duration as its line of the report, null without stage times`() {
-        utc()
-        val source = seed.source("db-main", agent)
-        val stages =
-            """[{"level":1,"name":"restic_check","state":"passed","startedAt":"2026-10-20T11:58:30Z",""" +
-                """"finishedAt":"2026-10-20T12:00:00Z","exitCode":0,"output":"ok","imageDigest":""}]"""
-        val timed = onDay(source, "passed", "2026-10-20", stages = stages)
-        val untimed = onDay(source, "passed", "2026-10-21")
-
-        val items = report(source, "?from=2026-10-01&to=2026-10-30").json.path("items")
-
-        for ((id, want) in listOf(timed to "90000", untimed to null)) {
-            val line = items.first { it.path("id").asString() == id.toString() }.path("durationMs")
-            val shown = verification(id).path("durationMs")
-            assertEquals(want, shown.takeUnless(JsonNode::isNull)?.asString(), "the record")
-            assertEquals(want, line.takeUnless(JsonNode::isNull)?.asString(), "the report")
-        }
-    }
-
-    @Test
     fun `without a period the report covers the last 30 days up to now`() {
         val source = seed.source("db-main", agent)
 

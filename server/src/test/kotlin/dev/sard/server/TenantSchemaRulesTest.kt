@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -74,11 +75,10 @@ private const val SINGLE_TENANT_REFERENCES =
 @Import(TestcontainersConfiguration::class)
 class TenantSchemaRulesTest(
     @Autowired private val jdbc: JdbcTemplate,
-    @Autowired private val tx: TransactionTemplate,
 ) {
-    private fun violations() =
+    private fun violations(on: JdbcTemplate = jdbc) =
         listOf(WITHOUT_TENANT_FK, WITHOUT_TENANT_ID_KEY, SINGLE_TENANT_REFERENCES)
-            .map { jdbc.queryForList(it, String::class.java) }
+            .map { on.queryForList(it, String::class.java) }
 
     @Test
     fun `the migrated schema follows the tenant rules`() {
@@ -88,11 +88,13 @@ class TenantSchemaRulesTest(
     /** Control: the checks do catch each violation (DDL is transactional in PostgreSQL). */
     @Test
     fun `a table breaking the rules is caught`() {
+        // sard_app may not create a table: the control runs as the superuser, in a transaction of its own.
+        val admin = TestAdmin.of(jdbc)
         val found =
-            tx.execute { status ->
+            TransactionTemplate(DataSourceTransactionManager(checkNotNull(admin.dataSource))).execute { status ->
                 status.setRollbackOnly()
-                jdbc.execute("create table bad_parent (id uuid primary key, tenant_id uuid not null)")
-                jdbc.execute(
+                admin.execute("create table bad_parent (id uuid primary key, tenant_id uuid not null)")
+                admin.execute(
                     """
                     create table bad_child (
                         id uuid primary key,
@@ -103,7 +105,7 @@ class TenantSchemaRulesTest(
                     """.trimIndent(),
                 )
                 // Pairs tenant_id with tenant_id, but links no row: not a composite key.
-                jdbc.execute(
+                admin.execute(
                     """
                     create table solo_parent (
                         id uuid primary key,
@@ -112,7 +114,7 @@ class TenantSchemaRulesTest(
                     )
                     """.trimIndent(),
                 )
-                jdbc.execute(
+                admin.execute(
                     """
                     create table solo_child (
                         id uuid primary key,
@@ -122,7 +124,7 @@ class TenantSchemaRulesTest(
                     )
                     """.trimIndent(),
                 )
-                violations()
+                violations(admin)
             }
         val expected =
             listOf(

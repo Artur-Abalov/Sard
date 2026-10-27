@@ -119,8 +119,11 @@ class VerificationIntegrationTest(
                 "verification_jobs",
                 "snapshots",
             )
+        val admin =
+            dev.sard.server.TestAdmin
+                .of(jdbc)
         for (table in tables) {
-            jdbc.update("delete from $table where tenant_id = ?", tenant.id)
+            admin.update("delete from $table where tenant_id = ?", tenant.id)
         }
         jdbc.update("delete from verification_schedule")
         jdbc.update("delete from step_logs where tenant_id = ?", tenant.id)

@@ -65,10 +65,15 @@ class SardEnvironment(
     // Not "network": inside a container's apply {} that name is the container's own getNetwork().
     private val sardNetwork: Network =
         if (internalNetwork) Network.builder().createNetworkCmdModifier { it.withInternal(true) }.build() else Network.newNetwork()
+    // The superuser's password stays inside this class; the server gets sard_app's, migrate sard_migrator's (DB2),
+    // and the agent next to the server sard_backup's.
     private val dbPassword = randomHex()
+    private val appPassword = randomHex()
+    private val migratorPassword = randomHex()
+    internal val backupPassword = randomHex()
     /** The administrator's password, set in the first-start wizard by [ensureAdministrator], for signing in to the REST API. */
     internal val adminPassword = randomHex()
-    private val secrets = mutableSetOf(dbPassword, adminPassword)
+    private val secrets = mutableSetOf(dbPassword, appPassword, migratorPassword, backupPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
     // Output of server containers [recreateServer] removed; [serverLogs] starts with it.
     private val retiredServerLogs = StringBuilder()
@@ -81,7 +86,11 @@ class SardEnvironment(
     /** The volume of the server's CA directory ([PKI_DIR]), which sard-self mounts read-only. */
     internal val caVolume: String get() = pkiVolume
 
-    /** The channel to sard-self ([SELF_DIR]): its enrollment token and the database role's password. */
+    /**
+     * The channel to sard-self ([SELF_DIR]): its enrollment token. The password of its database role (sard_backup) lies
+     * there too in these stands, as `db-password`, written by [prepareDatabase]; in deploy/docker-compose.yml it is a
+     * volume of its own mounted over a placeholder (scripts/test-self-agent.sh checks that layout).
+     */
     internal lateinit var channelVolume: String
         private set
 
@@ -178,10 +187,66 @@ class SardEnvironment(
             dbVolume = volume()
             channelVolume = volume()
             postgres.start()
+            prepareDatabase()
             server.start()
         } catch (e: RuntimeException) {
             writeLogs(testClass, "start")
             throw e
+        }
+    }
+
+    /**
+     * What db-init and the migrate service do in deploy/docker-compose.yml (DB2): the roles and the schema from
+     * bootstrap.sql, a password for each role that logs in, then the migrations by the `migrate` command of the server
+     * image. The server starts after it, as sard_app, which may not change the schema.
+     */
+    private fun prepareDatabase() {
+        database(schema = false).use { connection ->
+            connection.createStatement().use { it.execute(E2e.bootstrapSql) }
+            for ((role, password) in mapOf("sard_migrator" to migratorPassword, "sard_app" to appPassword, "sard_backup" to backupPassword)) {
+                connection.createStatement().use { it.execute("ALTER ROLE $role PASSWORD '$password'") }
+            }
+        }
+        oneShot(
+            GenericContainer<Nothing>(DockerImageName.parse(E2e.serverImage)).apply {
+                withCommand("migrate")
+                withEnv(
+                    mapOf(
+                        "SARD_DB_URL" to "jdbc:postgresql://$POSTGRES_ALIAS:5432/sard",
+                        "SARD_MIGRATE_PASSWORD" to migratorPassword,
+                    ),
+                )
+            },
+        )
+        if (selfAgent) {
+            oneShot(
+                GenericContainer<Nothing>(DockerImageName.parse(E2e.serverImage)).apply {
+                    withCreateContainerCmdModifier {
+                        it.withUser("0").withEntrypoint("sh")
+                        it.hostConfig?.withBinds(Bind(channelVolume, Volume("/channel")))
+                    }
+                    withCommand(
+                        "-c",
+                        // This mounts the fresh volume first, so it gives the volume the owner and mode of the server's
+                        // directory (10001, 0700) itself: the server writes its enrollment token there.
+                        "chown 10001:10001 /channel && chmod 0700 /channel && " +
+                            "printf '%s' '$backupPassword' > /channel/db-password && chown 10001:10001 /channel/db-password && chmod 600 /channel/db-password",
+                    )
+                },
+            )
+        }
+    }
+
+    /** Runs [container] to its end on the network of this installation and fails with its output when it fails. */
+    private fun oneShot(container: GenericContainer<*>) {
+        val output = ToStringConsumer()
+        container.withNetwork(sardNetwork).withLogConsumer(output).withStartupCheckStrategy(OneShotStartupCheckStrategy())
+        try {
+            container.start()
+        } catch (e: RuntimeException) {
+            throw IllegalStateException("a step of the database's preparation failed: ${masked(output.toUtf8String())}", e)
+        } finally {
+            container.stop()
         }
     }
 
@@ -316,8 +381,12 @@ class SardEnvironment(
             ?.takeIf { it.isNotEmpty() }
             ?: tracked.output.toUtf8String()
 
-    /** A connection to the server's database as its own user, from the host. */
-    fun database(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+    /**
+     * A connection to the server's database as the cluster's superuser (the server itself is sard_app, DB2), from the
+     * host, in the schema `sard` unless [schema] is false.
+     */
+    fun database(schema: Boolean = true): Connection =
+        DriverManager.getConnection(postgres.jdbcUrl + if (schema) "&currentSchema=sard" else "", postgres.username, postgres.password)
 
     override fun beforeAll(context: ExtensionContext) = start(context.requiredTestClass.simpleName)
 
@@ -333,8 +402,8 @@ class SardEnvironment(
     private fun defaultServerEnv() =
         mapOf(
             "SARD_DB_URL" to "jdbc:postgresql://$POSTGRES_ALIAS:5432/sard",
-            "SARD_DB_USER" to "sard",
-            "SARD_DB_PASSWORD" to dbPassword,
+            "SARD_DB_USER" to "sard_app",
+            "SARD_DB_PASSWORD" to appPassword,
             // The server certificate's SAN; the endpoint's host must be one of them.
             "SARD_PKI_SERVER_NAMES" to SERVER_ALIAS,
             "SARD_AGENT_ENDPOINT" to AGENT_ENDPOINT,

@@ -196,7 +196,7 @@ Network, «Preserve log» включён.
     (убедиться, что `command -v node` в этом окружении пусто) → успешно.
 33. `./gradlew -q :server:bootJar && unzip -l server/build/libs/sard-server.jar | grep -c 'console/index.html'` → `0`.
 34. `[Р3]` Запустить этот jar в сети compose рядом с базой, на порту 8081:
-    `docker run -d --name sard-nc --network sard_default -p 127.0.0.1:8081:8080 -v $PWD/server/build/libs:/app:ro -e SARD_DB_URL=jdbc:postgresql://postgres:5432/sard -e SARD_DB_PASSWORD=$(sed -n 's/^SARD_DB_PASSWORD=//p' deploy/.env) -v sard_sard-pki:/pki -e SARD_PKI_DIR=/pki eclipse-temurin:25-jre java -jar /app/sard-server.jar; sleep 30`
+    `docker run -d --name sard-nc --network sard_default -p 127.0.0.1:8081:8080 -v $PWD/server/build/libs:/app:ro -e SARD_DB_URL=jdbc:postgresql://postgres:5432/sard -e SARD_DB_USER=sard_app -e SARD_DB_PASSWORD="$(docker compose -f deploy/docker-compose.yml exec -T server cat /run/sard-db/password)" -v sard_sard-pki:/pki -e SARD_PKI_DIR=/pki eclipse-temurin:25-jre java -jar /app/sard-server.jar; sleep 30`
     → `code localhost:8081/` и `code localhost:8081/agents` — `404`, тип не `text/html`;
     `code localhost:8081/api/v1/status` — `200`;
     `docker logs sard-nc 2>&1 | grep -i console` → ровно одна запись INFO о том,

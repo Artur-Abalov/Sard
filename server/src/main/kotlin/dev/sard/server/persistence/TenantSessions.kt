@@ -23,7 +23,7 @@ class TenantSessions(
         work: (Session) -> T,
     ): T {
         require(tenantId != SYSTEM_TENANT_ID) { "the system identifier is not a tenant" }
-        return open(tenantId) { session -> work(session) }
+        return open(tenantId, readOnly = false, work)
     }
 
     /**
@@ -31,7 +31,7 @@ class TenantSessions(
      * must find a row before its tenant is known (ADR 0013, "Целевая схема"); each
      * caller is listed in ADR 0013.
      */
-    fun <T> system(work: (Session) -> T): T = open(SYSTEM_TENANT_ID) { session -> work(readOnly(session)) }
+    fun <T> system(work: (Session) -> T): T = open(SYSTEM_TENANT_ID, readOnly = true, work)
 
     /**
      * Reads as [tenantId], in a read-only transaction: for the work that must be seen to write nothing, such as the
@@ -42,22 +42,42 @@ class TenantSessions(
         work: (Session) -> T,
     ): T {
         require(tenantId != SYSTEM_TENANT_ID) { "the system identifier is not a tenant" }
-        return open(tenantId) { session -> work(readOnly(session)) }
+        return open(tenantId, readOnly = true, work)
     }
 
-    private fun readOnly(session: Session): Session {
-        session.isDefaultReadOnly = true
-        session.doWork { connection: Connection ->
-            connection.createStatement().use { it.execute("SET TRANSACTION READ ONLY") }
-        }
-        return session
-    }
-
+    /**
+     * One session and one transaction. In a transaction of a tenant the database knows the tenant too (DB2, ADR 0013):
+     * `sard.tenant_id` is set for the transaction only (`set_config(..., true)`, as SET LOCAL), so a connection of the
+     * pool that goes to the next transaction has none. The policies of row level security that will read it come after
+     * 0.1.0; nothing reads it now.
+     */
     private fun <T> open(
         tenantId: UUID,
+        readOnly: Boolean,
         work: (Session) -> T,
     ): T =
         factory.withOptions().tenantIdentifier(tenantId).openSession().use { session ->
-            session.fromTransaction { work(session) }
+            session.fromTransaction {
+                if (readOnly) session.isDefaultReadOnly = true
+                session.doWork { connection: Connection -> prepare(connection, tenantId, readOnly) }
+                work(session)
+            }
         }
+
+    /** SET TRANSACTION READ ONLY must come before any query of the transaction, so before the tenant is set. */
+    private fun prepare(
+        connection: Connection,
+        tenantId: UUID,
+        readOnly: Boolean,
+    ) {
+        // mutflow:falsePositive the Boolean execute() returns is dropped by use { }; the statement runs either way
+        if (readOnly) connection.createStatement().use { it.execute("SET TRANSACTION READ ONLY") }
+        if (tenantId != SYSTEM_TENANT_ID) {
+            connection.prepareStatement("select set_config('sard.tenant_id', ?, true)").use {
+                it.setString(1, tenantId.toString())
+                // mutflow:falsePositive the Boolean execute() returns is dropped; it runs either way
+                it.execute()
+            }
+        }
+    }
 }

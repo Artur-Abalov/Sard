@@ -84,12 +84,11 @@ class FirstStartRestartIntegrationTest {
     fun `Блок кода называет страницу мастера и команду чтения лога`() {
         val server = start()
 
-        val index = server.startLog.indexOfFirst { CODE_LINE.containsMatchIn(it.text) }
+        // Lines of other threads (a pool's "Fetching JDBC Connection") may fall between the three of the block.
         val around =
             server.startLog
-                .subList(index - 1, index + 2)
-                .filterIndexed { i, _ -> i != 1 }
                 .map { it.text }
+                .filter { it.startsWith("SARD SETUP") && !CODE_LINE.containsMatchIn(it) }
         assertTrue(around.any { "/setup" in it }, "$around")
         assertTrue(around.any { "docker compose logs server" in it }, "$around")
         assertTrue(around.none { CODE in it || CODE.replace("-", "") in it }, "$around")

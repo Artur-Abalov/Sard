@@ -84,6 +84,40 @@ class FirstStartDocsTest {
     }
 
     @Test
+    fun `The README quickstart sets no database password, db-init makes them (DB2)`() {
+        assertFalse(quickstart().contains("DB_PASSWORD"))
+        assertFalse(
+            text("README.ru.md")
+                .substringAfter("quickstart:begin")
+                .substringBefore("quickstart:end")
+                .contains("DB_PASSWORD"),
+        )
+        assertTrue(quickstart().contains("docker compose up -d --wait"))
+    }
+
+    @Test
+    fun `The README quickstart downloads every file the compose file refers to into the same path`() {
+        val referenced =
+            Regex("""file: \./(\S+)""")
+                .findAll(text("deploy/docker-compose.yml"))
+                .map { it.groupValues[1] }
+                .toList()
+        assertTrue(referenced.isNotEmpty())
+        for (readme in listOf("README.md", "README.ru.md")) {
+            val block = text(readme).substringAfter("quickstart:begin").substringBefore("quickstart:end")
+            for (path in referenced) {
+                val asset = path.substringAfterLast('/')
+                val url = """"\S+/\$\{?SARD_TAG\}?/${Regex.escape(asset)}""""
+                val download = Regex("""curl -fsSL -o ${Regex.escape(path)} $url""")
+                assertTrue(
+                    download.containsMatchIn(block),
+                    "$readme: the quickstart does not download $path from the release asset $asset",
+                )
+            }
+        }
+    }
+
+    @Test
     fun `The README quickstart goes through the setup code`() {
         assertFalse(quickstart().contains("SARD_ADMIN_PASSWORD"))
         val readme = text("README.md")

@@ -104,7 +104,7 @@ restic:
   cache_dir: /var/lib/sard-self/restic-cache
 executor:
   state_dir: /var/lib/sard-self/executor
-secrets: # the password of the database role sard_self, written by the server into the channel volume
+secrets: # the password of the database role sard_backup, written by db-init into its own volume (DB2)
   sard-db: /run/sard-self/db-password
 EOF
 USER 65532:65532

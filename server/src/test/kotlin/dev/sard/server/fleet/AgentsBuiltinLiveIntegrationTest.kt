@@ -10,6 +10,7 @@ import dev.sard.server.api.RestWorld
 import dev.sard.server.api.snapshotOf
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.registration.RecoveryKey
@@ -36,7 +37,7 @@ import kotlin.test.assertTrue
 
 /** Rule "built-in and not revoked" of docs/specs/server/self-agent.feature, asked of the fleet. */
 @Tag("mutflow-isolated")
-@MutFlowTest
+@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
 @RestApiTest
 class AgentsBuiltinLiveIntegrationTest(
     @Autowired ca: CertificateAuthority,

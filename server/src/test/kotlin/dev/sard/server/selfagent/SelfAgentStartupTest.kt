@@ -11,7 +11,6 @@ import org.junit.jupiter.api.io.TempDir
 import org.mockito.Mockito.mock
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import java.nio.file.Path
-import javax.sql.DataSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -31,7 +30,6 @@ class SelfAgentStartupTest {
             .withUserConfiguration(SelfAgentConfiguration::class.java)
             .withBean(EnrollmentTokens::class.java, { mock(EnrollmentTokens::class.java) })
             .withBean(TenantSessions::class.java, { mock(TenantSessions::class.java) })
-            .withBean(DataSource::class.java, { mock(DataSource::class.java) })
             .withBean(OnboardingSteps::class.java, { FakeOnboardingSteps() })
             .withPropertyValues(*properties)
 

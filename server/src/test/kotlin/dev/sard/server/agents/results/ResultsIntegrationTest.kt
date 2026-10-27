@@ -12,6 +12,7 @@ import dev.sard.proto.agent.v1.StepPhase
 import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.proto.agent.v1.StepStatus
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.agents.dispatch.DispatchTestConfiguration
 import dev.sard.server.agents.dispatch.ReconciledHellos
@@ -89,7 +90,7 @@ class ResultsIntegrationTest(
 
     @AfterTest
     fun `drop the tenants`() {
-        jdbc.update("drop trigger if exists snapshots_fail on snapshots")
+        TestAdmin.of(jdbc).update("drop trigger if exists snapshots_fail on snapshots")
         for (tenant in listOf(clients, other)) {
             tenant.closeChannels()
             val runTables = listOf("no_verifier_episodes", "snapshots", "step_logs", "run_steps", "runs", "sources")
@@ -218,7 +219,7 @@ class ResultsIntegrationTest(
         val connection = greeted(clients, agent)
         val run = dispatched(agent, connection)
         val step = run.steps.single().id
-        jdbc.execute(
+        TestAdmin.of(jdbc).execute(
             """
             create or replace function snapshots_fail() returns trigger language plpgsql as
             ${'$'}${'$'} begin raise exception 'disk full'; end ${'$'}${'$'};
@@ -232,7 +233,7 @@ class ResultsIntegrationTest(
         assertNull(connection.received.firstOrNull { it.messageCase == ConnectResponse.MessageCase.RESULT_ACK })
         assertEquals(listOf<Any?>("dispatched", "dispatched"), statuses(run))
 
-        jdbc.update("drop trigger snapshots_fail on snapshots")
+        TestAdmin.of(jdbc).update("drop trigger snapshots_fail on snapshots")
         leave(agent)
         val again = greeted(clients, agent)
         again.result(succeeded(step))

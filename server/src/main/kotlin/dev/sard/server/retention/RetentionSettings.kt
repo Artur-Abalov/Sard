@@ -29,12 +29,21 @@ data class RetentionProperties(
 ) {
     /**
      * The settings, or an [IllegalArgumentException] naming the property that stops the start. A delivery older
-     * than [notifyTtl] but younger than its own term must stay: the notification planner would make it again.
+     * than [notifyTtl] but younger than its own term must stay: the notification planner would make it again. The
+     * evidence of a verification is never cleared before [verificationFloor], the minimum the database keeps (DB2).
      */
-    fun settings(notifyTtl: Duration): RetentionSettings {
+    fun settings(
+        notifyTtl: Duration,
+        verificationFloor: Duration = Duration.ZERO,
+    ): RetentionSettings {
         positive("sard.retention.step-logs", stepLogs)
         positive("sard.retention.runs", runs)
         positive("sard.retention.verifications", verifications)
+        require(verifications >= verificationFloor) {
+            "sard.retention.verifications (${verifications.toDays()}d) is shorter than the " +
+                "${verificationFloor.toDays()}d the database allows for the evidence of a verification " +
+                "(retention_floors)"
+        }
         positive("sard.retention.schedule-fires", scheduleFires)
         positive("sard.retention.notification-deliveries", notificationDeliveries)
         positive("sard.retention.interval", interval)

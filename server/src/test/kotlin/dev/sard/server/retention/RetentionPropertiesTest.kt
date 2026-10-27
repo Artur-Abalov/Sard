@@ -71,6 +71,24 @@ class RetentionPropertiesTest {
     }
 
     @Test
+    fun `Срок проверок не короче нижней границы базы принимается, короче не даёт серверу стартовать`() {
+        val floor = Duration.ofDays(30)
+
+        val atFloor = MutFlow.underTest { RetentionProperties(verifications = floor).settings(TTL, floor) }
+        val shorter =
+            assertFailsWith<IllegalArgumentException> {
+                MutFlow.underTest { RetentionProperties(verifications = Duration.ofDays(29)).settings(TTL, floor) }
+            }
+
+        assertEquals(floor, atFloor.verifications)
+        assertEquals(
+            "sard.retention.verifications (29d) is shorter than the 30d the database allows for the evidence " +
+                "of a verification (retention_floors)",
+            shorter.message,
+        )
+    }
+
+    @Test
     fun `Срок доставок не больше ttl уведомлений не даёт серверу стартовать`() {
         for (hours in listOf(24L, 23L)) {
             val properties = RetentionProperties(notificationDeliveries = Duration.ofHours(hours))

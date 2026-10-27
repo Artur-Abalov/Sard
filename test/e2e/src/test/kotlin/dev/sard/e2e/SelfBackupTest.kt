@@ -100,10 +100,10 @@ class SelfBackupTest {
         val target = PgServer(sard, 18, alias = "db-restore").start()
         target.put("/tmp/sard.dump", dump)
         target.sql("create database restored")
-        val restore = target.exec("pg_restore", "-U", "postgres", "-d", "restored", "--no-owner", "/tmp/sard.dump")
+        val restore = target.exec("pg_restore", "-U", "postgres", "-d", "restored", "--no-owner", "--no-acl", "/tmp/sard.dump")
         assertEquals(0, restore.exitCode, restore.stderr)
         val live = sard.database().use { c -> c.createStatement().executeQuery("SELECT count(*) FROM agents").use { it.next(); it.getLong(1) } }
-        assertEquals("$live", target.query("select count(*) from agents", database = "restored"))
+        assertEquals("$live", target.query("select count(*) from sard.agents", database = "restored"))
         val tables = target.query("select count(*) from information_schema.tables where table_name in ('sources', 'runs', 'self_backups')", database = "restored")
         assertEquals("3", tables)
     }
@@ -125,7 +125,7 @@ class SelfBackupTest {
     @Test
     @Order(5)
     fun `a database the role cannot log in to fails its run and the state, a success brings it back`() {
-        sard.database().use { it.createStatement().execute("ALTER ROLE sard_self NOLOGIN") }
+        sard.database().use { it.createStatement().execute("ALTER ROLE sard_backup NOLOGIN") }
 
         val failed = backUpNow()
         assertEquals("failed", failed["self_database"])
@@ -134,7 +134,7 @@ class SelfBackupTest {
         assertEquals("failing", statusOf(failing), failing.body)
         assertTrue("\"failing\"" in failing.body.substringAfter("\"warnings\""), failing.body)
 
-        sard.database().use { it.createStatement().execute("ALTER ROLE sard_self LOGIN") }
+        sard.database().use { it.createStatement().execute("ALTER ROLE sard_backup LOGIN") }
         assertEquals(mapOf("self_database" to "succeeded", "self_keys" to "succeeded"), backUpNow())
         assertEquals("ok", statusOf(api.get("/api/v1/self-backup")))
     }
