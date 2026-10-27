@@ -519,7 +519,7 @@ func restoreStep(t *testing.T, pg postgresql.Plugin, rep executor.Reporter) (*ag
 	if err := os.MkdirAll(filepath.Join(dir, "state"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	handlers, err := pluginhost.NewHandlers(registryOf(t, pg), boundSecrets(t, map[string]string{"pg": password}, "db:5432/app_new"),
+	handlers, err := pluginhost.NewHandlers(registryOf(t, pg), boundSecrets(t, map[string]string{"pg": password}, "db:5432/app_new", "db:5432/postgres"),
 		func(string, string, io.Writer) (restic.Repository, bool) { return snapshotRepo{}, true }, filepath.Join(dir, "restore"),
 		pluginhost.WithRestoreJournal(newRestoreJournal(cfg, slog.New(slog.DiscardHandler))))
 	if err != nil {

@@ -29,7 +29,7 @@ func runSecretList(_ context.Context, args []string, stdout, stderr io.Writer, d
 	if code != exitOK {
 		return code
 	}
-	rows := secretRows(cfg, deps.bindings(opts.configPath, who.Service.UID))
+	rows := secretRows(cfg, deps.bindings(opts.configPath, who.Service))
 	if opts.json {
 		printSecretsJSON(stdout, rows)
 		return exitOK

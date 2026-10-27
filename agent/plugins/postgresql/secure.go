@@ -49,6 +49,19 @@ func (t target) secured(h secretHost, dbname string) (target, []byte, error) {
 	return t, password, err
 }
 
+// securedFor is secured for every database the plugin signs in to on the
+// target: the password goes to none of them unless the binding allows each.
+func (t target) securedFor(h secretHost, dbnames ...string) (target, []byte, error) {
+	var password []byte
+	var err error
+	for _, db := range dbnames {
+		if t, password, err = t.secured(h, db); err != nil {
+			return t, nil, err
+		}
+	}
+	return t, password, nil
+}
+
 // socket: the host is a directory of Unix sockets.
 func (t target) socket() bool { return strings.HasPrefix(t.Host, "/") }
 
@@ -140,6 +153,11 @@ func (t target) channelBinding() bool {
 // password.
 func (t target) securityPairs() [][2]string {
 	pairs := [][2]string{{"sslmode", t.sslmode()}}
+	if t.sslmode() != tlsDisable {
+		// libpq tries GSS encryption first, and a connection it encrypts has no
+		// TLS: neither the certificate nor channel binding would be checked.
+		pairs = append(pairs, [2]string{"gssencmode", "disable"})
+	}
 	if t.sslmode() == tlsVerifyFull {
 		pairs = append(pairs, [2]string{"sslrootcert", t.rootCert()})
 	}

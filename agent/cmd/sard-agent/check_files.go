@@ -244,7 +244,7 @@ func (c *hostCheck) secretLines() {
 // rules of its file, the same reading.
 func (c *hostCheck) bindingLine(name string) hostcheck.Line {
 	path := hostsetup.Layout{Config: c.opts.configPath}.SecretBinding(name)
-	b, bound, err := c.deps.bindings(c.opts.configPath, c.who.Service.UID).Binding(name)
+	b, bound, err := c.deps.bindings(c.opts.configPath, c.who.Service).Binding(name)
 	c.noteDenied(path, err)
 	hint := hostcheck.BindingHint(name, path, hostcheck.InMainConfig(c.cfg, name))
 	return hostcheck.BindingLine(name, path, hint, describeBinding(b), bound, err)

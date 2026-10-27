@@ -69,6 +69,34 @@ func (s *Store) judge(info secrets.Info) error {
 	return nil
 }
 
+// AsUser is read as the user uid of primary group gid would read: a file
+// whose mode lets that user not read it is refused with fs.ErrPermission. A
+// command run as root judges a binding with it as the service would read it;
+// supplementary groups are not looked at.
+func AsUser(read ReadFunc, uid, gid uint32) ReadFunc {
+	return func(path string) ([]byte, secrets.Info, error) {
+		data, info, err := read(path)
+		if err == nil && !readable(info, uid, gid) {
+			return nil, info, &fs.PathError{Op: "open", Path: path, Err: fs.ErrPermission}
+		}
+		return data, info, err
+	}
+}
+
+// readable: the bits of the mode that apply to the user allow reading.
+func readable(info secrets.Info, uid, gid uint32) bool {
+	perm := info.Mode.Perm()
+	switch {
+	case uid == 0:
+		return true
+	case info.UID == uid:
+		return perm&0o400 != 0
+	case info.GID == gid:
+		return perm&0o040 != 0
+	}
+	return perm&0o004 != 0
+}
+
 // ReadFile is the ReadFunc of the host: the file is opened without following
 // a link and without blocking, and judged from its descriptor.
 func ReadFile(path string) ([]byte, secrets.Info, error) {

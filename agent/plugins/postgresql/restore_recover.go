@@ -70,7 +70,7 @@ func keepAll(e journalEntry, why error) undone {
 // entry: the parameters from the entry, the password from the secret of the
 // host the entry names, the programs from the host.
 func (p Plugin) connectionOf(h sdk.RecoveryHost, e journalEntry) (conn, error) {
-	to, password, err := e.Connection.secured(h, e.Database.Name)
+	to, password, err := e.Connection.securedFor(h, e.Database.Name, maintenanceDB)
 	if err != nil {
 		return conn{}, errors.New("the secret " + e.Connection.PasswordRef + " of the interrupted restore cannot be used: " + err.Error())
 	}

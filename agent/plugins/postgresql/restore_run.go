@@ -102,7 +102,7 @@ func (p Plugin) newRestoreRun(ctx context.Context, h sdk.RestoreHost, cfg sdk.Co
 		// The code that writes enforces the rules of a plan itself (ADR 0008).
 		return nil, refuse(ReasonTargetInvalid, stageCheck, "the restore plan is invalid: %s", err)
 	}
-	to, password, err := settings.to.secured(h, settings.database)
+	to, password, err := settings.to.securedFor(h, settings.database, maintenanceDB)
 	if err != nil {
 		return nil, refuse(secretReason(err), stageCheck, "%s", err)
 	}

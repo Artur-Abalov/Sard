@@ -143,9 +143,11 @@ func (d hostDeps) host(serviceUID uint32) repoinit.Host {
 }
 
 // bindings are the bindings next to the config at configPath, judged as the
-// agent running as uid judges them (S11).
-func (d hostDeps) bindings(configPath string, uid uint32) *secretbind.Store {
-	return secretbind.NewStore(hostsetup.Layout{Config: configPath}.SecretBinding, uid, d.readBinding)
+// agent running as service judges them and read as it reads them (S11): a
+// command run as root can read a file the service cannot.
+func (d hostDeps) bindings(configPath string, service hostsetup.User) *secretbind.Store {
+	read := secretbind.AsUser(d.readBinding, service.UID, service.GID)
+	return secretbind.NewStore(hostsetup.Layout{Config: configPath}.SecretBinding, service.UID, read)
 }
 
 // ownedReader reads files as the service user owns them (A1).

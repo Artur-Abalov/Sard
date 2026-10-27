@@ -746,11 +746,13 @@ type rpHost struct {
 	// what SecretFor fails with; asked are the targets it was asked for.
 	grant   sdk.Grant
 	refused error
-	asked   []sdk.Target
-	repo    *rpRepo
-	journal *rpJournal
-	events  []rpEvent
-	phase   sdk.Phase
+	// refuseAt, if set, is the one database the binding does not allow.
+	refuseAt string
+	asked    []sdk.Target
+	repo     *rpRepo
+	journal  *rpJournal
+	events   []rpEvent
+	phase    sdk.Phase
 	// step is the context of the step: a failure of the repository while it
 	// has ended is an interruption, not the failure of the storage.
 	step context.Context
@@ -770,6 +772,8 @@ func (h *rpHost) SecretFor(name string, target sdk.Target) (sdk.Secret, error) {
 		return sdk.Secret{}, &sdk.SecretError{Name: name}
 	case h.refused != nil:
 		return sdk.Secret{}, h.refused
+	case target.Database == h.refuseAt:
+		return sdk.Secret{}, &sdk.BindingError{Name: name, Plugin: "postgresql", Target: target}
 	}
 	return sdk.Secret{Value: slices.Clone(v), Grant: h.grant}, nil
 }

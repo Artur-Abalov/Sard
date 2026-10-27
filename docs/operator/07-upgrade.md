@@ -41,7 +41,7 @@
 пароля самобэкапа `secret-bindings/sard-db.yaml`, но в существующий том
 `sard_sard-self-config` Docker копирует файлы образа только при создании тома. После
 `docker compose up -d` (шаг 3) допишите её один раз, иначе шаг самобэкапа базы
-откажет с `SECRET_NOT_ALLOWED`:
+завершится с ошибкой `SECRET_NOT_ALLOWED`:
 
 ```bash
 docker compose exec -u 0 self-agent sh -c 'mkdir -p /etc/sard/self/secret-bindings && cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'

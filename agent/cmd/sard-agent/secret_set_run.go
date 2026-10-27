@@ -80,12 +80,12 @@ func (c *hostCmd) setSecretLocked(name string, value []byte) int {
 
 func (c *hostCmd) storeSecret(name string, value []byte, plan hostsetup.SecretPlan) int {
 	s := secretWrite{
-		valueFile: c.layout.SecretFile(name), fragment: c.layout.SecretFragment(name), bindingFile: c.layout.SecretBinding(name),
+		name: name, valueFile: c.layout.SecretFile(name), fragment: c.layout.SecretFragment(name), bindingFile: c.layout.SecretBinding(name),
 		value: value, binding: c.opts.binding.Marshal(),
 	}
 	s.yamlBody = hostsetup.SecretYAML(name, s.valueFile)
 	s.sameValue = c.fileHolds(s.valueFile, value)
-	if plan.OwnFragment && s.sameValue && c.fileHolds(s.fragment, s.yamlBody) && c.fileHolds(s.bindingFile, s.binding) {
+	if plan.OwnFragment && s.sameValue && c.fileHolds(s.fragment, s.yamlBody) && c.bindingHolds(name, s.binding) {
 		_, _ = fmt.Fprintf(c.stdout, "Secret %q unchanged: the value file %s already holds this value and the binding is the same.\n", name, s.valueFile)
 		return exitOK
 	}
@@ -101,9 +101,9 @@ func (c *hostCmd) storeSecret(name string, value []byte, plan hostsetup.SecretPl
 
 // secretWrite are the files of a secret and what they are to hold.
 type secretWrite struct {
-	valueFile, fragment, bindingFile string
-	value, yamlBody, binding         []byte
-	sameValue                        bool
+	name, valueFile, fragment, bindingFile string
+	value, yamlBody, binding               []byte
+	sameValue                              bool
 }
 
 // describeBinding is the binding in a line: the plugin, its targets and what
@@ -161,11 +161,16 @@ func (c *hostCmd) fileHolds(path string, data []byte) bool {
 	return err == nil && bytes.Equal(got, data)
 }
 
-// writeSecret writes the value file, the binding, then the fragment (Р4,
+// writeSecret writes the binding, the value file, then the fragment (Р4,
 // S11): until the fragment is there the agent does not see the secret, and
-// it never sees it unbound. The binding is root's, as a fragment: the service
-// does not change where its secrets go. An unchanged file is not rewritten.
+// it never sees it unbound; a new value never meets the old binding, so a
+// step in between sends the old value only where the new binding allows it.
+// The binding is root's, as a fragment: the service does not change where its
+// secrets go. An unchanged file is not rewritten.
 func (c *hostCmd) writeSecret(s secretWrite) error {
+	if err := c.writeUnlessHeld(s.bindingFile, s.binding, c.layout.BindingDir(), c.bindingHolds(s.name, s.binding)); err != nil {
+		return err
+	}
 	if _, err := hostsetup.EnsureDir(c.deps.fs, c.layout.SecretsDir(), c.serviceOwner(0o700)); err != nil {
 		return err
 	}
@@ -174,16 +179,20 @@ func (c *hostCmd) writeSecret(s secretWrite) error {
 			return err
 		}
 	}
-	if err := c.writeUnlessHeld(s.bindingFile, s.binding, c.layout.BindingDir()); err != nil {
-		return err
-	}
-	return c.writeUnlessHeld(s.fragment, s.yamlBody, "")
+	return c.writeUnlessHeld(s.fragment, s.yamlBody, "", c.fileHolds(s.fragment, s.yamlBody))
+}
+
+// bindingHolds says whether the binding of the secret holds exactly data and
+// the agent would use it: read as it reads it, by its rules (S11).
+func (c *hostCmd) bindingHolds(name string, data []byte) bool {
+	_, bound, err := c.deps.bindings(c.layout.Config, c.who.Service).Binding(name)
+	return err == nil && bound && c.fileHolds(c.layout.SecretBinding(name), data)
 }
 
 // writeUnlessHeld writes a file of root's that the service reads, in dir if
-// given (made like agent.d), unless it holds data already.
-func (c *hostCmd) writeUnlessHeld(path string, data []byte, dir string) error {
-	if c.fileHolds(path, data) {
+// given (made like agent.d), unless it is held as it is.
+func (c *hostCmd) writeUnlessHeld(path string, data []byte, dir string, held bool) error {
+	if held {
 		return nil
 	}
 	if dir != "" {

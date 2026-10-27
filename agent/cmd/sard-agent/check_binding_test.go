@@ -49,6 +49,15 @@ func TestABindingOthersCanChangeIsAnError(t *testing.T) {
 	}
 }
 
+func TestABindingTheServiceCannotReadIsAnErrorThoughRootCan(t *testing.T) {
+	h := fullHost(t)
+	ok(t, os.Chmod(h.path("secret-bindings/pg.yaml"), 0o600))
+	lines, _, _ := h.checkLines()
+	if l := line(t, lines, "secret.bound", "pg"); l.status != "ERROR" || !strings.Contains(l.message, "permission denied") {
+		t.Errorf("%+v", l)
+	}
+}
+
 func TestWithoutAServiceUserTheBindingIsNotChecked(t *testing.T) {
 	h := fullHost(t)
 	h.people = h.people[2:] // root only

@@ -143,3 +143,43 @@ func TestReadFileFollowsNoLinkAndReportsAMissingFile(t *testing.T) {
 		t.Errorf("a missing file: %v", err)
 	}
 }
+
+// A command run as root judges a binding as the service user would read it:
+// a file root can read and the service cannot is no binding the agent can use.
+func TestAsUserReadsOnlyWhatTheServiceUserCanRead(t *testing.T) {
+	const agentGID = 991
+	data := []byte("plugin: postgresql\ntargets: [db]\n")
+	cases := []struct {
+		name     string
+		info     secrets.Info
+		readable bool
+	}{
+		{"root's, group of the service, 0640", secrets.Info{Mode: 0o640, UID: 0, GID: agentGID}, true},
+		{"root's, 0600", secrets.Info{Mode: 0o600, UID: 0, GID: 0}, false},
+		{"root's, group of the service, 0600", secrets.Info{Mode: 0o600, UID: 0, GID: agentGID}, false},
+		{"root's, another group, 0640", secrets.Info{Mode: 0o640, UID: 0, GID: 5}, false},
+		{"root's, 0644", secrets.Info{Mode: 0o644, UID: 0, GID: 0}, true},
+		{"the agent's, 0400", secrets.Info{Mode: 0o400, UID: agentUID, GID: 5}, true},
+		{"the agent's, 0040", secrets.Info{Mode: 0o040, UID: agentUID, GID: agentGID}, false},
+	}
+	for _, c := range cases {
+		read := secretbind.AsUser(reader(map[string]file{in("pg"): {data: data, info: c.info}}), agentUID, agentGID)
+		got, info, err := read(in("pg"))
+		if c.readable != (err == nil) || c.readable != (string(got) == string(data)) || info != c.info {
+			t.Errorf("%s: %q %v %v", c.name, got, info, err)
+		}
+		if !c.readable && !errors.Is(err, fs.ErrPermission) {
+			t.Errorf("%s: %v, want permission denied", c.name, err)
+		}
+	}
+}
+
+func TestAsUserPassesAMissingFileOnAndLetsRootReadAnything(t *testing.T) {
+	if _, _, err := secretbind.AsUser(reader(nil), agentUID, 991)(in("pg")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a missing file: %v", err)
+	}
+	root := secretbind.AsUser(reader(map[string]file{in("pg"): {data: []byte("x"), info: secrets.Info{Mode: 0o600, UID: 5}}}), 0, 0)
+	if _, _, err := root(in("pg")); err != nil {
+		t.Errorf("root reads anything: %v", err)
+	}
+}

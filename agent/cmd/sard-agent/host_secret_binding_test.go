@@ -231,3 +231,42 @@ func TestSecretListJudgesABindingFileAsTheAgentDoes(t *testing.T) {
 	assertCode(t, code, exitOK)
 	containsAll(t, stdout, "unusable: the file has mode -rw-rw-rw-: it is writable by group or others")
 }
+
+func TestABindingTheAgentWouldNotUseIsWrittenAgainThoughItsBytesAreTheSame(t *testing.T) {
+	t.Parallel()
+	h := newSetupHost(t)
+	h.set("db", "SECRET-MARKER")
+	path := h.path("secret-bindings/db.yaml")
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ := h.set("db", "SECRET-MARKER")
+	if code != exitOK || strings.Contains(stdout, "unchanged") {
+		t.Fatalf("again: %d %q", code, stdout)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+		t.Fatalf("the binding is %v, %v", info.Mode(), err)
+	}
+	if code, stdout, _ = h.set("db", "SECRET-MARKER"); code != exitOK || !strings.Contains(stdout, "unchanged") {
+		t.Fatalf("once more: %d %q", code, stdout)
+	}
+}
+
+// A new value never meets the old binding: the binding is written first, so a
+// step in between sends the old value only where the new binding allows it.
+func TestANewBindingIsInPlaceBeforeTheNewValue(t *testing.T) {
+	t.Parallel()
+	h := newSetupHost(t)
+	h.set("db", "SECRET-MARKER")
+	h.fsys.events = nil
+	if code, _, stderr := h.set("db", "OTHER-MARKER", "--plugin", "postgresql", "--target", "db2.example.com"); code != exitOK {
+		t.Fatalf("set: %d %s", code, stderr)
+	}
+	binding := slices.IndexFunc(h.fsys.events, func(e string) bool {
+		return strings.Contains(e, "rename") && strings.HasSuffix(e, "secret-bindings/db.yaml")
+	})
+	value := slices.IndexFunc(h.fsys.events, func(e string) bool { return strings.Contains(e, "rename") && strings.HasSuffix(e, "secrets/db") })
+	if binding < 0 || value < 0 || binding > value {
+		t.Fatalf("events %v", h.fsys.events)
+	}
+}

@@ -89,7 +89,8 @@ func TestABrokenBindingGivesNothing(t *testing.T) {
 }
 
 // Scenario 2: SCRAM is required over TCP, with channel binding over TLS; the
-// binding may allow weaker methods.
+// binding may allow weaker methods. With TLS on, GSS encryption is off: libpq
+// would try it first, and a connection it encrypts has no TLS to verify.
 func TestTheServerMustAskForSCRAMUnlessTheBindingAllowsMore(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -98,15 +99,17 @@ func TestTheServerMustAskForSCRAMUnlessTheBindingAllowsMore(t *testing.T) {
 		auth     string
 		channel  string
 		rootCert string
+		gss      string
 	}{
-		{"tcp, verify-full", nil, kg(o{"tls_mode": "verify-full"}), "scram-sha-256", "require", "system"},
-		{"tcp, no TLS", nil, kg(), "scram-sha-256", "", ""},
-		{"md5 allowed", func(b *secretbind.Binding) { b.Auth = []string{"scram-sha-256", "md5"} }, kg(o{"tls_mode": "verify-full"}), "scram-sha-256,md5", "", "system"},
-		{"no channel binding allowed", func(b *secretbind.Binding) { b.AllowNoChannelBinding = true }, kg(o{"tls_mode": "verify-full"}), "scram-sha-256", "", "system"},
-		{"socket", nil, kg(o{"host": "/var/run/postgresql"}), "", "", ""},
-		{"socket, SCRAM bound", func(b *secretbind.Binding) { b.Auth = []string{"scram-sha-256"} }, kg(o{"host": "/var/run/postgresql"}), "scram-sha-256", "", ""},
-		{"CA of the binding", func(b *secretbind.Binding) { b.CAFile = "/etc/sard/bound-ca.pem" }, kg(o{"tls_mode": "verify-full", "tls_root_cert": "/etc/sard/pg-ca.pem"}), "scram-sha-256", "require", "/etc/sard/bound-ca.pem"},
-		{"CA of the config", nil, kg(o{"tls_mode": "verify-full", "tls_root_cert": "/etc/sard/pg-ca.pem"}), "scram-sha-256", "require", "/etc/sard/pg-ca.pem"},
+		{"tcp, verify-full", nil, kg(o{"tls_mode": "verify-full"}), "scram-sha-256", "require", "system", "disable"},
+		{"tcp, require", nil, kg(o{"tls_mode": "require"}), "scram-sha-256", "require", "", "disable"},
+		{"tcp, no TLS", nil, kg(), "scram-sha-256", "", "", ""},
+		{"md5 allowed", func(b *secretbind.Binding) { b.Auth = []string{"scram-sha-256", "md5"} }, kg(o{"tls_mode": "verify-full"}), "scram-sha-256,md5", "", "system", "disable"},
+		{"no channel binding allowed", func(b *secretbind.Binding) { b.AllowNoChannelBinding = true }, kg(o{"tls_mode": "verify-full"}), "scram-sha-256", "", "system", "disable"},
+		{"socket", nil, kg(o{"host": "/var/run/postgresql"}), "", "", "", ""},
+		{"socket, SCRAM bound", func(b *secretbind.Binding) { b.Auth = []string{"scram-sha-256"} }, kg(o{"host": "/var/run/postgresql"}), "scram-sha-256", "", "", ""},
+		{"CA of the binding", func(b *secretbind.Binding) { b.CAFile = "/etc/sard/bound-ca.pem" }, kg(o{"tls_mode": "verify-full", "tls_root_cert": "/etc/sard/pg-ca.pem"}), "scram-sha-256", "require", "/etc/sard/bound-ca.pem", "disable"},
+		{"CA of the config", nil, kg(o{"tls_mode": "verify-full", "tls_root_cert": "/etc/sard/pg-ca.pem"}), "scram-sha-256", "require", "/etc/sard/pg-ca.pem", "disable"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -120,7 +123,7 @@ func TestTheServerMustAskForSCRAMUnlessTheBindingAllowsMore(t *testing.T) {
 			want(t, r.backup(c.cfg), succeeded)
 			for _, key := range []string{"psql", "psql session", "pg_dump", "pg_dumpall"} {
 				conn := connection(t, r.proc.ran(key)[0])
-				for param, v := range map[string]string{"require_auth": c.auth, "channel_binding": c.channel, "sslrootcert": c.rootCert} {
+				for param, v := range map[string]string{"require_auth": c.auth, "channel_binding": c.channel, "sslrootcert": c.rootCert, "gssencmode": c.gss} {
 					if conn.values[param] != v || slices.Contains(conn.keys, param) != (v != "") {
 						t.Errorf("%s: %s = %q, want %q", key, param, conn.values[param], v)
 					}

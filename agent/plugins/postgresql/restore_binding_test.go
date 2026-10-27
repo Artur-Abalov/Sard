@@ -11,17 +11,43 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
-// S11 for a restore (R2): the secret is asked for the new database on the
-// target server, and a refusal stops the restore before anything runs.
+// S11 for a restore (R2): the secret is asked for every database the restore
+// signs in to on the target server, the new one and the maintenance database
+// postgres, and a refusal of either stops the restore before anything runs.
 
-func TestARestoreAsksForTheSecretOfTheNewDatabaseOnTheTarget(t *testing.T) {
+func TestARestoreAsksForTheSecretOfTheNewDatabaseAndOfTheMaintenanceDatabase(t *testing.T) {
 	h := newPGHost(t)
 	if _, f := h.run(h.request()); f != nil {
 		t.Fatal(f)
 	}
-	want := sdk.Target{Host: "db2", Port: 5432, Database: rpNewDatabase}
-	if len(h.host.asked) == 0 || slices.ContainsFunc(h.host.asked, func(got sdk.Target) bool { return got != want }) {
-		t.Errorf("asked %v, want only %v", h.host.asked, want)
+	want := []sdk.Target{{Host: "db2", Port: 5432, Database: rpNewDatabase}, {Host: "db2", Port: 5432, Database: "postgres"}}
+	if !slices.Equal(h.host.asked, want) {
+		t.Errorf("asked %v, want %v", h.host.asked, want)
+	}
+}
+
+func TestARestoreWhoseBindingLeavesOutTheMaintenanceDatabaseFailsBeforeAnyProgramRuns(t *testing.T) {
+	h := newPGHost(t)
+	h.host.refuseAt = "postgres"
+	_, f := h.run(h.request())
+	hasPrefix(t, f, "SECRET_NOT_ALLOWED (check)")
+	mentions(t, f.Error(), `secret "pg-restore" is not allowed for postgresql at db2:5432/postgres`)
+	if len(h.server.ran("psql")) != 0 || len(h.repo.dumped()) != 0 {
+		t.Error("something ran")
+	}
+}
+
+func TestTheRollbackSendsThePasswordToTheMaintenanceDatabaseOnlyIfTheBindingAllowsIt(t *testing.T) {
+	h := newPGHost(t)
+	h.server.databases[rpNewDatabase] = 20001
+	h.host.refuseAt = "postgres"
+	got := h.recover(leftByAKill(`,"database":{"name":"` + rpNewDatabase + `","oid":20001}`))
+	leftBehind(t, got, []string{"database " + rpNewDatabase}, true)
+	if !strings.Contains(got.Cleanup, "is not allowed for postgresql at db2:5432/postgres") {
+		t.Errorf("cleanup %q", got.Cleanup)
+	}
+	if len(h.server.ran("psql")) != 0 {
+		t.Error("psql ran")
 	}
 }
 
