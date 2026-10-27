@@ -159,8 +159,6 @@ data class SourceView(
     val createdAt: Instant,
     val updatedAt: Instant,
     val systemRole: SystemRole? = null,
-    /** What the agent will refuse by the bindings of its secrets (S11): one line per secret. */
-    val secretWarnings: List<String> = emptyList(),
 ) {
     override fun toString() = "SourceView(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }
