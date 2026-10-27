@@ -5,6 +5,7 @@
   "type": "object",
   "properties": {
     "host": {
+      "x-sard-target": "host",
       "type": "string",
       "title": "Host",
       "description": "Host name, IPv4 or IPv6 address (without brackets) of the server, or the absolute path of the directory of its Unix socket, such as /var/run/postgresql. At most 255 bytes; no comma, @ or space.",
@@ -20,6 +21,7 @@
       "examples": ["db.example.com", "10.0.0.5", "::1", "/var/run/postgresql"]
     },
     "port": {
+      "x-sard-target": "port",
       "type": "integer",
       "title": "Port",
       "description": "TCP port of the server, or the number in the name of the socket file .s.PGSQL.<port> when the host is a socket directory. 5432 by default.",
@@ -35,6 +37,7 @@
       "examples": [5432, 6432]
     },
     "database": {
+      "x-sard-target": "database",
       "type": "string",
       "title": "Database",
       "description": "Name of the database to dump: one database per source. At most 63 bytes.",

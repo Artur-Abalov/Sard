@@ -236,8 +236,12 @@ func recoverJournal(cfg config.Config, journal *pluginhost.Journal, test, builti
 // hostSecrets are the secrets of the config, given only as their bindings next
 // to the main config allow (S11).
 func hostSecrets(cfg config.Config) *pluginhost.Secrets {
-	bindings := secretbind.NewStore(hostsetup.Layout{Config: cfg.Path()}.SecretBinding, uint32(os.Getuid()), secretbind.ReadFile)
-	return pluginhost.NewSecrets(cfg.Secrets, os.ReadFile, bindings)
+	return pluginhost.NewSecrets(cfg.Secrets, os.ReadFile, hostBindings(cfg))
+}
+
+// hostBindings are the bindings next to the main config, read as the service.
+func hostBindings(cfg config.Config) *secretbind.Store {
+	return secretbind.NewStore(hostsetup.Layout{Config: cfg.Path()}.SecretBinding, uint32(os.Getuid()), secretbind.ReadFile)
 }
 
 // checkHostRuntime finds restic and the host name, before the network.
@@ -410,6 +414,7 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 		OS:        runtime.GOOS,
 		Arch:      runtime.GOARCH,
 		Local:     cfg,
+		Bindings:  hostBindings(cfg),
 		// Only the operator of the host says where the console may restore.
 		RestoreDir: cfg.RestoreDir(),
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {

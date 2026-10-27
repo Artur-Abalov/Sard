@@ -175,4 +175,32 @@ class SourcesIntegrationTest(
         assertEquals(listOf(b.id, a.id), sources.list(tenant.id, null, after, 50).map { it.id })
         assertEquals(listOf(b.id), sources.list(tenant.id, secondAgent, null, 50).map { it.id })
     }
+
+    @Test
+    fun `a source whose target the binding of its secret does not allow carries a warning (S11)`() {
+        val schema = java.io.File("../agent/plugins/postgresql/schema.json").readText()
+        jdbc.update("update agent_plugins set config_schema = ?::jsonb where agent_id = ?", schema, tenant.agentId)
+        jdbc.update(
+            "update agents set secret_names = array['pg'], secret_bindings = ?::jsonb where id = ?",
+            """[{"name":"pg","plugin":"postgresql","targets":["db.example.com:5432/app"],"problem":""}]""",
+            tenant.agentId,
+        )
+        val config = { host: String -> """{"host":"$host","database":"app","user":"backup","password_ref":"pg"}""" }
+
+        val allowed = sources.create(tenant.id, tenant.draft(name = "allowed", config = config("db.example.com")))
+        val elsewhere = sources.create(tenant.id, tenant.draft(name = "elsewhere", config = config("evil.example")))
+
+        assertEquals(emptyList(), allowed.secretWarnings)
+        val warning =
+            "secret \"pg\" is not allowed for postgresql at evil.example:5432/app; if that is intended, run on the agent host: " +
+                "sudo sard-agent secret set pg --plugin postgresql --target evil.example:5432/app"
+        assertEquals(listOf(warning), elsewhere.secretWarnings)
+        assertEquals(listOf(warning), sources.get(tenant.id, elsewhere.id).secretWarnings)
+        assertEquals(
+            mapOf("allowed" to emptyList(), "elsewhere" to listOf(warning)),
+            sources.list(tenant.id, null, null, 10).associate { it.name to it.secretWarnings },
+        )
+        val replaced = sources.replace(tenant.id, elsewhere.id, tenant.draft(name = "elsewhere", config = config("DB.example.com")))
+        assertEquals(emptyList(), replaced.secretWarnings)
+    }
 }

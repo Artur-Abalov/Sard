@@ -3,6 +3,9 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.persistence.Agent
+import dev.sard.server.persistence.AgentOwnedKey
+import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
@@ -81,7 +84,7 @@ class Sources(
                     with(draft) { SourceRecord(ids.next(), agentId, name, plugin, config, repositoryName, now, now) }
                 session.persist(record)
                 session.flush()
-                viewOf(record)
+                viewOf(session, record)
             }
         }
 
@@ -111,7 +114,7 @@ class Sources(
                 record.config = draft.config
                 record.updatedAt = clock.instant()
                 session.flush()
-                viewOf(record)
+                viewOf(session, record)
             }
         }
 
@@ -131,7 +134,7 @@ class Sources(
     fun get(
         tenantId: UUID,
         sourceId: UUID,
-    ): SourceView = sessions.inTenant(tenantId) { session -> viewOf(liveSource(session, sourceId, LockModeType.NONE)) }
+    ): SourceView = sessions.inTenant(tenantId) { session -> viewOf(session, liveSource(session, sourceId, LockModeType.NONE)) }
 
     /** Live sources, newest first, after the position [after] if given, of [agentId] if given; at most [limit]. */
     fun list(
@@ -154,7 +157,7 @@ class Sources(
                 )
             agentId?.let { query.setParameter("agent", it) }
             after?.bind(query)
-            query.setMaxResults(limit).list().map { viewOf(it) }
+            query.setMaxResults(limit).list().map { viewOf(session, it) }
         }
 
     private fun <T> nameGuarded(
@@ -168,16 +171,29 @@ class Sources(
             throw e
         }
 
-    private fun viewOf(record: SourceRecord) =
-        SourceView(
-            record.id,
-            record.name,
-            record.agentId,
-            record.plugin,
-            record.repositoryName,
-            record.config,
-            record.createdAt,
-            record.updatedAt,
-            record.systemRole?.let(SystemRole::of),
-        )
+    private fun viewOf(
+        session: Session,
+        record: SourceRecord,
+    ) = SourceView(
+        record.id,
+        record.name,
+        record.agentId,
+        record.plugin,
+        record.repositoryName,
+        record.config,
+        record.createdAt,
+        record.updatedAt,
+        record.systemRole?.let(SystemRole::of),
+        secretWarnings(session, record),
+    )
+
+    /** What the agent of [record] will refuse by the bindings it last reported (S11). */
+    private fun secretWarnings(
+        session: Session,
+        record: SourceRecord,
+    ): List<String> {
+        val agent = session.find(Agent::class.java, record.agentId) ?: return emptyList()
+        val plugin = session.find(AgentPluginRecord::class.java, AgentOwnedKey(record.agentId, record.plugin))
+        return plugin?.let { SecretBindings.warnings(record.plugin, it.configSchema, record.config, agent.secretBindings) }.orEmpty()
+    }
 }

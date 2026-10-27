@@ -29,6 +29,13 @@ type Config = json.RawMessage
 // before Prepare runs; the plugin reads the value with Host.SecretFor.
 const SecretFormat = "sard-secret"
 
+// TargetKeyword marks the fields of ConfigSchema that make the target a
+// secret of the config goes to (S11, Target): {"x-sard-target": "host"}, and
+// "port" and "database" the same way; the default of the port field is the
+// port when the config leaves it out. The console warns about a config whose
+// target the binding of its secret on the agent host does not allow.
+const TargetKeyword = "x-sard-target"
+
 // Dump is what Plugin.Dump produced, in one of two forms:
 //
 //   - by paths: restic backs up Paths (minus Excludes) from the local file

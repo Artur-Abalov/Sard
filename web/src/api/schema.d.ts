@@ -975,6 +975,8 @@ export interface components {
              * @description The level the last successful verification reached
              */
             lastVerifiedLevel: number | null;
+            /** @description What the agent will refuse of this source by the bindings of its secrets on the agent host, as its last Register reported them (S11), with the command that allows it; empty when nothing */
+            secretWarnings: string[];
         };
         /** @enum {string} */
         SystemSourceRole: "self_database" | "self_keys";

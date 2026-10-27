@@ -38,6 +38,8 @@ object SnapshotRules {
     const val MAX_SECRET_NAMES = 1024
     const val MAX_SCRIPT_NAMES = 1024
     const val MAX_CONFIG_SCHEMA_BYTES = 64 * 1024
+    const val MAX_SECRET_TARGETS = 64
+    const val MAX_SECRET_TEXT_BYTES = 1024
     private const val MAX_RESTORE_DIR_BYTES = 4096
 
     fun check(snapshot: AgentSnapshot) {
@@ -53,7 +55,24 @@ object SnapshotRules {
         if (!MACHINE_ID.matches(snapshot.machineId)) throw invalid("machine_id")
         checkRestoreDir(snapshot.restoreDir)
         checkVerifier(snapshot.verifier)
+        checkSecrets(snapshot.secrets)
     }
+
+    /**
+     * The bindings of the secrets (S11): one per secret name at most, a plugin of the one name format, a bounded
+     * number of targets, every text bounded and without NUL (they go to a jsonb column as they come).
+     */
+    private fun checkSecrets(secrets: List<SecretEntry>) {
+        checkNames(secrets.map { it.name }, "secrets", MAX_SECRET_NAMES) { "secrets[$it].name" }
+        secrets.forEachIndexed { i, secret ->
+            checkOptional(secret.plugin, NAME, "secrets[$i].plugin")
+            checkCount(secret.targets.size, "secrets[$i].targets", MAX_SECRET_TARGETS)
+            checkCount(secret.auth.size, "secrets[$i].auth", MAX_SECRET_TARGETS)
+            if (secret.texts().any { !storableText(it) }) throw invalid("secrets[$i]")
+        }
+    }
+
+    private fun storableText(text: String) = '\u0000' !in text && text.toByteArray(Charsets.UTF_8).size <= MAX_SECRET_TEXT_BYTES
 
     private fun checkVerifier(report: VerifierReport?) {
         if (report != null && !storableVerifier(report)) throw invalid("verifier")

@@ -130,7 +130,8 @@ message RegisterRequest {
   // Repositories configured on this host; names and metadata only.
   repeated RepositoryInfo repositories = 7;
   // Names of secrets available on this host; values never leave it. Lets
-  // the UI show which configurations can run on which agent.
+  // the UI show which configurations can run on which agent. The same names
+  // as secrets (13), kept because the contract does not remove fields.
   repeated string secret_names = 8;
   // Names of scripts allowlisted on this host for ACTION_RUN.
   repeated string script_names = 9;
@@ -151,6 +152,35 @@ message RegisterRequest {
   // the server cannot set or change it and never sends a path of its own in a
   // command. Empty for an agent that cannot restore from the console.
   string restore_dir = 12;
+  // Every secret of the host with its binding (S11): the plugin and the
+  // targets the operator of the host allows its value to go to. Names and
+  // targets only: never a value, never a path. The agent gives a secret to no
+  // other plugin and no other target, whatever a command says; the console
+  // warns about a source the binding does not allow before it runs.
+  repeated SecretInfo secrets = 13;
+}
+
+// SecretInfo is a secret of the host and its binding (S11).
+message SecretInfo {
+  // Name of the secret, as configurations reference it (password_ref).
+  string name = 1;
+  // Plugin the secret is bound to; empty when it has no usable binding.
+  string plugin = 2;
+  // Targets the value may go to, as the operator bound them:
+  // host[:port][/database], an IPv6 address in brackets, a socket directory
+  // /dir[:port[/database]]; a port or a database left out, or *, is any.
+  repeated string targets = 3;
+  // Authentication methods the binding allows (libpq names, e.g.
+  // "scram-sha-256", "md5"); empty: the plugin's default.
+  repeated string auth = 4;
+  // Weakest TLS mode the binding allows to a server on the network
+  // ("require", "disable"); empty: the plugin's default.
+  string allow_tls = 5;
+  // The binding allows TLS without channel binding.
+  bool allow_no_channel_binding = 6;
+  // Why the secret is given to no plugin: it has no binding, or its binding
+  // cannot be used; empty when the binding is in force.
+  string binding_problem = 7;
 }
 
 // VerifierStatus is what a verifier reports about its own host for restore

@@ -67,6 +67,12 @@ data class Source(
     val lastVerifiedAt: Instant?,
     @field:Schema(description = "The level the last successful verification reached")
     val lastVerifiedLevel: Int?,
+    @field:Schema(
+        description =
+            "What the agent will refuse of this source by the bindings of its secrets on the agent host, as its " +
+                "last Register reported them (S11), with the command that allows it; empty when nothing",
+    )
+    val secretWarnings: List<String>,
 ) {
     override fun toString() = "Source(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }

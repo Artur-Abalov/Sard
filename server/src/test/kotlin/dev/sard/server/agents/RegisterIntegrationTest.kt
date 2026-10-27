@@ -14,6 +14,7 @@ import dev.sard.proto.agent.v1.RegisterResponse
 import dev.sard.proto.agent.v1.RepositoryInfo
 import dev.sard.proto.agent.v1.Sandbox
 import dev.sard.proto.agent.v1.SandboxImage
+import dev.sard.proto.agent.v1.SecretInfo
 import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.MACHINE_ID
@@ -290,6 +291,34 @@ class RegisterIntegrationTest(
                     String::class.java,
                     agent.identity.agentId,
                 ).singleOrNull()
+
+    @Test
+    fun `Register stores the binding of every secret, and a later one replaces them (S11)`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val bound =
+            SecretInfo
+                .newBuilder()
+                .setName("pg-prod")
+                .setPlugin("postgresql")
+                .addAllTargets(listOf("db.example.com:5432/app", "[::1]:5432/*"))
+                .addAuth("md5")
+                .setAllowTls("require")
+                .setAllowNoChannelBinding(true)
+        val unbound = SecretInfo.newBuilder().setName("PG_PASSWORD").setBindingProblem("no binding")
+        register(agent, snapshotA().addSecrets(bound).addSecrets(unbound))
+        val sql = "select secret_bindings from agents where id = ?"
+        val stored = { jdbc.queryForObject(sql, String::class.java, agent.identity.agentId) }
+        assertEquals(
+            jsonb(
+                """[{"name":"pg-prod","plugin":"postgresql","targets":["db.example.com:5432/app","[::1]:5432/*"],"auth":["md5"],""" +
+                    """"allow_tls":"require","allow_no_channel_binding":true,"problem":""},""" +
+                    """{"name":"PG_PASSWORD","plugin":"","targets":[],"auth":[],"allow_tls":"","allow_no_channel_binding":false,"problem":"no binding"}]""",
+            ),
+            stored(),
+        )
+        register(agent, snapshotA())
+        assertEquals("[]", stored())
+    }
 
     @Test
     fun `Register stores the restore directory and the restore schema of a plugin`() {

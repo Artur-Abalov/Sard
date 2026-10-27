@@ -46,3 +46,18 @@ func secretProblem(err error) string {
 	}
 	return "cannot be used: " + reasonOf(err)
 }
+
+// BindingLine is secret.bound (S11): the secret is bound to a plugin and its
+// targets by a file the service can use. described is the binding in a line
+// when it is in force; err why its file cannot be used; bound is false when
+// there is none: the agent then gives the secret to no plugin.
+func BindingLine(name, path, described string, bound bool, err error) Line {
+	hint := "sudo sard-agent secret set " + name + " --plugin <plugin> --target <host:port/database>"
+	switch {
+	case err != nil:
+		return Line{Check: CheckSecretBound, Subject: name, Status: Error, Message: fmt.Sprintf("%s cannot be used: %s", path, reasonOf(err)), Hint: hint}
+	case !bound:
+		return Line{Check: CheckSecretBound, Subject: name, Status: Error, Message: fmt.Sprintf("no binding (%s): the agent gives the secret to no plugin", path), Hint: hint}
+	}
+	return Line{Check: CheckSecretBound, Subject: name, Status: OK, Message: "bound to " + described}
+}

@@ -32,7 +32,12 @@ data class AgentSnapshot(
     val restoreDir: String = "",
     /** RegisterRequest.verifier; null from an agent older than V4, which is never handed a verification. */
     val verifier: VerifierReport? = null,
+    /** Every secret of the host with its binding to a plugin and its targets (S11); names and targets only. */
+    val secrets: List<SecretEntry> = emptyList(),
 ) {
+    /** [secrets] as agents.secret_bindings stores them. */
+    fun secretsJson(): String = JSON.writeValueAsString(secrets.map { it.stored() })
+
     /** Never the machine id: the snapshot is logged when something goes wrong. */
     override fun toString() = "AgentSnapshot(hostname=$hostname, agentVersion=$agentVersion)"
 }
@@ -122,4 +127,33 @@ enum class PluginAction(
 /** The one place the protocol versions this server speaks are defined (RegisterRequest.protocol_version). */
 object ProtocolVersions {
     val SUPPORTED: LongRange = 1L..1L
+}
+
+/**
+ * A secret of the host and its binding (S11, RegisterRequest.secrets): the plugin and the targets the operator of
+ * the host allows its value to go to, and what the binding allows beyond the plugin's rules. [problem] says why the
+ * agent gives the secret to no plugin; it is empty when the binding is in force.
+ */
+data class SecretEntry(
+    val name: String,
+    val plugin: String = "",
+    val targets: List<String> = emptyList(),
+    val auth: List<String> = emptyList(),
+    val allowTls: String = "",
+    val allowNoChannelBinding: Boolean = false,
+    val problem: String = "",
+) {
+    fun stored(): Map<String, Any> =
+        mapOf(
+            "name" to name,
+            "plugin" to plugin,
+            "targets" to targets,
+            "auth" to auth,
+            "allow_tls" to allowTls,
+            "allow_no_channel_binding" to allowNoChannelBinding,
+            "problem" to problem,
+        )
+
+    /** Every text of the entry, for the rules of storage. */
+    fun texts(): List<String> = listOf(name, plugin, allowTls, problem) + targets + auth
 }

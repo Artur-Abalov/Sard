@@ -142,5 +142,6 @@ class SourcesApiImpl(
         verificationStatus = verification.status?.let(::outcomeOf),
         lastVerifiedAt = verification.lastVerifiedAt,
         lastVerifiedLevel = verification.lastVerifiedLevel,
+        secretWarnings = view.secretWarnings,
     )
 }

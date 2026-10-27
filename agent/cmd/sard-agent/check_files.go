@@ -14,6 +14,8 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
+	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
 
 func isPermission(err error) bool { return errors.Is(err, fs.ErrPermission) }
@@ -220,7 +222,8 @@ func (readOnlyFiles) Remove(string) error                         { return errRe
 func (readOnlyFiles) Rename(string, string) error                 { return errReadOnly }
 func (readOnlyFiles) WriteFile(string, []byte, os.FileMode) error { return errReadOnly }
 
-// secretLines is secret.readable for every secret of the config (Ч17).
+// secretLines are secret.readable (Ч17) and secret.bound (S11) for every
+// secret of the config.
 func (c *hostCheck) secretLines() {
 	if failed := c.configBlock(); failed != "" {
 		c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretReadable, "", failed))
@@ -230,10 +233,29 @@ func (c *hostCheck) secretLines() {
 		path := c.cfg.Secrets[name]
 		if c.failed[hostcheck.CheckServiceUser] {
 			c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretReadable, name, hostcheck.CheckServiceUser))
+			c.emit(hostcheck.NotCheckedLine(hostcheck.CheckSecretBound, name, hostcheck.CheckServiceUser))
 			continue
 		}
 		c.emit(c.guarded(hostcheck.CheckSecretReadable, name, func() hostcheck.Line { return c.secretLine(name, path) }))
+		c.emit(c.guarded(hostcheck.CheckSecretBound, name, func() hostcheck.Line { return c.bindingLine(name) }))
 	}
+}
+
+// bindingLine judges the binding of the secret as the service does: the same
+// rules of its file, the same reading.
+func (c *hostCheck) bindingLine(name string) hostcheck.Line {
+	path := hostsetup.Layout{Config: c.opts.configPath}.SecretBinding(name)
+	read := func(p string) ([]byte, secrets.Info, error) {
+		info, err := c.deps.stat(p)
+		if err != nil {
+			return nil, info, err
+		}
+		data, err := c.deps.readFile(p)
+		return data, info, err
+	}
+	b, bound, err := secretbind.NewStore(func(string) string { return path }, c.who.Service.UID, read).Binding(name)
+	c.noteDenied(path, err)
+	return hostcheck.BindingLine(name, path, describeBinding(b), bound, err)
 }
 
 // secretLine reads the secret as the service does and says only whether it

@@ -5,6 +5,7 @@
   "type": "object",
   "properties": {
     "host": {
+      "x-sard-target": "host",
       "type": "string",
       "title": "Host",
       "description": "Host name, IPv4 or IPv6 address (without brackets) of the TARGET server, or the absolute path of the directory of its Unix socket, such as /var/run/postgresql. At most 255 bytes; no comma, @ or space.",
@@ -25,6 +26,7 @@
       ]
     },
     "port": {
+      "x-sard-target": "port",
       "type": "integer",
       "title": "Port",
       "description": "TCP port of the server, or the number in the name of the socket file .s.PGSQL.<port> when the host is a socket directory. 5432 by default.",
@@ -112,6 +114,7 @@
       ]
     },
     "database": {
+      "x-sard-target": "database",
       "type": "string",
       "title": "New database",
       "description": "Name of the NEW database to create and restore into, at most 63 bytes. It must not exist: the restore never writes into an existing database.",
