@@ -334,7 +334,10 @@ class RunNotificationsIntegrationTest(
 
         val lines = shown().lines()
         assertEquals("Причина: 11 files could not be read", lines[3])
-        assertEquals("Снимок создан и пригоден для восстановления, но часть данных в него не попала.", lines[4])
+        val note =
+            "Снимок создан, но неполный: часть данных в него не попала. " +
+                "Восстановить его можно только на хосте командой repo restore."
+        assertEquals(note, lines[4])
         assertEquals("Всего: 1,5 ГиБ, добавлено: 12,3 МиБ", lines[5])
     }
 

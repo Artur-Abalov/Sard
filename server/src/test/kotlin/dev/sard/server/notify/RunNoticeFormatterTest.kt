@@ -494,7 +494,7 @@ class RunNoticeFormatterTest {
             Агент: db1.example.com
             Длительность: 2 мин 30 с
             Причина: 11 files could not be read
-            Снимок создан и пригоден для восстановления, но часть данных в него не попала.
+            Снимок создан, но неполный: часть данных в него не попала. Восстановить его можно только на хосте командой repo restore.
             Всего: 1,5 ГиБ, добавлено: 12,3 МиБ
             Запуск: $RUN
             $LINK
@@ -505,7 +505,9 @@ class RunNoticeFormatterTest {
     @Test
     fun `Ошибка с сохранённым снимком на английском`() {
         val message = format(notice(StepState.FAILED, "boom", backup = GIB), NoticeLanguage.EN)
-        val note = "The snapshot was created and can be restored, but part of the data did not get into it."
+        val note =
+            "The snapshot was created but is incomplete: part of the data did not get into it. " +
+                "It can be restored only on the host, with repo restore."
         assertEquals(listOf("Reason: boom", note), message.lines().subList(3, 5))
     }
 

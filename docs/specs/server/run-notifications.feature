@@ -71,10 +71,8 @@
 #   6. lost — (Text) «Связь с агентом прервалась, пока шаг выполнялся. Можно
 #      запустить бэкап снова.» / «The connection to the agent was interrupted
 #      while the step was running. The next run can be started.»
-#   7. не succeeded, не lost, и у шага есть вывод бэкапа — (Text) «Снимок создан и
-#      пригоден для восстановления, но часть данных в него не попала.» /
-#      «The snapshot was created and can be restored, but part of the data did
-#      not get into it.», затем (Р6) строка «Всего: …, добавлено: …»
+#   7. не succeeded, не lost, и у шага есть вывод бэкапа — (Text) «Снимок создан, но неполный: часть данных в него не попала. Восстановить его можно только на хосте командой repo restore.» /
+#      «The snapshot was created but is incomplete: part of the data did not get into it. It can be restored only on the host, with repo restore.», затем (Р6) строка «Всего: …, добавлено: …»
 #   8. (Text) «Запуск: » / «Run: » + (Code) <runId>
 #   9. только если задан sard.console.public-url — (Text) <адрес>/runs/<runId>
 #
@@ -403,7 +401,7 @@
         Агент: db1.example.com
         Длительность: 2 мин 30 с
         Причина: 11 files could not be read
-        Снимок создан и пригоден для восстановления, но часть данных в него не попала.
+        Снимок создан, но неполный: часть данных в него не попала. Восстановить его можно только на хосте командой repo restore.
         Всего: 1,5 ГиБ, добавлено: 12,3 МиБ
         Запуск: 0192f0c4-7a10-7000-8000-00000000a001
         https://sard.example.com/runs/0192f0c4-7a10-7000-8000-00000000a001
@@ -414,7 +412,7 @@
       Дано sard.notify.language = en
       И шаг запуска завершился статусом failed с выводом бэкапа
       Когда форматтер строит сообщение
-      Тогда после строки причины идёт "The snapshot was created and can be restored, but part of the data did not get into it."
+      Тогда после строки причины идёт "The snapshot was created but is incomplete: part of the data did not get into it. It can be restored only on the host, with repo restore."
 
     @unit
     Сценарий: Ошибка без снимка не упоминает снимок и размеры

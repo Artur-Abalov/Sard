@@ -241,7 +241,7 @@
     "edit": "Edit",
     "noSnapshots": "Snapshots appear after a backup.",
     "partial": "incomplete",
-    "partialWhy": "The snapshot can be restored, but part of the data did not get into it.",
+    "partialWhy": "The snapshot is incomplete: part of the data did not get into it. It can be restored only on the host, with repo restore.",
     "snapshot": "Snapshot",
     "snapshots": "Snapshots",
     "total": "Total",
@@ -272,7 +272,7 @@
     "log": "Log",
     "logTruncated": "The server cut this step’s log at its size limit.",
     "noLogLines": "There are no lines yet.",
-    "partialNote": "The snapshot can be restored, but part of the data did not get into it.",
+    "partialNote": "The snapshot is incomplete: part of the data did not get into it. It can be restored only on the host, with repo restore.",
     "repository": "Repository: <m>{{name}}</m>",
     "snapshot": "Snapshot",
     "stepNote": {

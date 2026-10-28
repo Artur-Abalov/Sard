@@ -4,8 +4,11 @@
 package executor_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
 func wantLogged(t *testing.T, f *fixture, lines ...string) {
@@ -75,4 +78,26 @@ func TestASingleInterruptedStepIsLoggedToo(t *testing.T) {
 	f.files.next(t)
 	f.restart(t)
 	wantLogged(t, f, `msg="interrupted steps reported as failed" count=1 command_ids=[c1]`)
+}
+
+// A failed step's line names the failure and the snapshot it left, masked
+// like the result; a succeeded step's line has no message.
+func TestTheFinishedLineCarriesTheMessageAndTheSnapshotMasked(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	c.finish(snapshot("snap-c1"), errors.New("repository \"main\": exit code 3 on a stream: s3://u:"+secretValue+"@host"))
+	f.sink.result(t)
+	wantLogged(t, f, `level=INFO msg="step finished" command_id=c1 status=STEP_STATUS_FAILED message="repository \"main\": exit code 3 on a stream: s3://u:[REDACTED]@host" snapshot_id=snap-c1`)
+	if strings.Contains(f.log.String(), secretValue) {
+		t.Fatalf("the secret reached the log:\n%s", f.log)
+	}
+}
+
+func TestTheFinishedLineOfASucceededStepHasNoMessage(t *testing.T) {
+	f := setup(t, nil)
+	f.e.Submit(backup("c1"))
+	accepted(t, f.sink, "c1")
+	f.files.next(t).finish(&agentv1.StepResult{}, nil)
+	f.sink.result(t)
+	wantLogged(t, f, `msg="step finished" command_id=c1 status=STEP_STATUS_SUCCEEDED`+"\n")
 }

@@ -299,3 +299,42 @@ func streamer(stream func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Wr
 		stream: stream,
 	}
 }
+
+// errStreamExit3 is what the restic wrapper returns for a --stdin backup that
+// exits 3: a failure without a snapshot, not a partial one.
+var errStreamExit3 = errors.New("restic backup: exit code 3 on a stream: the stream may not have been stored completely")
+
+// A stream that restic ends with exit 3 is not "partial with a snapshot": the
+// step fails without an output and the message names the repository.
+func TestMainStreamExit3FailsWithoutOutputAndNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, withExtra())
+	f.readOnly = &seqRepo{sums: make([]restic.BackupSummary, 1), errs: map[int]error{0: errStreamExit3}}
+	res, err := f.run(t, step(backup, `{}`))
+	if res != nil || !errors.Is(err, errStreamExit3) || errors.Is(err, restic.ErrUnreadableSource) || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestExtraFileStreamExit3FailsKeepingTheMainSnapshotAndNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, withExtra(globals))
+	f.readOnly = &seqRepo{
+		sums: []restic.BackupSummary{{SnapshotID: "main", RepositoryID: "rid", TotalBytes: 100}, {}},
+		errs: map[int]error{1: errStreamExit3},
+	}
+	res, err := f.run(t, step(backup, `{}`))
+	if res.GetBackup().GetSnapshotId() != "main" || !errors.Is(err, errStreamExit3) || strings.Contains(err.Error(), "unreadable paths") || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestFingerprintStreamExit3FailsKeepingTheMainSnapshotAndNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, newCompleter())
+	f.readOnly = &seqRepo{
+		sums: []restic.BackupSummary{{SnapshotID: "main", RepositoryID: "rid", TotalBytes: 100}, {}},
+		errs: map[int]error{1: errStreamExit3},
+	}
+	res, err := f.run(t, step(backup, `{}`))
+	if res.GetBackup().GetSnapshotId() != "main" || len(res.GetBackup().GetFingerprint()) != 0 || !errors.Is(err, errStreamExit3) || strings.Contains(err.Error(), "unreadable paths") || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}

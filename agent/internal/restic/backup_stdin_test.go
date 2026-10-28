@@ -165,3 +165,34 @@ func TestBackupRejectsInvalidStdinRequests(t *testing.T) {
 		}
 	}
 }
+
+// Exit 3 means some source files could not be read; a stream has none, so
+// the snapshot is not trusted and the backup fails without one.
+func TestBackupFromStdinWithExitCode3FailsWithoutASnapshot(t *testing.T) {
+	f := backupFixture(t, reply{stdout: "backup-stdin.stdout", stderr: "backup-read-errors.stderr", code: 3, readStdin: true})
+	req := restic.BackupRequest{Stdin: write("hello stdin\n"), StdinFilename: "db.sql"}
+	sum, err := f.build().Backup(context.Background(), req, nil)
+	if sum.SnapshotID != "" || err == nil {
+		t.Fatalf("summary = %+v, err = %v", sum, err)
+	}
+	if errors.Is(err, restic.ErrUnreadableSource) {
+		t.Errorf("err matches ErrUnreadableSource: %v", err)
+	}
+	if want := "restic backup: exit code 3 on a stream: "; !strings.HasPrefix(err.Error(), want) ||
+		!strings.HasSuffix(err.Error(), ": the stream may not have been stored completely") {
+		t.Errorf("text = %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), `"/tmp/sardcap2/data/locked"`) {
+		t.Errorf("text lacks the reported item: %q", err.Error())
+	}
+}
+
+func TestBackupFromStdinWithExitCode3NamesResticsMessage(t *testing.T) {
+	f := backupFixture(t, reply{stderr: "backup-missing.stderr", code: 3, readStdin: true})
+	req := restic.BackupRequest{Stdin: write("x"), StdinFilename: "db.sql"}
+	_, err := f.build().Backup(context.Background(), req, nil)
+	want := `restic backup: exit code 3 on a stream: Fatal: all source directories/files do not exist: "/tmp/sardcap2/nonexistent": the stream may not have been stored completely`
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v", err)
+	}
+}

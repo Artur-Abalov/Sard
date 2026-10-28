@@ -148,7 +148,7 @@ func (c *CLI) Backup(ctx context.Context, req BackupRequest, progress func(Progr
 	if req.Stdin == nil {
 		return out.result(c.runRepo(ctx, call{args: req.args(), stdout: out.line}))
 	}
-	return out.result(c.backupStdin(ctx, req, out.line))
+	return out.streamResult(c.backupStdin(ctx, req, out.line))
 }
 
 // streamError marks a cancellation of restic caused by a failed stream.
@@ -238,6 +238,16 @@ const exitPartial = 3
 type backupOutput struct {
 	progress func(Progress)
 	summary  BackupSummary
+}
+
+// streamResult is result for a --stdin backup: a stream has no unreadable
+// files, so exit code 3 is a failure without a snapshot, and the stream may
+// not have been stored completely.
+func (o *backupOutput) streamResult(res *result, err error) (BackupSummary, error) {
+	if res.code == exitPartial {
+		return BackupSummary{}, fmt.Errorf("restic backup: %w", res.streamExitError())
+	}
+	return o.result(res, err)
 }
 
 // result keeps the summary of a snapshot written without some files.
