@@ -25,7 +25,7 @@
 - OpenAPI (`make openapi`), моки MSW (`agentWaitUntil`, `agentUnavailableSince`), словари `enum.RunStatus`, `RunOutcome`,
   `StepStatus` (ru, en), значок `pause` для `agent_unavailable` в `theme.ts` и `StatusIcon.tsx`. Экраны — J1e.
 - e2e `AgentWaitTest` (агент остановлен, `SARD_RUN_AGENT_WAIT_MAX=1m`, расписание каждую минуту).
-- `docs/operator/03-configuration.md`, `application.yaml`, `docs/open-questions.md` (OQ-233 закрыт, OQ-262 дополнен).
+- `docs/operator/03-configuration.md`, `application.yaml`, `docs/open-questions.md` (OQ-233 закрыт, OQ-263 дополнен).
 
 ## Решения по ходу
 1. Срок хранится в `runs`, а не в шаге: его показывает запуск, а истечение читает оба и закрывает оба в одной транзакции.
@@ -59,5 +59,5 @@
   активный запуск ожиданием офлайн-агента.
 
 ## Открытое
-- e2e `AgentWaitTest` не запускался (образы не собраны, OQ-262); компилируется (`:e2e:compileTestKotlin`).
+- e2e `AgentWaitTest` не запускался (образы не собраны, OQ-263); компилируется (`:e2e:compileTestKotlin`).
 - Мутационное тестирование не запускалось (`gate.sh server fast` его не включает).

@@ -49,7 +49,7 @@ proto и агент не менялись.
 
 ## Открытое
 - e2e `RunCancelTest` не запускался: образы `sard-server:e2e` и `sard-agent-stand:e2e` не собраны
-  (OQ-262); компилируется (`:e2e:compileTestKotlin`). Ручная проверка `docs/qa/run-cancel-deadlines.md`,
+  (OQ-263); компилируется (`:e2e:compileTestKotlin`). Ручная проверка `docs/qa/run-cancel-deadlines.md`,
   часть 2, не выполнялась.
 - Мутационное тестирование не запускалось (`gate.sh server fast` его не включает); тесты размечены
   `@MutFlowTest` там, где проверяется решение.
