@@ -2,29 +2,60 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { partialNoteShown, stepNoteShown, waitsForAgent } from './stepNotes'
+import {
+  backupExplanation,
+  incompleteMarkShown,
+  snapshotNoteKey,
+  unreadableRemainder,
+  stepNoteShown,
+  waitsForAgent,
+} from './stepNotes'
 
-const backup = (partial: boolean) => ({
-  snapshotId: 'a1b2c3',
-  totalBytes: 1,
-  addedBytes: 1,
-  repositoryId: 'r',
-  partial,
-  restorable: !partial,
-  totalFiles: null,
-  fingerprint: null,
-  warnings: [],
+describe('the mark that a run is incomplete', () => {
+  test.each([
+    ['failed', true, true],
+    ['failed', false, false],
+    ['succeeded', false, false],
+    ['running', false, false],
+    ['succeeded', true, true],
+  ] as const)('a %s run with partial %s: %s', (_status, partial, shown) => {
+    expect(incompleteMarkShown({ partial })).toBe(shown)
+  })
 })
 
-describe('the note that a snapshot is incomplete', () => {
+describe('the explanation of an incomplete snapshot', () => {
   test.each([
-    ['failed', backup(true), true],
-    ['failed', backup(false), false],
-    ['lost', backup(true), true],
-    ['succeeded', backup(false), false],
-    ['failed', null, false],
-  ] as const)('a %s step with backup %j: %s', (status, output, shown) => {
-    expect(partialNoteShown({ status, backup: output })).toBe(shown)
+    ['unreadable_files', 'unreadable_files', true, false],
+    ['snapshot_set_incomplete', 'snapshot_set_incomplete', false, true],
+    ['unknown', 'unknown', false, true],
+    [null, null, false, true],
+  ] as const)('reason %s: note %s, hint %s, message shown %s', (reason, note, hint, message) => {
+    expect(snapshotNoteKey(reason)).toBe(note === null ? null : `incomplete.${note}`)
+    expect(backupExplanation({ incompleteReason: reason })).toEqual({
+      noteKey: note === null ? null : `incomplete.${note}`,
+      permissionHint: hint,
+      messageShown: message,
+    })
+  })
+
+  test('no backup output explains nothing and shows the message', () => {
+    expect(backupExplanation(null)).toEqual({
+      noteKey: null,
+      permissionHint: false,
+      messageShown: true,
+    })
+  })
+})
+
+describe('the unreadable files beyond the listed paths', () => {
+  test.each([
+    [11, 10, 1],
+    [2, 2, null],
+    [3, 0, null],
+    [null, 0, null],
+    [1, 3, null],
+  ] as const)('count %s, %s paths: %s', (count, paths, rest) => {
+    expect(unreadableRemainder(count, paths)).toBe(rest)
   })
 })
 

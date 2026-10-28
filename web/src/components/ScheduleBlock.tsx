@@ -12,6 +12,7 @@ import { AppLink } from './links'
 import { ScheduleEditor } from './ScheduleEditor'
 import { ScheduleJournal } from './ScheduleJournal'
 import { FrequencyWarning } from './SchedulePreview'
+import { IncompleteMark } from './IncompleteMark'
 import { StatusBadge } from './StatusBadge'
 import { Time } from './Time'
 import { tones } from '../theme'
@@ -27,6 +28,7 @@ function LastRun({ schedule }: { schedule: Schedule }) {
   return (
     <Group gap="xs">
       <StatusBadge group="RunStatus" value={lastRun.status} />
+      <IncompleteMark run={lastRun} />
       <Text span>{t(`enum.RunTrigger.${lastRun.trigger}`)}</Text>
       <AppLink to="/runs/$runId" params={{ runId: lastRun.id }}>
         {t('runs.open')}

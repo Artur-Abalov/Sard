@@ -25,6 +25,7 @@ import { SystemSourceMark } from '../components/SystemSourceMark'
 import { VerificationMetric } from '../components/VerificationMetric'
 import { ScheduleBlock } from '../components/ScheduleBlock'
 import { usePaged } from '../components/usePaged'
+import { snapshotNoteKey } from '../stepNotes'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
@@ -37,6 +38,7 @@ type Snapshot = components['schemas']['Snapshot']
 function SnapshotRow({ snapshot }: { snapshot: Snapshot }) {
   const { t } = useTranslation()
   const format = useFormat()
+  const noteKey = snapshotNoteKey(snapshot.incompleteReason)
   return (
     <Table.Tr>
       <Table.Td>
@@ -44,7 +46,7 @@ function SnapshotRow({ snapshot }: { snapshot: Snapshot }) {
         {snapshot.partial && (
           <>
             {' '}
-            <Badge color={tones.warning} title={t('source.partialWhy')}>
+            <Badge color={tones.warning} title={noteKey === null ? undefined : t(noteKey)}>
               {t('source.partial')}
             </Badge>
           </>

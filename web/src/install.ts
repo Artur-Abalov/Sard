@@ -36,3 +36,6 @@ export function withEnrollCommand(steps: InstallStep[], enrollCommand: string): 
     step.kind === 'enroll' ? { ...step, commands: [enrollCommand] } : step,
   )
 }
+
+export const FILES_PERMISSIONS_DOC =
+  'https://github.com/Artur-Abalov/sard/blob/main/docs/plugins/files.md#от-чьего-имени-читаются-файлы'

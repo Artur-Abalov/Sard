@@ -305,6 +305,7 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
       config: choice.config,
       target: choice.target,
     },
+    partial: false,
   }
 }
 

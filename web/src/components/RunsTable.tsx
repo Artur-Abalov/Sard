@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Badge, Table, Text } from '@mantine/core'
+import { Badge, Group, Table, Text } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
 import { AppLink } from './links'
+import { IncompleteMark } from './IncompleteMark'
 import { StatusBadge } from './StatusBadge'
 import { tones } from '../theme'
 import { Mono } from './Mono'
@@ -81,7 +82,10 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
                 </Badge>
               </Table.Td>
               <Table.Td>
-                <StatusBadge group="RunStatus" value={run.status} />
+                <Group gap="xs" wrap="nowrap">
+                  <StatusBadge group="RunStatus" value={run.status} />
+                  <IncompleteMark run={run} />
+                </Group>
               </Table.Td>
               <Table.Td>
                 <TriggerLabel run={run} />
