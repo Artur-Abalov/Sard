@@ -1,0 +1,73 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright 2026 Artur Abalov -->
+
+# 2026-10-28 — PL7 (SARD-15): код выхода 3 у restic, неполный бэкап не должен выглядеть успехом
+
+Трек QuickFix, `/quick-fix`. База — `main` f5ec8d8. Ветка сессии —
+`ccr-84758809-7t4jw4` (её назначило окружение; `fix/sard-15-partial-backup`
+из задачи не создавалась).
+
+## Фаза 1 — аудит (только чтение кода)
+
+Все строки ниже — **«полагаю» (чтение кода)**, если не сказано иное. Тесты в
+фазе 1 не запускались; там, где поведение закреплено существующим тестом,
+тест назван — его прогон в фазе 2.
+
+Пути сервера — от `server/src/main/kotlin/dev/sard/server/`, консоли — от
+`web/src/`.
+
+### Агент
+
+| # | Место | Что видит человек / что происходит | Оценка | file:line |
+|---|---|---|---|---|
+| A1 | files, основной снимок, код 3 | `*PartialError` + сводка; шаг FAILED, `BackupOutput` со снимком; сообщение — англ. строка «at least one source file could not be read: unreadable paths (N[, first 10]): "…"» | честно (по правилу 5); e2e FullChainTest закрепляет | `agent/internal/restic/backup.go:244-253`, `agent/internal/pluginhost/handler.go:166-171` |
+| A2 | files, неполный основной снимок → отпечаток | при ошибке upload `Backup` возвращается до `withFingerprint`: у неполного снимка нет отпечатка и нет снимка `files.part=fingerprint`. Не «успех с пустым отпечатком» | честно | `agent/internal/pluginhost/source.go:115-118` |
+| A3 | снимок отпечатка `files.part=fingerprint` (`--stdin`), код 3 | `restic.Backup` для stdin тоже превращает код 3 в `*PartialError`; `nameRepository` не именует репозиторий; шаг FAILED с **основным** (полным) снимком, сервер помечает его partial, сообщение «unreadable paths (…)» — про файл, которого на хосте нет | **дыра** (неверная причина; в принципе маловероятно — см. Q2) | `backup.go:188-191,244-253`, `fingerprint.go:92-99`, `handler.go:179` |
+| A4 | postgresql основной снимок `--stdin`, код 3 | тот же путь: FAILED **со снимком** и partial — дамп выглядит как «неполный, но со снимком», на хосте `repo restore` его отдаст | **дыра** (задача прямо требует: stdin + код 3 = провал) | `source.go:145-153`, `backup.go:244-253` |
+| A5 | postgresql снимок глобальных объектов (`backupExtra`, `--stdin`), код 3 | ошибка → `repositoryError{PartialError}`; шаг FAILED с полным основным снимком, причина «unreadable paths» | **дыра** (как A3) | `source.go:182-189` |
+| A6 | самобэкап | это обычные запуски через агента плагинами postgresql и files (F6) — те же пути A1–A5 | следует A1–A5 | `server/.../selfbackup/SelfBackupPlan.kt:26-30` |
+| A7 | отпечаток: нечитаемый контрольный путь | `checkControls`: состояние «unreadable: …» ≠ non-empty → FAILED до бэкапа | честно | `agent/plugins/files/fingerprint.go:148-158`, `check.go:37` |
+| A8 | отпечаток: нечитаемый файл выборки SHA-256 | `hashStable` → false, файл не входит в выборку; факт `sample` = «K of M files hashed» | честно (исключается явно) | `agent/plugins/files/sample.go:166-187,207-212` |
+| A9 | журнал агента на хосте | «step finished status=STEP_STATUS_FAILED» — без ID снимка и без причины | **дыра** для хоста без сервера (п. 6) | `agent/internal/executor/command.go:352` |
+| A10 | `repo snapshots` / `repo restore` | неполный снимок ничем не отличается от полного | **дыра**, решение — Q4 | `agent/cmd/sard-agent/repo_snapshots_run.go`, `host_help.go:324-345` |
+
+### Протокол
+
+| # | Место | Оценка | file:line |
+|---|---|---|---|
+| P1 | `StepResult.message` — единственный носитель числа и путей; в `BackupOutput` нет ни признака partial, ни числа, ни путей. Сервер выводит partial из «не SUCCEEDED + есть вывод» и не отличает нечитаемые файлы от любой другой ошибки после снимка | **дыра** для i18n (п. 5, Q1) | `proto/sard/agent/v1/agent.proto:365-436`, `runs/ResultCheck.kt:279` |
+
+### Сервер (отчёт субагента, выборочно перепроверено)
+
+| # | Место | Что видит человек | Оценка | file:line |
+|---|---|---|---|---|
+| S1 | статус запуска | FAILED шаг → FAILED запуск | честно | `runs/RunModel.kt:27-34` |
+| S2 | «первый бэкап» в чек-листе обзора | только `status = 'succeeded'`; закреплено тестом «Неуспешный шаг со снимком не отмечает первый бэкап» | честно (тест существует) | `fleet/Overviews.kt:16-18`, тест `api/OverviewApiIntegrationTest.kt:279` |
+| S3 | давность (freshness), «давно не было бэкапа» | от `finished_at` последнего succeeded; эпизод закрывается только успехом | честно; отдельного теста на partial не нашёл | `freshness/FreshnessCheck.kt:24-28`, `freshness/Freshness.kt:77-91` |
+| S4 | Prometheus `sard_source_last_backup_success_timestamp_seconds` | только succeeded | честно; теста на partial не нашёл | `prometheus/StateQueries.kt:22-27`, `metrics/StateGauges.kt:89` |
+| S5 | счётчики `sard.run.finished{status}`, `step.results{outcome}` | partial = `failed`; отдельно не виден | честно, но неразличимо (Q5) | `agents/results/ResultsConfiguration.kt:23-32,79-88` |
+| S6 | провалы подряд | partial считается провалом | честно | `notify/Notices.kt:170-176` |
+| S7 | догоняющий запуск D16 | решается по моментам cron, статус не читается | неприменимо | `scheduler/Due.kt:36-45` |
+| S8 | самобэкап `lastSuccessAt` | только SUCCEEDED | честно | `selfbackup/SelfBackupHealth.kt:15-16,66` |
+| S9 | уведомление: причина | «Reason: » + сырая англ. строка агента (до 500 code points) даже при `sard.notify.language=ru` | **дыра** (i18n) | `notify/NoticeFormatter.kt:110-111,144-157` |
+| S10 | уведомление: строка о снимке | «Снимок создан и пригоден для восстановления, но часть данных в него не попала» — а консоль неполный снимок не восстанавливает (R2 ВВ8) | **дыра** (противоречие) | `notify/NoticeWording.kt:125-126,182` |
+| S11 | уведомление по расписанию: серия неполных | первый провал серии уведомляет, дальше тишина до успеха; давность (S3) потом заговорит | по ADR 0024, не дыра; отметить в документации | `notify/Notifications.kt:106-112` |
+| S12 | проверка восстановления, база падения объёма | partial исключён | честно | `verify/VerificationCycles.kt:19`, `verify/Staleness.kt:22`, `runs/StepResults.kt:29-31` |
+
+### Консоль
+
+| # | Место | Что видит человек | Оценка | file:line |
+|---|---|---|---|---|
+| W1 | шаг FAILED со снимком на странице запуска | бейдж «failed», сырая англ. причина, блок снимка + предупреждение `run.partialNote` | отличим, но **дыры**: причина не на языке консоли; текст «пригоден для восстановления» противоречит блокировке; нет подсказки о правах/ссылки на документацию | `components/StepPanel.tsx:33,70-108`, `stepNotes.ts:10-11`, `locales/*.json:275` |
+| W2 | список запусков, обзор, блок расписания | только бейдж «failed» — неполный неотличим от провала без снимка | **дыра** (отображение) | `components/RunsTable.tsx:84`, `components/ScheduleBlock.tsx:25-29` |
+| W3 | список снимков | бейдж «неполный», `restorable=false`, причина `partial` | честно; но `source.partialWhy` = «пригоден для восстановления» — противоречие | `pages/Source.tsx:44-49,67-71`, `locales/*.json:243-244,798` |
+
+### Итог фазы 1
+
+Неполный бэкап **нигде не засчитан как успех** (S1–S8, S12 — по чтению кода;
+S2 закреплён тестом). Дыры — в честности и внятности: A3–A5 (stdin + код 3),
+A9–A10 (хост без сервера), P1/S9/W1 (причина не на языке консоли, нет числа и
+путей в структурированном виде), S10/W1/W3 (текст «пригоден для
+восстановления» противоречит R2 ВВ8), W2 (неполный неотличим в списках).
+
+Открытые вопросы — в ответе владельцу (Q1–Q6); фаза 2 — после ревью.
