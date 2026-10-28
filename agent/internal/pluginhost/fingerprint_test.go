@@ -187,6 +187,7 @@ func TestAFailedFingerprintKeepsTheMainSnapshot(t *testing.T) {
 		"plugin fails":   {func() (sdk.Fingerprint, error) { return sdk.Fingerprint{}, errors.New("vanished") }, nil, "vanished"},
 		"invalid":        {func() (sdk.Fingerprint, error) { return sdk.Fingerprint{Plugin: "fake"}, nil }, nil, "fingerprint of the plugin"},
 		"snapshot of it": {nil, map[int]error{1: errors.New("Fatal: unable to save")}, "sard-fingerprint.json"},
+		"exit code 3":    {nil, map[int]error{1: &restic.ExitError{Code: 3, Message: "stream"}}, "sard-fingerprint.json"},
 	} {
 		c := newCompleter()
 		if tc.complete != nil {
@@ -209,7 +210,7 @@ func TestTheOutputOfABackupCarriesTheFingerprintAndTheNumberOfFiles(t *testing.T
 		BackupSummary: restic.BackupSummary{SnapshotID: "s", RepositoryID: "r", TotalBytes: 9, AddedBytes: 2, TotalFiles: 3},
 		Fingerprint:   b, FingerprintSHA256: hash,
 	})
-	want := &agentv1.BackupOutput{SnapshotId: "s", RepositoryId: "r", TotalBytes: 9, AddedBytes: 2, TotalFiles: 3, Fingerprint: b, FingerprintSha256: hash}
+	want := &agentv1.BackupOutput{SnapshotId: "s", RepositoryId: "r", TotalBytes: 9, AddedBytes: 2, TotalFiles: 3, Fingerprint: b, FingerprintSha256: hash, UnreadableCount: proto.Uint64(0)}
 	if !proto.Equal(got, want) {
 		t.Errorf("BackupOutput = %v, want %v", got, want)
 	}

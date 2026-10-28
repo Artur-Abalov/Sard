@@ -21,6 +21,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/verifier"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // Repositories returns the restic repository configured under name for the
@@ -192,6 +193,8 @@ func BackupOutput(b Backup) *agentv1.BackupOutput {
 		Fingerprint:       b.Fingerprint,
 		FingerprintSha256: b.FingerprintSHA256,
 		TotalFiles:        b.TotalFiles,
+		UnreadableCount:   proto.Uint64(uint64(b.UnreadableCount)),
+		UnreadablePaths:   b.UnreadablePaths,
 	}
 }
 

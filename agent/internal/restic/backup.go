@@ -80,6 +80,23 @@ func (e *PartialError) Error() string {
 	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, quoteJoin(paths))
 }
 
+// Unreadable is the number of distinct unreadable paths and the first ten,
+// in the order of the first report, each written on one line: quoted as in
+// the error text, without the outer quotes.
+func (e *PartialError) Unreadable() (int, []string) {
+	paths := distinctPaths(e.Items)
+	count := len(paths)
+	if count > maxNamedPaths {
+		paths = paths[:maxNamedPaths]
+	}
+	lines := make([]string, len(paths))
+	for i, p := range paths {
+		q := fmt.Sprintf("%q", p)
+		lines[i] = q[1 : len(q)-1]
+	}
+	return count, lines
+}
+
 // quoteJoin writes the paths quoted, separated by commas.
 func quoteJoin(paths []string) string {
 	quoted := make([]string, len(paths))

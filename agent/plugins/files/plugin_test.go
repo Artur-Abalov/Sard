@@ -479,6 +479,31 @@ func TestUnreadableFilesInTheTreeFailTheStepButKeepTheSnapshot(t *testing.T) {
 	oneLine(t, res.GetMessage())
 }
 
+// Scenario: Вывод бэкапа с нечитаемыми файлами несёт их число и пути.
+func TestUnreadableFilesGoIntoTheOutputAsTheirNumberAndPaths(t *testing.T) {
+	r := newRig(t)
+	r.fs.dir("/D")
+	r.restic.backup = script([]string{summaryLine()}, []string{
+		errorLine("/D/locked", "scan"), errorLine("/D/locked", "archival"), errorLine("/D/sub/x.txt", "archival"),
+		exitLine(3, "Warning: at least one source file could not be read"),
+	}, 3)
+	out := r.run(step(paths("/D"))).GetBackup()
+	if out.UnreadableCount == nil || out.GetUnreadableCount() != 2 || !slices.Equal(out.GetUnreadablePaths(), []string{"/D/locked", "/D/sub/x.txt"}) {
+		t.Errorf("output = %v", out)
+	}
+}
+
+// Scenario: У успешного бэкапа число нечитаемых равно нулю и присутствует.
+func TestASuccessfulBackupReportsZeroUnreadable(t *testing.T) {
+	r := newRig(t)
+	r.fs.dir("/D")
+	res := r.run(step(paths("/D")))
+	want(t, res, succeeded)
+	if out := res.GetBackup(); out.UnreadableCount == nil || out.GetUnreadableCount() != 0 || len(out.GetUnreadablePaths()) != 0 {
+		t.Errorf("output = %v", out)
+	}
+}
+
 // Scenario: Больше десяти нечитаемых файлов.
 func TestMoreThanTenUnreadableFilesNameTheFirstTenAndTheirNumber(t *testing.T) {
 	r := newRig(t)
