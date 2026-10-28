@@ -44,3 +44,5 @@
 - Последний статус источника (`status` в `SourceVerificationState`, счётчики обзора) смотрит сквозь `cancelled`: «не входит в
   счётчики, прозрачна» спецификация сказала, а как показать источник, у которого последняя запись — `cancelled`, — нет.
 - `clear_verification_evidence` и срок уборки верификатора — OQ-264, OQ-265.
+  OQ-264 закрыт тем же днём: миграция `V202610281300__retention_looks_through_cancelled.sql` (`CREATE OR REPLACE`,
+  `cancelled` пропускается), тест `RetentionEvidenceIntegrationTest` (красный до миграции: вывод старого провала очищался).

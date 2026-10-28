@@ -374,8 +374,9 @@ internal class SceneTenant(
             """
             insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id,
                                                verifier_agent_id,
-                                               key_holders, status, level, verified_at, stages, mismatches)
-            values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?::jsonb, ?::jsonb)
+                                               key_holders, status, level, verified_at, stages, mismatches,
+                                               cancelled_by, cancelled_at)
+            values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)
             """.trimIndent(),
             verification,
             id,
@@ -389,6 +390,8 @@ internal class SceneTenant(
             stamp(at),
             evidence,
             evidence,
+            if (status == "cancelled") "admin" else null,
+            if (status == "cancelled") stamp(at) else null,
         )
         return verification
     }
