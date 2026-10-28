@@ -105,9 +105,6 @@ export const runHandlers = [
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const run = state.runs.find((r) => r.id === params.runId)
     if (run === undefined) return response(404).json(notFound, PROBLEM)
-    if (run.trigger === 'verification') {
-      return response(409).json(problem(409, 'Conflict', 'run_not_cancellable'), PROBLEM)
-    }
     if (!IN_PROGRESS.includes(run.status)) {
       return response(409).json(problem(409, 'Conflict', 'run_finished'), PROBLEM)
     }

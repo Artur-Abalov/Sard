@@ -113,13 +113,16 @@ func (x *run) pipeline() []stage {
 }
 
 // execute runs the stages up to the first that does not pass, then the
-// cleanup, whatever happened.
+// cleanup, whatever happened. The cleanup runs under its own limit, not under
+// the step's context: a CancelStep ends that one, and the container must
+// still be removed (J1f).
 func (x *run) execute() (*agentv1.StepResult, error) {
 	for _, s := range x.pipeline() {
 		if !x.stage(s) {
 			break
 		}
 	}
+	x.ctx = context.WithoutCancel(x.ctx)
 	x.stage(stage{0, "cleanup", x.opts.Limits.Prepare, x.cleanup})
 	return &agentv1.StepResult{Output: &agentv1.StepResult_Verify{Verify: x.out}}, x.verdict()
 }

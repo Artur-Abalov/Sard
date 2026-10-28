@@ -169,16 +169,6 @@ class RunCancelsIntegrationTest(
     }
 
     @Test
-    fun `a verification run cannot be cancelled until J1f`() {
-        val run = started()
-        jdbc.update("update runs set trigger = 'verification' where id = ?", run.id)
-
-        assertFailsWith<RunNotCancellable> { cancels.cancel(tenant.id, run.id) }
-
-        assertEquals(RunState.QUEUED, runs.get(tenant.id, run.id)?.status)
-    }
-
-    @Test
     fun `a run of another tenant is not found`() {
         val other = RunsTenant(jdbc).create()
         try {

@@ -165,13 +165,19 @@ class TimeoutSettingsConfiguration {
 @Configuration(proxyBeanMethods = false)
 class RunCancelsConfiguration {
     @Bean
-    fun runCancels(
-        sessions: TenantSessions,
-        runs: Runs,
+    fun cancelMarks(
         clock: Clock,
         cancelled: ObjectProvider<StepsCancelled>,
         announcer: RunAnnouncer,
-    ) = RunCancels(sessions, runs, clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer)
+    ) = CancelMarks(clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer)
+
+    @Bean
+    fun runCancels(
+        sessions: TenantSessions,
+        runs: Runs,
+        marks: CancelMarks,
+        attempts: ObjectProvider<AttemptCancels>,
+    ) = RunCancels(sessions, runs, marks, attempts.getIfUnique { AttemptCancels.NONE })
 }
 
 /** Restore from the console (R2a): the service behind the restore endpoints. */

@@ -158,6 +158,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/verification-jobs/{jobId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a verification job
+         * @description A job nobody took is closed at once. A job whose attempt is queued is closed with the attempt, and one whose attempt runs is marked: the verifier is told to stop and the answer is the source's verification as it is, the open job with its cancellation pending, until the verifier confirms or does not come back within the lost window. The job closes with a record cancelled, which is never told and never retried. Asking again changes nothing. A job that is closed, or whose verdict came first, answers 409 run_finished.
+         */
+        post: operations["cancelJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -345,7 +365,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel a run
-         * @description A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished; a restore verification answers 409 run_not_cancellable.
+         * @description A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished. An attempt of a restore verification cancels its job, as POST /verification-jobs/{jobId}/cancel does.
          */
         post: operations["cancelRun"];
         delete?: never;
@@ -963,7 +983,7 @@ export interface components {
             staleAfterDays?: number | null;
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable" | "run_finished" | "run_not_cancellable";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable" | "run_finished";
         /** @description A field of the request that failed validation */
         FieldError: {
             /** @description JSON name of the field, e.g. repositoryName */
@@ -1092,13 +1112,24 @@ export interface components {
         /** @enum {string} */
         SystemSourceRole: "self_database" | "self_keys";
         /**
-         * @description passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted)
+         * @description passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted); cancelled (an administrator cancelled the job: neither held nor failed, never told)
          * @enum {string}
          */
-        VerificationOutcome: "passed" | "failed" | "cannot_verify" | "infrastructure_failure" | "no_verifier";
+        VerificationOutcome: "passed" | "failed" | "cannot_verify" | "infrastructure_failure" | "no_verifier" | "cancelled";
         /** @description Whether the source is verified */
         SourceVerificationInput: {
             enabled: boolean;
+        };
+        /** @enum {string} */
+        CancelResult: "pending" | "cancelled" | "unconfirmed" | "finished_first";
+        /** @description A cancel somebody asked for */
+        Cancellation: {
+            /** Format: date-time */
+            requestedAt: string;
+            /** @description "admin" for any session of the open core, which has one administrator */
+            requestedBy: string;
+            /** @description pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result */
+            result: components["schemas"]["CancelResult"];
         };
         /** @description A source's restore verification */
         SourceVerificationState: {
@@ -1150,6 +1181,8 @@ export interface components {
             failedAttempts: number;
             /** @description Why each verifier did not fit at the last try; null before the first */
             unsuitable: components["schemas"]["VerifierMisfit"][] | null;
+            /** @description Set once an administrator asked to cancel the job; null otherwise */
+            cancellation: components["schemas"]["Cancellation"] | null;
         };
         /** @enum {string} */
         VerificationJobReason: "cycle" | "manual";
@@ -1388,17 +1421,6 @@ export interface components {
             fingerprint: components["schemas"]["Fingerprint"] | null;
             /** @description What the server noticed: the number of files or the size fell by more than 30% since the last snapshot of the source. The backup still succeeded */
             warnings: string[];
-        };
-        /** @enum {string} */
-        CancelResult: "pending" | "cancelled" | "unconfirmed" | "finished_first";
-        /** @description A cancel somebody asked for */
-        Cancellation: {
-            /** Format: date-time */
-            requestedAt: string;
-            /** @description "admin" for any session of the open core, which has one administrator */
-            requestedBy: string;
-            /** @description pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result */
-            result: components["schemas"]["CancelResult"];
         };
         /** @description What a catch-up run stands for: the fires missed while the server was down */
         CatchUp: {
@@ -1998,6 +2020,13 @@ export interface components {
              * @description Facts of the hashed sample of files: counted, never listed
              */
             hiddenFacts: number;
+            /** @description Who cancelled the job (admin); null unless the status is cancelled */
+            cancelledBy: string | null;
+            /**
+             * Format: date-time
+             * @description When the cancel was asked; null unless the status is cancelled
+             */
+            cancelledAt: string | null;
         };
         /** @description A stage of the verification pipeline and its evidence */
         VerificationStage: {
@@ -2107,6 +2136,8 @@ export interface components {
              * @description The actual time to restore (level 5)
              */
             restoreDurationMs: number | null;
+            /** @description Who cancelled the job (admin); null unless the status is cancelled */
+            cancelledBy: string | null;
         };
         /** @description Verifications of a period counted by outcome */
         ReportSummary: {
@@ -2121,6 +2152,11 @@ export interface components {
              * @description Cannot verify, infrastructure failure or no fitting verifier: no check took place
              */
             notHeld: number;
+            /**
+             * Format: int32
+             * @description Cancelled by an administrator: neither held nor failed
+             */
+            cancelled: number;
         };
         /** @description A source's restore verifications for a period, for print */
         VerificationReportResponse: {
@@ -3566,6 +3602,73 @@ export interface operations {
             };
         };
     };
+    cancelJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceVerificationState"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listSources: {
         parameters: {
             query?: {
@@ -4384,7 +4487,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description run_finished: the run is final, nothing to cancel; run_not_cancellable: the server does not cancel this kind of run yet (a restore verification). Nothing was changed; or the onboarding is not complete */
+            /** @description run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -396,8 +396,8 @@ class RunsController(
             "A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its " +
                 "agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent " +
                 "confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking " +
-                "again changes nothing. A run that is final answers 409 run_finished; a restore verification " +
-                "answers 409 run_not_cancellable.",
+                "again changes nothing. A run that is final answers 409 run_finished. An attempt of a restore " +
+                "verification cancels its job, as POST /verification-jobs/{jobId}/cancel does.",
     )
     @NotFound
     @CancelRefused

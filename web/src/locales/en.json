@@ -129,7 +129,6 @@
     "invalid_config": "The source config is not valid",
     "run_active": "The source already has a run in progress",
     "run_finished": "The run is already finished",
-    "run_not_cancellable": "This run cannot be cancelled",
     "token_used": "The token is already used",
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
@@ -903,7 +902,8 @@
       "failed": "failed",
       "cannot_verify": "cannot verify",
       "infrastructure_failure": "infrastructure failure",
-      "no_verifier": "no fitting verifier"
+      "no_verifier": "no fitting verifier",
+      "cancelled": "cancelled"
     },
     "reason": {
       "offline": "offline",
@@ -1028,7 +1028,8 @@
       "job": {
         "queued": "The verification is queued.",
         "running": "The verification is running.",
-        "deadline": "Deadline: {{time}}."
+        "deadline": "Deadline: {{time}}.",
+        "cancelling": "The verification is being cancelled."
       },
       "columns": {
         "time": "Time",
@@ -1038,7 +1039,15 @@
         "level": "Level",
         "duration": "Duration",
         "restoreTime": "Time to restore"
-      }
+      },
+      "cancel": {
+        "button": "Cancel the verification",
+        "title": "Cancel the verification?",
+        "text": "The verifier is told to stop and its sandbox is removed. There will be no result and no new attempt.",
+        "confirm": "Cancel the verification",
+        "finished": "The verification has already finished."
+      },
+      "cancelledBy": "Cancelled by {{who}}, {{time}}"
     },
     "record": {
       "title": "Restore verification",
@@ -1102,7 +1111,7 @@
     "print": "Print",
     "back": "Back to the verifications of the source",
     "period": "{{from}} — {{to}} ({{zone}})",
-    "summary": "Verifications in the period: {{total}}; passed: {{passed}}; failed: {{failed}}; did not take place: {{notHeld}}.",
+    "summary": "Verifications in the period: {{total}}; passed: {{passed}}; failed: {{failed}}; did not take place: {{notHeld}}; cancelled: {{cancelled}}.",
     "empty": "There were no verifications in this period.",
     "failures": "Failures and their fix",
     "noFailures": "There were no failures in the period.",

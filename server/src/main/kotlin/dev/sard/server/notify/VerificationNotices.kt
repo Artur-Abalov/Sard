@@ -40,7 +40,8 @@ enum class VerificationTelling {
     companion object {
         /**
          * A failure is told when it opens a series: a verification that did not take place proves neither the backup
-         * nor its failure and does not break a series. A pass is told when it ends a series of failures or a stale
+         * nor its failure and does not break a series; neither does a cancel by a person, which is never told (J1f,
+         * ВJ4, ВJf2). A pass is told when it ends a series of failures or a stale
          * episode, once even if both; successes otherwise are silent.
          */
         fun of(notice: VerificationNotice): VerificationTelling? =
@@ -52,6 +53,7 @@ enum class VerificationTelling {
                 VerificationStatus.CANNOT_VERIFY,
                 VerificationStatus.INFRASTRUCTURE_FAILURE,
                 VerificationStatus.NO_VERIFIER,
+                VerificationStatus.CANCELLED,
                 -> null
             }
 

@@ -201,19 +201,6 @@ class RunCancelApiIntegrationTest(
     }
 
     @Test
-    fun `Отмена запуска проверки отвечает 409 run_not_cancellable до J1f`() {
-        val run = start(source()).json.path("id").asString()
-        world.forceRun(java.util.UUID.fromString(run), "running")
-        jdbc.update("update runs set trigger = 'verification' where id = ?", java.util.UUID.fromString(run))
-
-        val response = cancel(run)
-
-        assertEquals(409, response.status)
-        assertEquals("run_not_cancellable", response.code)
-        assertEquals("running", card(run).path("status").asString())
-    }
-
-    @Test
     fun `Отмена без сессии отвечает 401, с чужим Origin 403, запуск не меняется`() {
         val run = start(source()).json.path("id").asString()
 

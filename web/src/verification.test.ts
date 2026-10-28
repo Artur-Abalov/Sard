@@ -7,6 +7,8 @@ import {
   levelWords,
   restoreTimeText,
   mismatchText,
+  jobCancelMessageKey,
+  jobCancellable,
   outcomeView,
   stageHint,
   stageLabel,
@@ -105,6 +107,7 @@ describe('outcomeView', () => {
     ['cannot_verify', 'не можем проверить', 'warning'],
     ['infrastructure_failure', 'сбой инфраструктуры', 'warning'],
     ['no_verifier', 'нет подходящего верификатора', 'warning'],
+    ['cancelled', 'отменена', 'neutral'],
   ] as const)('%s is «%s» in the role %s', (status, label, role) => {
     expect(outcomeView(status, 'ru')).toEqual({ label, role })
   })
@@ -115,8 +118,33 @@ describe('outcomeView', () => {
     }
   })
 
+  test('a cancelled verification is neither an error nor a warning', () => {
+    expect(['error', 'warning']).not.toContain(outcomeView('cancelled', 'en').role)
+  })
+
   test('in English', () => {
     expect(outcomeView('infrastructure_failure', 'en').label).toBe('infrastructure failure')
+    expect(outcomeView('cancelled', 'en').label).toBe('cancelled')
+  })
+})
+
+describe('jobCancellable', () => {
+  test('a job nobody asked to cancel can be cancelled, one that is being cancelled cannot', () => {
+    const asked = {
+      requestedAt: '2026-10-28T09:00:00Z',
+      requestedBy: 'admin',
+      result: 'pending',
+    } as const
+
+    expect(jobCancellable({ cancellation: null })).toBe(true)
+    expect(jobCancellable({ cancellation: asked })).toBe(false)
+  })
+})
+
+describe('jobCancelMessageKey', () => {
+  test('a job that ended is told in the words of the verification, any other refusal as it is', () => {
+    expect(jobCancelMessageKey('errors.run_finished')).toBe('verification.tab.cancel.finished')
+    expect(jobCancelMessageKey('errors.unavailable')).toBe('errors.unavailable')
   })
 })
 

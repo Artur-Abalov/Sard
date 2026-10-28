@@ -88,8 +88,7 @@ annotation class VerificationActiveConflict
     ApiResponse(
         responseCode = "409",
         description =
-            "run_finished: the run is final, nothing to cancel; run_not_cancellable: the server does not cancel " +
-                "this kind of run yet (a restore verification). Nothing was changed",
+            "run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed",
         content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
     ),
 )

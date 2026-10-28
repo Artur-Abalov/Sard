@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.runs.Cancellation
 import dev.sard.server.verify.JobReason
 import dev.sard.server.verify.OpenJob
 import dev.sard.server.verify.VerificationStatus
@@ -25,6 +26,7 @@ class VerificationMappingTest {
                 VerificationStatus.CANNOT_VERIFY to VerificationOutcome.CANNOT_VERIFY,
                 VerificationStatus.INFRASTRUCTURE_FAILURE to VerificationOutcome.INFRASTRUCTURE_FAILURE,
                 VerificationStatus.NO_VERIFIER to VerificationOutcome.NO_VERIFIER,
+                VerificationStatus.CANCELLED to VerificationOutcome.CANCELLED,
             )
         assertEquals(expected, VerificationStatus.entries.associateWith { MutFlow.underTest { outcomeOf(it) } })
     }
@@ -46,6 +48,7 @@ class VerificationMappingTest {
                 Instant.MAX,
                 2,
                 listOf(misfit),
+                null,
             ),
             mapped,
         )
@@ -60,6 +63,30 @@ class VerificationMappingTest {
         assertEquals(
             listOf<Any?>(VerificationJobStatus.QUEUED, VerificationJobReason.MANUAL, null),
             listOf(mapped.status, mapped.reason, mapped.unsuitable),
+        )
+    }
+
+    @Test
+    fun `a job an administrator cancelled shows who asked, when and how the cancel stands`() {
+        val asked = Instant.parse("2026-10-28T09:00:00Z")
+        val job =
+            OpenJob(
+                UUID(0, 1),
+                true,
+                JobReason.CYCLE,
+                Instant.EPOCH,
+                Instant.EPOCH,
+                0,
+                null,
+                Cancellation(asked, "admin", dev.sard.server.runs.CancelResult.PENDING),
+            )
+
+        val mapped = MutFlow.underTest { jobOf(job) }
+
+        assertEquals(
+            dev.sard.server.api
+                .Cancellation(asked, "admin", CancelResult.PENDING),
+            mapped.cancellation,
         )
     }
 }

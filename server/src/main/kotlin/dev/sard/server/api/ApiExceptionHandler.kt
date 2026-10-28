@@ -9,7 +9,6 @@ import dev.sard.server.runs.AgentRoleMismatch
 import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RunActive
 import dev.sard.server.runs.RunAlreadyFinished
-import dev.sard.server.runs.RunNotCancellable
 import dev.sard.server.runs.RunNotFound
 import dev.sard.server.runs.SourceNameTaken
 import dev.sard.server.runs.SourceNotFound
@@ -28,6 +27,7 @@ import dev.sard.server.verify.InvalidReportPeriod
 import dev.sard.server.verify.InvalidStaleThreshold
 import dev.sard.server.verify.SnapshotUnusable
 import dev.sard.server.verify.VerificationActive
+import dev.sard.server.verify.VerificationJobNotFound
 import jakarta.persistence.PersistenceException
 import org.hibernate.HibernateException
 import org.slf4j.LoggerFactory
@@ -133,6 +133,9 @@ class VerificationExceptionHandler {
         return problemResponse(HttpStatus.CONFLICT, "Conflict", code)
     }
 
+    @ExceptionHandler(VerificationJobNotFound::class)
+    fun jobNotFound(): ResponseEntity<Problem> = notFoundResponse()
+
     @ExceptionHandler(InvalidStaleThreshold::class)
     fun staleThreshold(e: InvalidStaleThreshold) = invalidResponse("staleAfterDays", e.message.orEmpty())
 
@@ -208,9 +211,6 @@ class RunExceptionHandler {
 
     @ExceptionHandler(RunAlreadyFinished::class)
     fun finished(): ResponseEntity<Problem> = conflict(ErrorCode.RUN_FINISHED)
-
-    @ExceptionHandler(RunNotCancellable::class)
-    fun notCancellable(): ResponseEntity<Problem> = conflict(ErrorCode.RUN_NOT_CANCELLABLE)
 
     private fun conflict(code: ErrorCode) = problemResponse(HttpStatus.CONFLICT, "Conflict", code)
 }

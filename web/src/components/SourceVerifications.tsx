@@ -33,6 +33,7 @@ import { tones } from '../theme'
 import { useFormat } from '../useFormat'
 import { levelWords, restoreTimeText, verifierReasonText } from '../verification'
 import { AgentName } from './AgentName'
+import { CancelVerificationButton } from './CancelVerificationButton'
 import { EmptyState } from './EmptyState'
 import { ErrorBlock } from './ErrorBlock'
 import { AppLink, ButtonLink } from './links'
@@ -190,19 +191,32 @@ function EnabledSwitch({ sourceId, enabled }: { sourceId: string; enabled: boole
   )
 }
 
-function OpenJob({ job }: { job: components['schemas']['VerificationJob'] }) {
+// The open job: where it is, and the way to cancel it; once it is marked, the words say it is being cancelled (J1f).
+function OpenJob({
+  sourceId,
+  job,
+}: {
+  sourceId: string
+  job: components['schemas']['VerificationJob']
+}) {
   const { t } = useTranslation()
   const format = useFormat()
   return (
-    <Alert color={tones.info} role="status">
-      {t(`verification.tab.job.${job.status}`)}{' '}
-      {t('verification.tab.job.deadline', { time: format.time(job.deadline) })}
-    </Alert>
+    <Stack gap="xs" align="flex-start">
+      <Alert color={tones.info} role="status">
+        {job.cancellation === null
+          ? t(`verification.tab.job.${job.status}`)
+          : t('verification.tab.job.cancelling')}{' '}
+        {t('verification.tab.job.deadline', { time: format.time(job.deadline) })}
+      </Alert>
+      <CancelVerificationButton sourceId={sourceId} job={job} />
+    </Stack>
   )
 }
 
 function Row({ record }: { record: Verification }) {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const format = useFormat()
   return (
     <Table.Tr>
       <Table.Td>
@@ -218,6 +232,14 @@ function Row({ record }: { record: Verification }) {
       </Table.Td>
       <Table.Td>
         <OutcomeBadge status={record.status} />
+        {record.cancelledBy !== null && record.cancelledAt !== null && (
+          <Text size="xs" c="dimmed">
+            {t('verification.tab.cancelledBy', {
+              who: record.cancelledBy,
+              time: format.time(record.cancelledAt),
+            })}
+          </Text>
+        )}
       </Table.Td>
       <Table.Td>{record.level === 0 ? '—' : levelWords(record.level, i18n.language)}</Table.Td>
       <Table.Td>
@@ -349,7 +371,7 @@ export function SourceVerifications({ sourceId }: { sourceId: string }) {
                 {t('verification.tab.report')}
               </ButtonLink>
             </Group>
-            {data.openJob !== null && <OpenJob job={data.openJob} />}
+            {data.openJob !== null && <OpenJob sourceId={sourceId} job={data.openJob} />}
             <Hints sourceId={sourceId} hints={data.hints} />
           </>
         )}

@@ -111,9 +111,6 @@ enum class ErrorCode {
 
     @JsonProperty("run_finished")
     RUN_FINISHED,
-
-    @JsonProperty("run_not_cancellable")
-    RUN_NOT_CANCELLABLE,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

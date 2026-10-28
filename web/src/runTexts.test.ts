@@ -44,7 +44,14 @@ const J1_TEXTS = [
   'settings.runDefaults.submit',
   'settings.runDefaults.saved',
   'errors.run_finished',
-  'errors.run_not_cancellable',
+  'verification.outcome.cancelled',
+  'verification.tab.job.cancelling',
+  'verification.tab.cancel.button',
+  'verification.tab.cancel.title',
+  'verification.tab.cancel.text',
+  'verification.tab.cancel.confirm',
+  'verification.tab.cancel.finished',
+  'verification.tab.cancelledBy',
 ]
 
 describe.each(Object.entries(dictionaries))('the %s dictionary', (_, dictionary) => {

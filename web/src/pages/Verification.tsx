@@ -248,6 +248,7 @@ function Facts({ record }: { record: Verification }) {
 // A failure and a check that did not take place are two different pages of bad news (V-D10).
 function Headline({ record }: { record: Verification }) {
   const { t } = useTranslation()
+  const format = useFormat()
   return (
     <Stack gap="xs">
       <Group>
@@ -263,6 +264,14 @@ function Headline({ record }: { record: Verification }) {
             </AppLink>
           )}
         </Alert>
+      )}
+      {record.cancelledBy !== null && record.cancelledAt !== null && (
+        <Text>
+          {t('verification.tab.cancelledBy', {
+            who: record.cancelledBy,
+            time: format.time(record.cancelledAt),
+          })}
+        </Text>
       )}
       {record.reason !== null && (
         <Text>

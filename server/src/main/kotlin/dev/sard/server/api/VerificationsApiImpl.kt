@@ -17,6 +17,7 @@ import dev.sard.server.verify.OpenJob
 import dev.sard.server.verify.ReportEntry
 import dev.sard.server.verify.SourceVerification
 import dev.sard.server.verify.Unsuitable
+import dev.sard.server.verify.VerificationCancels
 import dev.sard.server.verify.VerificationHint
 import dev.sard.server.verify.VerificationReads
 import dev.sard.server.verify.VerificationReport
@@ -41,6 +42,7 @@ private const val READ_ONLY_NOTE = "Give the verifier's host a storage account t
 @Component
 class VerificationsApiImpl(
     private val verifications: Verifications,
+    private val cancels: VerificationCancels,
     private val reads: VerificationReads,
     private val repositories: Repositories,
     private val reports: VerificationReports,
@@ -80,6 +82,11 @@ class VerificationsApiImpl(
 
     override fun getVerification(verificationId: UUID): Verification =
         reads.get(tenants.currentTenantId(), verificationId)?.let(::verificationOf) ?: throw ResourceNotFound()
+
+    override fun cancelJob(jobId: UUID): SourceVerificationState {
+        val tenant = tenants.currentTenantId()
+        return stateOf(verifications.state(tenant, cancels.cancel(tenant, jobId)))
+    }
 
     override fun getVerificationSchedule(): VerificationSchedule =
         sessions.inTenant(tenants.currentTenantId()) { session ->
@@ -156,6 +163,7 @@ internal fun jobOf(job: OpenJob) =
         deadline = job.deadline,
         failedAttempts = job.failedAttempts,
         unsuitable = job.unsuitable?.let(::misfitsOf)?.map(::misfitOf),
+        cancellation = job.cancellation?.let(CancelMapping::cancellation),
     )
 
 private fun verificationOf(view: VerificationView) =
@@ -192,6 +200,8 @@ private fun verificationOf(view: VerificationView) =
         verifiedAt = view.verifiedAt,
         fingerprint = view.fingerprint.rows.map(::fieldOf),
         hiddenFacts = view.fingerprint.hidden,
+        cancelledBy = view.cancelledBy,
+        cancelledAt = view.cancelledAt,
     )
 
 private fun verifierOf(view: VerifierView) =
@@ -225,6 +235,7 @@ internal fun outcomeOf(status: VerificationStatus): VerificationOutcome =
         VerificationStatus.CANNOT_VERIFY -> VerificationOutcome.CANNOT_VERIFY
         VerificationStatus.INFRASTRUCTURE_FAILURE -> VerificationOutcome.INFRASTRUCTURE_FAILURE
         VerificationStatus.NO_VERIFIER -> VerificationOutcome.NO_VERIFIER
+        VerificationStatus.CANCELLED -> VerificationOutcome.CANCELLED
     }
 
 /** The same names on both sides (VerifierChoiceTest pins the domain's); a renamed one fails at the first use. */

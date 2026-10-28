@@ -28,11 +28,21 @@ object VerificationSamples {
             1,
             null,
         )
-    private val reportItem = ReportItem(id, at, "4f3a9c1e", "vrf1", VerificationOutcome.PASSED, 5, 90_000, 252_000)
+    private val reportItem =
+        ReportItem(id, at, "4f3a9c1e", "vrf1", VerificationOutcome.PASSED, 5, 90_000, 252_000, null)
     private val attention = AttentionSource(id, "db-main", VerificationOutcome.FAILED, at, 5, null)
     private val verificationOverview = VerificationOverview(5, 1, 1, 2, 1, 1, 1, true, listOf(attention))
     private val verificationJob =
-        VerificationJob(id, VerificationJobStatus.QUEUED, VerificationJobReason.CYCLE, at, at, 1, emptyList())
+        VerificationJob(
+            id,
+            VerificationJobStatus.RUNNING,
+            VerificationJobReason.CYCLE,
+            at,
+            at,
+            1,
+            emptyList(),
+            Cancellation(at, "admin", CancelResult.PENDING),
+        )
     private val verificationRecord =
         Verification(
             id,
@@ -55,6 +65,8 @@ object VerificationSamples {
             at,
             listOf(FingerprintField("tables", FingerprintRule.EXACT, "12", "0", FingerprintOutcomeKind.MISMATCHED)),
             0,
+            null,
+            null,
         )
 
     val all: List<Any> =
@@ -93,11 +105,11 @@ object VerificationSamples {
                 "UTC",
                 at,
                 "1.0.0",
-                ReportSummary(3, 1, 1, 1),
+                ReportSummary(4, 1, 1, 1, 1),
                 listOf(reportItem),
                 listOf(ReportFailure(at, 2, null)),
             ),
-            ReportSummary(3, 1, 1, 1),
+            ReportSummary(4, 1, 1, 1, 1),
             reportItem,
             ReportFailure(at, 1, at),
             verificationRecord,

@@ -24,6 +24,11 @@ type fakeBox struct {
 	ran       []sdk.Process
 	removed   bool
 	removeErr error
+	// removeCtxErr is the state of the context the removal ran under.
+	removeCtxErr error
+	// removing is signalled when the removal starts; hangs makes it wait until its context ends.
+	removing chan struct{}
+	hangs    bool
 }
 
 func (b *fakeBox) Image() sandbox.Image {
@@ -35,8 +40,16 @@ func (b *fakeBox) Run(_ context.Context, p sdk.Process) (int, error) {
 	return 0, nil
 }
 
-func (b *fakeBox) Remove(context.Context) error {
+func (b *fakeBox) Remove(ctx context.Context) error {
 	b.removed = true
+	b.removeCtxErr = ctx.Err()
+	if b.removing != nil {
+		close(b.removing)
+	}
+	if b.hangs {
+		<-ctx.Done()
+		return context.Cause(ctx)
+	}
 	return b.removeErr
 }
 
@@ -63,9 +76,11 @@ func (s *fakeSandboxes) Sweep(context.Context) ([]string, error) { return s.swep
 // database is a plugin like postgresql: its copy runs in a sandbox.
 type database struct {
 	*fakePlugin
-	specErr   error
-	readyErr  error
-	openErr   error
+	specErr  error
+	readyErr error
+	openErr  error
+	// onRestore runs as the copy is restored: a test cancels the step there.
+	onRestore func()
 	passwords []string
 	hosts     []string
 	reference *sdk.Fingerprint
@@ -94,6 +109,9 @@ func (d *database) OpenCopy(ctx context.Context, h sdk.SandboxHost, _ sdk.Restor
 func (d *database) RestoreInto(ctx context.Context, h sdk.RestoreHost, _ sdk.Config, _ sdk.RestoreRequest) (sdk.RestoredCopy, error) {
 	_, inSandbox := h.(sdk.SandboxHost)
 	d.hosts = append(d.hosts, map[bool]string{true: "sandbox", false: "plain"}[inSandbox])
+	if d.onRestore != nil {
+		d.onRestore()
+	}
 	d.clock.Advance(d.measureTook)
 	return sdk.RestoredCopy{Config: sdk.Config(`{"database":"copy"}`), Result: sdk.RestoreResult{Target: "database copy"}}, nil
 }
@@ -341,5 +359,50 @@ func TestADataDirectoryThatCannotBeMadeStartsNoSandbox(t *testing.T) {
 	s := find(result.GetVerify(), "sandbox")
 	if s.GetStatus() != cannotRun || !strings.Contains(s.GetOutput(), "read-only file system") || len(boxes.started) != 0 {
 		t.Fatalf("stage %v, started %v", s, boxes.started)
+	}
+}
+
+// J1f, ВJf3: a CancelStep ends the step's context, and the cleanup that removes the container must not end with it.
+func TestACancelledAttemptRemovesTheSandboxAndTheJobDirectory(t *testing.T) {
+	r, db, boxes := dbRig(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	db.onRestore = cancel
+
+	result, _ := newVerifier(r).Run(ctx, r.step, db, r.store, r.reporter)
+
+	if !boxes.box.removed || boxes.box.removeCtxErr != nil {
+		t.Fatalf("removed %v under a context that was %v", boxes.box.removed, boxes.box.removeCtxErr)
+	}
+	if !slices.Contains(r.disk.removed, workDir+"/"+jobID) {
+		t.Fatalf("removed %q", r.disk.removed)
+	}
+	if s := find(result.GetVerify(), "cleanup"); s.GetStatus() != passed {
+		t.Fatalf("cleanup %v", s)
+	}
+}
+
+func TestTheCleanupOfACancelledAttemptEndsAtItsOwnLimit(t *testing.T) {
+	r, db, boxes := dbRig(t)
+	boxes.box.hangs = true
+	boxes.box.removing = make(chan struct{})
+	ctx, cancel := context.WithCancel(t.Context())
+	db.onRestore = cancel
+	done := make(chan *agentv1.StepResult)
+	go func() {
+		result, _ := newVerifier(r).Run(ctx, r.step, db, r.store, r.reporter)
+		done <- result
+	}()
+	<-boxes.box.removing
+
+	r.clock.Advance(r.opts.Limits.Prepare)
+
+	select {
+	case result := <-done:
+		s := find(result.GetVerify(), "cleanup")
+		if s.GetStatus() != cannotRun || !strings.Contains(s.GetOutput(), "ran out of its time limit of 10m0s") {
+			t.Fatalf("cleanup %v", s)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the cleanup of a cancelled attempt never ended")
 	}
 }

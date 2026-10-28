@@ -79,11 +79,24 @@ const OUTCOME_ROLES: Record<Schemas['VerificationOutcome'], Role> = {
   cannot_verify: 'warning',
   infrastructure_failure: 'warning',
   no_verifier: 'warning',
+  // A person stopped it: not bad news, so neither the error nor the warning color (J1f, ВJf2).
+  cancelled: 'neutral',
 }
 
 // The two kinds of bad news never merge into one red badge (V-D10).
 export function outcomeView(status: Schemas['VerificationOutcome'], language: string): OutcomeView {
   return { label: dictionary(language).verification.outcome[status], role: OUTCOME_ROLES[status] }
+}
+
+// The cancel button of the tab is for a job nobody asked to cancel yet: the server marks a job that is being cancelled
+// (J1f, ВJf1); the console only reads the mark.
+export function jobCancellable(job: Pick<Schemas['VerificationJob'], 'cancellation'>): boolean {
+  return job.cancellation === null
+}
+
+// The refusal of a cancel of a job that ended says «the verification», not «the run»: the code is the run's.
+export function jobCancelMessageKey(key: string): string {
+  return key === 'errors.run_finished' ? 'verification.tab.cancel.finished' : key
 }
 
 export function verifierReasonText(reason: Schemas['VerifierReason'], language: string): string {

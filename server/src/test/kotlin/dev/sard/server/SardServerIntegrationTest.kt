@@ -99,6 +99,7 @@ class SardServerIntegrationTest(
                     "202610271200",
                     "202610271300",
                     "202610271400",
+                    "202610281200",
                 )
         assertEquals(versions, jdbc.queryForList(sql, String::class.java))
         assertEquals(0, jdbc.queryForObject("select count(*) from agents", Int::class.java))

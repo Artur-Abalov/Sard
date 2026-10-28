@@ -36,45 +36,97 @@ function hintsOf(source: Schemas['Source']): Schemas['VerificationHintCode'][] {
   return Array.isArray(list) && list.length > 0 ? [] : [wanted.hint]
 }
 
+// A queued job of the mocks is handed to the verifier after this long: it runs, and can then only be marked.
+const HANDED_OUT_MS = 2_000
+
+/** The job as the server tells it: queued, then running once a verifier has it. */
+function viewOf(job: Schemas['VerificationJob']): Schemas['VerificationJob'] {
+  const running = Date.now() - Date.parse(job.createdAt) >= HANDED_OUT_MS
+  return { ...job, status: running ? 'running' : 'queued' }
+}
+
 function stateOf(source: Schemas['Source']): Schemas['SourceVerificationState'] {
+  const job = state.verificationJobs[source.id]
   return {
     enabled: source.verificationEnabled,
     status: source.verificationStatus,
     lastVerifiedAt: source.lastVerifiedAt,
     lastVerifiedLevel: source.lastVerifiedLevel,
     staleSince: null,
-    openJob: state.verificationJobs[source.id] ?? null,
+    openJob: job === undefined ? null : viewOf(job),
     hints: hintsOf(source),
   }
 }
 
-/** A job older than a few seconds is over: a pass of level 5 is recorded and the source's metric moves. */
-function settleJob(sourceId: string): void {
-  const job = state.verificationJobs[sourceId]
-  if (job === undefined || Date.now() - Date.parse(job.createdAt) < JOB_MS) return
-  const source = liveSource(sourceId)
-  if (source === undefined) return
-  const verifiedAt = new Date().toISOString()
+/** The job's end is recorded and the source's metric moves; the metric looks through a cancelled record. */
+function closeJob(
+  source: Schemas['Source'],
+  job: Schemas['VerificationJob'],
+  ended: Partial<Schemas['Verification']>,
+): void {
   const template = state.verifications.find((r) => r.status === 'passed' && r.level === 5)
   const record: Schemas['Verification'] = {
     ...(template ?? state.verifications[0]),
     id: crypto.randomUUID(),
     jobId: job.id,
-    sourceId,
+    sourceId: source.id,
     status: 'passed',
     level: 5,
     reason: null,
     mismatches: [],
     unsuitable: null,
-    verifiedAt,
+    verifiedAt: new Date().toISOString(),
+    cancelledBy: null,
+    cancelledAt: null,
+    ...ended,
   }
   state.verifications = [record, ...state.verifications]
-  delete state.verificationJobs[sourceId]
+  delete state.verificationJobs[source.id]
   const { verificationStatus, lastVerifiedAt, lastVerifiedLevel } = withVerification(
     source,
     state.verifications,
   )
   Object.assign(source, { verificationStatus, lastVerifiedAt, lastVerifiedLevel })
+}
+
+/** A cancelled job's record: stopped by an administrator, no stages (ВJf4). */
+function cancelledRecord(job: Schemas['VerificationJob']): Partial<Schemas['Verification']> {
+  return {
+    status: 'cancelled',
+    level: 0,
+    reason: 'cancelled by the server',
+    stages: [],
+    restoreDurationMs: null,
+    durationMs: null,
+    cancelledBy: job.cancellation?.requestedBy ?? 'admin',
+    cancelledAt: job.cancellation?.requestedAt ?? new Date().toISOString(),
+  }
+}
+
+/** The open job with this id and its live source; undefined once it is closed, or for an id nobody knows. */
+function openJobOf(
+  jobId: string,
+): { source: Schemas['Source']; job: Schemas['VerificationJob'] } | undefined {
+  const found = Object.entries(state.verificationJobs).find(([, job]) => job.id === jobId)
+  const source = found === undefined ? undefined : liveSource(found[0])
+  return found === undefined || source === undefined ? undefined : { source, job: found[1] }
+}
+
+/**
+ * A job older than a few seconds is over: a pass of level 5 is recorded; a cancelled one is stopped by the verifier
+ * a moment after the request, as a verifier would, and records its cancel.
+ */
+function settleJob(sourceId: string): void {
+  const job = state.verificationJobs[sourceId]
+  const source = liveSource(sourceId)
+  if (job === undefined || source === undefined) return
+  if (job.cancellation !== null) {
+    if (Date.now() - Date.parse(job.cancellation.requestedAt) >= HANDED_OUT_MS) {
+      closeJob(source, job, cancelledRecord(job))
+    }
+    return
+  }
+  if (Date.now() - Date.parse(job.createdAt) >= JOB_MS) closeJob(source, job, {})
 }
 
 /** Why a verifier does not take a job of a source whose repository has the id [repository]: by the mock's own facts. */
@@ -182,6 +234,7 @@ function report(
       level: r.level,
       durationMs: r.durationMs,
       restoreDurationMs: r.restoreDurationMs,
+      cancelledBy: r.cancelledBy,
     }))
   const count = (status: Schemas['VerificationOutcome']) =>
     items.filter((i) => i.status === status).length
@@ -198,7 +251,8 @@ function report(
       total: items.length,
       passed: count('passed'),
       failed: count('failed'),
-      notHeld: items.length - count('passed') - count('failed'),
+      notHeld: items.length - count('passed') - count('failed') - count('cancelled'),
+      cancelled: count('cancelled'),
     },
     items,
     failures: failureEpisodes(own, start, end),
@@ -249,9 +303,30 @@ export const verificationHandlers = [
       deadline: new Date(now + DAY_MS).toISOString(),
       failedAttempts: 0,
       unsuitable: null,
+      cancellation: null,
     }
     state.verificationJobs[params.sourceId] = job
     return response(202).json(job)
+  }),
+
+  // A job nobody has is closed with its record at once; one a verifier has is marked, and closes when it stops.
+  http.post('/api/v1/verification-jobs/{jobId}/cancel', ({ params, response }) => {
+    if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    const open = openJobOf(params.jobId)
+    if (open === undefined) {
+      const closed = state.verifications.some((r) => r.jobId === params.jobId)
+      return closed
+        ? response(409).json(problem(409, 'Conflict', 'run_finished'), PROBLEM)
+        : response(404).json(notFound, PROBLEM)
+    }
+    const { source, job } = open
+    job.cancellation ??= {
+      requestedAt: new Date().toISOString(),
+      requestedBy: 'admin',
+      result: 'pending',
+    }
+    if (viewOf(job).status === 'queued') closeJob(source, job, cancelledRecord(job))
+    return response(200).json(stateOf(source))
   }),
 
   http.get('/api/v1/sources/{sourceId}/verification-report', ({ params, query, response }) => {

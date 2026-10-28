@@ -26,7 +26,14 @@ describe('the fixtures of verification', () => {
 
     const statuses = new Set(records.map((r) => r.status))
     expect([...statuses].sort()).toEqual(
-      ['cannot_verify', 'failed', 'infrastructure_failure', 'no_verifier', 'passed'].sort(),
+      [
+        'cancelled',
+        'cannot_verify',
+        'failed',
+        'infrastructure_failure',
+        'no_verifier',
+        'passed',
+      ].sort(),
     )
     const passedLevels = new Set(records.filter((r) => r.status === 'passed').map((r) => r.level))
     expect(passedLevels.has(4) && passedLevels.has(5)).toBe(true)
@@ -46,7 +53,8 @@ describe('the fixtures of verification', () => {
   test('the metric of every source agrees with its newest records', () => {
     for (const source of state.sources) {
       const own = state.verifications.filter((r) => r.sourceId === source.id)
-      expect(source.verificationStatus, source.name).toBe(own[0]?.status ?? null)
+      const last = own.find((r) => r.status !== 'cancelled')
+      expect(source.verificationStatus, source.name).toBe(last?.status ?? null)
       const lastPass = own.find((r) => r.status === 'passed')
       expect(source.lastVerifiedAt, source.name).toBe(lastPass?.verifiedAt ?? null)
       expect(source.lastVerifiedLevel, source.name).toBe(lastPass?.level ?? null)
@@ -109,6 +117,71 @@ describe('the overview of the mocks', () => {
     })
 
     expect(must(await api.GET('/api/v1/overview')).verification.noVerifier).toBe(true)
+  })
+})
+
+describe('the cancel of a verification job', () => {
+  const path = { params: { path: { sourceId: ids.etcSource } } }
+
+  async function openJob() {
+    await signIn()
+    const queued = await api.POST('/api/v1/sources/{sourceId}/verifications', { ...path, body: {} })
+    return must(queued)
+  }
+
+  function cancel(jobId: string) {
+    return api.POST('/api/v1/verification-jobs/{jobId}/cancel', { params: { path: { jobId } } })
+  }
+
+  test('a job nobody has is closed at once with a record cancelled by admin and no stages', async () => {
+    const job = await openJob()
+
+    const answer = must(await cancel(job.id))
+
+    expect(answer.openJob).toBeNull()
+    const record = state.verifications.find((r) => r.jobId === job.id)
+    expect(record).toMatchObject({ status: 'cancelled', cancelledBy: 'admin', stages: [] })
+    expect(record?.cancelledAt).not.toBeNull()
+  })
+
+  test('a job a verifier has is marked as being cancelled and closes when the verifier stops', async () => {
+    const job = await openJob()
+    state.verificationJobs[ids.etcSource].createdAt = new Date(Date.now() - 4_000).toISOString()
+
+    const answer = must(await cancel(job.id))
+
+    expect(answer.openJob?.status).toBe('running')
+    expect(answer.openJob?.cancellation).toMatchObject({ requestedBy: 'admin', result: 'pending' })
+    expect(state.verifications.some((r) => r.jobId === job.id)).toBe(false)
+    const cancellation = state.verificationJobs[ids.etcSource].cancellation
+    if (cancellation === null) throw new Error('the job was not marked')
+    cancellation.requestedAt = new Date(Date.now() - 4_000).toISOString()
+
+    const settled = must(await api.GET('/api/v1/sources/{sourceId}/verification', path))
+
+    expect(settled.openJob).toBeNull()
+    expect(state.verifications.find((r) => r.jobId === job.id)?.status).toBe('cancelled')
+  })
+
+  test('a cancelled record does not move the status of the source', async () => {
+    const job = await openJob()
+    const before = must(await api.GET('/api/v1/sources/{sourceId}/verification', path)).status
+
+    await cancel(job.id)
+
+    expect(must(await api.GET('/api/v1/sources/{sourceId}/verification', path)).status).toBe(before)
+  })
+
+  test('a job that is closed answers 409 run_finished, an unknown one 404', async () => {
+    const job = await openJob()
+    await cancel(job.id)
+
+    const closed = await cancel(job.id)
+    const unknown = await cancel('0192f7a0-0000-7000-8000-00000000dead')
+
+    expect(closed.response.status).toBe(409)
+    expect(closed.error?.code).toBe('run_finished')
+    expect(unknown.response.status).toBe(404)
   })
 })
 

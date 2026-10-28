@@ -456,6 +456,8 @@ const OUTCOME_ICONS: Record<components['schemas']['VerificationOutcome'], IconNa
   cannot_verify: 'hourglass',
   infrastructure_failure: 'clock-dashed',
   no_verifier: 'minus',
+  // Stopped by a person: neither a pass nor bad news, so it has the drawing of a cancelled run.
+  cancelled: 'stop',
 }
 
 export function outcomeIcon(status: components['schemas']['VerificationOutcome']): IconName {

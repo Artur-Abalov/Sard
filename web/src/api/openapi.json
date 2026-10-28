@@ -976,6 +976,89 @@
         }
       }
     },
+    "/api/v1/verification-jobs/{jobId}/cancel" : {
+      "post" : {
+        "tags" : [ "verifications" ],
+        "summary" : "Cancel a verification job",
+        "description" : "A job nobody took is closed at once. A job whose attempt is queued is closed with the attempt, and one whose attempt runs is marked: the verifier is told to stop and the answer is the source's verification as it is, the open job with its cancellation pending, until the verifier confirms or does not come back within the lost window. The job closes with a record cancelled, which is never told and never retried. Asking again changes nothing. A job that is closed, or whose verdict came first, answers 409 run_finished.",
+        "operationId" : "cancelJob",
+        "parameters" : [ {
+          "name" : "jobId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SourceVerificationState"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -1938,7 +2021,7 @@
       "post" : {
         "tags" : [ "runs" ],
         "summary" : "Cancel a run",
-        "description" : "A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished; a restore verification answers 409 run_not_cancellable.",
+        "description" : "A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished. An attempt of a restore verification cancels its job, as POST /verification-jobs/{jobId}/cancel does.",
         "operationId" : "cancelRun",
         "parameters" : [ {
           "name" : "runId",
@@ -1961,7 +2044,7 @@
             }
           },
           "409" : {
-            "description" : "run_finished: the run is final, nothing to cancel; run_not_cancellable: the server does not cancel this kind of run yet (a restore verification). Nothing was changed; or the onboarding is not complete",
+            "description" : "run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -4206,7 +4289,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable", "run_finished", "run_not_cancellable" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable", "run_finished" ]
       },
       "FieldError" : {
         "type" : "object",
@@ -4439,8 +4522,8 @@
       },
       "VerificationOutcome" : {
         "type" : "string",
-        "description" : "passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted)",
-        "enum" : [ "passed", "failed", "cannot_verify", "infrastructure_failure", "no_verifier" ]
+        "description" : "passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted); cancelled (an administrator cancelled the job: neither held nor failed, never told)",
+        "enum" : [ "passed", "failed", "cannot_verify", "infrastructure_failure", "no_verifier", "cancelled" ]
       },
       "SourceVerificationInput" : {
         "type" : "object",
@@ -4451,6 +4534,29 @@
           }
         },
         "required" : [ "enabled" ]
+      },
+      "CancelResult" : {
+        "type" : "string",
+        "enum" : [ "pending", "cancelled", "unconfirmed", "finished_first" ]
+      },
+      "Cancellation" : {
+        "type" : "object",
+        "description" : "A cancel somebody asked for",
+        "properties" : {
+          "requestedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "requestedBy" : {
+            "type" : "string",
+            "description" : "\"admin\" for any session of the open core, which has one administrator"
+          },
+          "result" : {
+            "$ref" : "#/components/schemas/CancelResult",
+            "description" : "pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result"
+          }
+        },
+        "required" : [ "requestedAt", "requestedBy", "result" ]
       },
       "SourceVerificationState" : {
         "type" : "object",
@@ -4539,9 +4645,17 @@
             "items" : {
               "$ref" : "#/components/schemas/VerifierMisfit"
             }
+          },
+          "cancellation" : {
+            "description" : "Set once an administrator asked to cancel the job; null otherwise",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/Cancellation"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "createdAt", "deadline", "failedAttempts", "id", "reason", "status", "unsuitable" ]
+        "required" : [ "cancellation", "createdAt", "deadline", "failedAttempts", "id", "reason", "status", "unsuitable" ]
       },
       "VerificationJobReason" : {
         "type" : "string",
@@ -5023,29 +5137,6 @@
           }
         },
         "required" : [ "addedBytes", "fingerprint", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes", "totalFiles", "warnings" ]
-      },
-      "CancelResult" : {
-        "type" : "string",
-        "enum" : [ "pending", "cancelled", "unconfirmed", "finished_first" ]
-      },
-      "Cancellation" : {
-        "type" : "object",
-        "description" : "A cancel somebody asked for",
-        "properties" : {
-          "requestedAt" : {
-            "type" : "string",
-            "format" : "date-time"
-          },
-          "requestedBy" : {
-            "type" : "string",
-            "description" : "\"admin\" for any session of the open core, which has one administrator"
-          },
-          "result" : {
-            "$ref" : "#/components/schemas/CancelResult",
-            "description" : "pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result"
-          }
-        },
-        "required" : [ "requestedAt", "requestedBy", "result" ]
       },
       "CatchUp" : {
         "type" : "object",
@@ -6219,9 +6310,18 @@
             "type" : "integer",
             "format" : "int32",
             "description" : "Facts of the hashed sample of files: counted, never listed"
+          },
+          "cancelledBy" : {
+            "type" : [ "string", "null" ],
+            "description" : "Who cancelled the job (admin); null unless the status is cancelled"
+          },
+          "cancelledAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the cancel was asked; null unless the status is cancelled"
           }
         },
-        "required" : [ "durationMs", "fingerprint", "hiddenFacts", "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
+        "required" : [ "cancelledAt", "cancelledBy", "durationMs", "fingerprint", "hiddenFacts", "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
       },
       "VerificationStage" : {
         "type" : "object",
@@ -6425,9 +6525,13 @@
             "type" : [ "integer", "null" ],
             "format" : "int64",
             "description" : "The actual time to restore (level 5)"
+          },
+          "cancelledBy" : {
+            "type" : [ "string", "null" ],
+            "description" : "Who cancelled the job (admin); null unless the status is cancelled"
           }
         },
-        "required" : [ "durationMs", "id", "level", "resticSnapshotId", "restoreDurationMs", "status", "verifiedAt", "verifierHostname" ]
+        "required" : [ "cancelledBy", "durationMs", "id", "level", "resticSnapshotId", "restoreDurationMs", "status", "verifiedAt", "verifierHostname" ]
       },
       "ReportSummary" : {
         "type" : "object",
@@ -6449,9 +6553,14 @@
             "type" : "integer",
             "format" : "int32",
             "description" : "Cannot verify, infrastructure failure or no fitting verifier: no check took place"
+          },
+          "cancelled" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Cancelled by an administrator: neither held nor failed"
           }
         },
-        "required" : [ "failed", "notHeld", "passed", "total" ]
+        "required" : [ "cancelled", "failed", "notHeld", "passed", "total" ]
       },
       "VerificationReportResponse" : {
         "type" : "object",

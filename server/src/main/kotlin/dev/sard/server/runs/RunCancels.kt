@@ -41,56 +41,51 @@ fun interface StepsCancelled {
     }
 }
 
+/** What cancelling did to a run, in the transaction that did it. */
+enum class CancelDone { CLOSED, MARKED, NOTHING }
+
 /**
- * Cancels a run on a person's request (J1a): a queued run is closed at once, nothing goes to the agent; a run
- * in flight only gets the cancel mark and the dispatcher sends the agent its CancelStep. The mark is one guarded
- * update, so concurrent requests leave one record and a run that finished first answers 409 (`run_finished`).
+ * The guarded updates of a person's cancel (J1a), for a transaction the caller owns: a queued run is closed with
+ * its step at once, a run in flight only gets the cancel mark, one that has it already is left alone and a final
+ * one is refused (`run_finished`). [told] runs after the commit: the announcement of a closed run, the CancelStep.
  */
-class RunCancels(
-    private val sessions: TenantSessions,
-    private val runs: Runs,
+class CancelMarks(
     private val clock: Clock,
     private val cancelled: StepsCancelled,
     private val announcer: RunAnnouncer,
 ) {
-    /** What a request did to the run. */
-    private enum class Done { CLOSED, MARKED, NOTHING }
-
-    /** The run after the cancel; throws [RunNotFound], [RunNotCancellable] or [RunAlreadyFinished]. */
-    fun cancel(
-        tenantId: UUID,
-        runId: UUID,
-    ): RunView {
-        val done = sessions.inTenant(tenantId) { attempt(it, tenantId, runId) }
-        val view = runs.get(tenantId, runId) ?: throw RunNotFound(runId)
-        when (done) {
-            Done.CLOSED -> announcer.announce(tenantId, view.steps.single().id)
-            Done.MARKED -> cancelled.onCancelled(tenantId, view.agentId)
-            Done.NOTHING -> Unit
-        }
-        return view
-    }
-
-    /** Closed in the queue, marked in flight, or neither (already marked: nothing to do). */
-    private fun attempt(
+    /** Closed in the queue, marked in flight, or neither (already marked); [RunNotFound], [RunAlreadyFinished]. */
+    fun apply(
         session: Session,
         tenantId: UUID,
         runId: UUID,
-    ): Done {
-        val run = session.find(RunRecord::class.java, runId) ?: throw RunNotFound(runId)
-        if (Trigger.of(run.trigger) == Trigger.VERIFICATION) throw RunNotCancellable(runId)
+    ): CancelDone {
+        session.find(RunRecord::class.java, runId) ?: throw RunNotFound(runId)
         val values = mapOf("tenant" to tenantId, "run" to runId, "now" to clock.instant(), "by" to ADMIN)
         return close(session, values) ?: mark(session, values, runId)
+    }
+
+    /** Tells the announcer or the dispatcher what [done] did to [run]; call it once the transaction is committed. */
+    fun told(
+        tenantId: UUID,
+        run: RunView,
+        done: CancelDone,
+    ) {
+        when (done) {
+            CancelDone.CLOSED -> announcer.announce(tenantId, run.steps.single().id)
+            CancelDone.MARKED -> cancelled.onCancelled(tenantId, run.agentId)
+            CancelDone.NOTHING -> Unit
+        }
     }
 
     /** A queued run is closed with its step; null when the step is not queued (any more). */
     private fun close(
         session: Session,
         values: Map<String, Any?>,
-    ): Done? {
+    ): CancelDone? {
         if (session.execute(CANCEL_QUEUED_STEP, values) != 1) return null
         session.execute(CANCEL_QUEUED_RUN, values)
-        return Done.CLOSED
+        return CancelDone.CLOSED
     }
 
     /** A run in flight gets the mark; one that has it already is left alone, a final one is refused. */
@@ -98,10 +93,10 @@ class RunCancels(
         session: Session,
         values: Map<String, Any?>,
         runId: UUID,
-    ): Done {
-        if (session.execute(MARK, values) == 1) return Done.MARKED
+    ): CancelDone {
+        if (session.execute(MARK, values) == 1) return CancelDone.MARKED
         if (!isActive(session, values)) throw RunAlreadyFinished(runId)
-        return Done.NOTHING
+        return CancelDone.NOTHING
     }
 
     /** Neither update moved the run: it is in flight with a mark already (true) or it is final. */
@@ -113,5 +108,47 @@ class RunCancels(
         query.setParameter("tenant", values["tenant"])
         query.setParameter("run", values["run"])
         return RunState.of(query.singleResult[0] as String).active
+    }
+}
+
+/**
+ * Cancels the attempt of a restore verification job when [cancelAttempt] is asked about its run (J1f, ВJf1): the job
+ * is what a person cancels, the attempt is a part of it.
+ */
+fun interface AttemptCancels {
+    /** True when [runId] is an attempt of a verification job and the job was cancelled through it. */
+    fun cancelAttempt(
+        tenantId: UUID,
+        runId: UUID,
+    ): Boolean
+
+    companion object {
+        /** No verification in this configuration: every run is an ordinary one. */
+        val NONE = AttemptCancels { _, _ -> false }
+    }
+}
+
+/**
+ * Cancels a run on a person's request (J1a): a queued run is closed at once, nothing goes to the agent; a run
+ * in flight only gets the cancel mark and the dispatcher sends the agent its CancelStep. The mark is one guarded
+ * update, so concurrent requests leave one record and a run that finished first answers 409 (`run_finished`). An
+ * attempt of a verification job cancels its job (J1f).
+ */
+class RunCancels(
+    private val sessions: TenantSessions,
+    private val runs: Runs,
+    private val marks: CancelMarks,
+    private val attempts: AttemptCancels,
+) {
+    /** The run after the cancel; throws [RunNotFound] or [RunAlreadyFinished]. */
+    fun cancel(
+        tenantId: UUID,
+        runId: UUID,
+    ): RunView {
+        if (attempts.cancelAttempt(tenantId, runId)) return runs.get(tenantId, runId) ?: throw RunNotFound(runId)
+        val done = sessions.inTenant(tenantId) { marks.apply(it, tenantId, runId) }
+        val view = runs.get(tenantId, runId) ?: throw RunNotFound(runId)
+        marks.told(tenantId, view, done)
+        return view
     }
 }

@@ -434,6 +434,7 @@ class ApiContractIntegrationTest(
             Triple("GET", "/api/v1/sources/{sourceId}/verifications", null),
             Triple("POST", "/api/v1/sources/{sourceId}/verifications", "{}"),
             Triple("GET", "/api/v1/verifications/{verificationId}", null),
+            Triple("POST", "/api/v1/verification-jobs/{jobId}/cancel", null),
             Triple("GET", "/api/v1/verification-schedule", null),
             // A wrong cron: the installation's cycle stays as it was for the other tests of this database.
             Triple("PUT", "/api/v1/verification-schedule", """{"cron":"nope","timezone":"UTC"}"""),

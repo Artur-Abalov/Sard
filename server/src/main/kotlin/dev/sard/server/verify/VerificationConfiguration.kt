@@ -6,6 +6,8 @@ package dev.sard.server.verify
 import dev.sard.server.agents.stream.AgentConnections
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
+import dev.sard.server.runs.CancelMarks
+import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepsQueued
 import dev.sard.server.runs.VerificationRuns
 import org.springframework.beans.factory.ObjectProvider
@@ -48,7 +50,7 @@ class VerificationConfiguration {
         clock: Clock,
         cycles: VerificationCycles,
         queue: VerificationQueue,
-        history: VerificationHistory,
+        settlement: VerificationSettlement,
         queued: ObjectProvider<StepsQueued>,
         settings: VerificationSettings,
         pool: VerifierPool,
@@ -57,7 +59,7 @@ class VerificationConfiguration {
         clock,
         cycles,
         queue,
-        VerificationSettlement(history),
+        settlement,
         queued.getIfUnique { StepsQueued.NONE },
         VerificationSchedule(settings),
         StaleEpisodes(UuidV7(clock, SecureRandom())),
@@ -93,4 +95,21 @@ class VerificationConfiguration {
         properties: VerificationProperties,
         loop: VerificationLoop,
     ) = VerificationTicker(properties.interval, loop::tick)
+}
+
+/** The end of a job's attempt and its cancel by an administrator (J1f). */
+@Configuration(proxyBeanMethods = false)
+class VerificationCancelConfiguration {
+    @Bean
+    fun verificationSettlement(history: VerificationHistory) = VerificationSettlement(history)
+
+    @Bean
+    fun verificationCancels(
+        sessions: TenantSessions,
+        clock: Clock,
+        runs: Runs,
+        marks: CancelMarks,
+        settlement: VerificationSettlement,
+        history: VerificationHistory,
+    ) = VerificationCancels(sessions, clock, runs, marks, settlement, history)
 }

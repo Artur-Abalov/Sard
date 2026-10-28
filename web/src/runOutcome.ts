@@ -12,8 +12,8 @@ const CANCELLABLE: Schemas['RunOutcome'][] = [
   'running',
 ]
 
-// The cancel button is for an active run: the server's outcome says so (КВJ2). A restore
-// verification has none until J1f; the server refuses it anyway (run_not_cancellable).
+// The cancel button is for an active run: the server's outcome says so (КВJ2). A restore verification is
+// cancelled as a job, from the tab «Verifications» of its source (J1f, ВJf1), not as a run.
 export function cancellable(run: {
   outcome: Schemas['RunOutcome']
   trigger: Schemas['RunTrigger']

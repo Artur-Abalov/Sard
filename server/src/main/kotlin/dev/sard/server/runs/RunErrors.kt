@@ -95,8 +95,3 @@ class RunNotFound(
 class RunAlreadyFinished(
     val runId: UUID,
 ) : RunsException("run $runId is finished")
-
-/** The server cannot cancel this kind of run yet (409 run_not_cancellable): a verification, until J1f. */
-class RunNotCancellable(
-    val runId: UUID,
-) : RunsException("run $runId cannot be cancelled")
