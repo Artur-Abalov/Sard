@@ -271,3 +271,15 @@ internal class RecordingDispatchMetrics : DispatchMetrics {
         waiting = steps
     }
 }
+
+/** A dispatcher without start grace or wait expiry (the production defaults are not under test through these). */
+internal fun dispatcherOf(
+    ledger: DispatchLedger,
+    deadlines: LostDeadlines,
+    links: AgentLinks,
+    clock: java.time.Clock,
+    metrics: DispatchMetrics,
+    roles: RoleLedger,
+) = StepDispatcher(ledger, deadlines, links, clock, LOST_AFTER, metrics, roles, Duration.ZERO, {}) {
+    WaitingSteps(0, 0)
+}

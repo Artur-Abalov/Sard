@@ -504,4 +504,13 @@ class RestoresMutationTest(
         assertEquals(RestoreResult("$DIR/x", 2, 10, null, null, null, false, null), got.steps.single().restore)
         assertNull(got.steps.single().backup)
     }
+
+    // J1c: a queued run knows whether its agent is online, a run in flight does not ask
+    @Test
+    fun `a run view of a queued run says its agent is offline and when its wait ends, one in flight does not`() {
+        val waiting = source("waiting")
+        val active = source("active")
+
+        assertWaitingAndActiveViews(runs, jdbc, tenant.id, waiting, active)
+    }
 }

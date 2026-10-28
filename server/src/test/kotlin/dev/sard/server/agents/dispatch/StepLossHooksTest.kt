@@ -6,7 +6,6 @@ package dev.sard.server.agents.dispatch
 import dev.sard.server.agents.stream.STREAM_ENDED
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.StepState
-import dev.sard.server.runs.WaitingSteps
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.context.SmartLifecycle
@@ -39,10 +38,25 @@ class StepLossHooksTest {
         val ledger = FakeLedger(step(1, StepState.RUNNING), now = { clock.now })
         val metrics = RecordingDispatchMetrics()
         val dispatcher =
-            StepDispatcher(ledger, ledger, FakeLinks(), clock, LOST_AFTER, metrics, ledger) { WaitingSteps(0, 0) }
+            dispatcherOf(ledger, ledger, FakeLinks(), clock, metrics, ledger)
 
         MutFlow.underTest { StepLossOnDisconnect(dispatcher).disconnected(AGENT, STREAM_ENDED) }
 
         assertEquals(DISPATCH_NOW + LOST_AFTER, ledger.deadline(1))
+    }
+
+    @Test
+    fun `a session that ended is sent the CancelStep again when the next one begins`() {
+        val clock = MovableClock(DISPATCH_NOW)
+        val ledger = FakeLedger(step(1, StepState.RUNNING, cancelRequested = true), now = { clock.now })
+        val links = FakeLinks().also { it.online += AGENT.agentId }
+        val dispatcher =
+            dispatcherOf(ledger, ledger, links, clock, RecordingDispatchMetrics(), ledger)
+        dispatcher.onCancelled(TENANT, AGENT.agentId)
+
+        MutFlow.underTest { StepLossOnDisconnect(dispatcher).disconnected(AGENT, STREAM_ENDED) }
+        dispatcher.onCancelled(TENANT, AGENT.agentId)
+
+        assertEquals(listOf(1L, 1L), links.cancelledIds())
     }
 }

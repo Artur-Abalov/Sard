@@ -11,6 +11,7 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
+import dev.sard.server.runs.RunCancels
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
@@ -92,6 +93,7 @@ class ScheduleNotificationsIntegrationTest(
     @Autowired private val schedules: Schedules,
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
+    @Autowired private val cancels: RunCancels,
     @Autowired private val steps: StepTransitions,
     @Autowired private val results: StepResults,
     @Autowired private val clock: MovableClock,
@@ -273,6 +275,27 @@ class ScheduleNotificationsIntegrationTest(
         assertEquals(2, texts.size)
         assertEquals(1, texts.count { it.startsWith("⚠️ Бэкап по расписанию не выполняется") })
         assertEquals(1, texts.count { it.startsWith("❌ Бэкап завершился ошибкой") })
+    }
+
+    @Test
+    fun `Запуск, отменённый человеком, сообщением не рассказывается, а проваленный рядом с ним рассказывается`() {
+        val (source, _) = scheduleOf()
+        val cancelled = held(source)
+        cancels.cancel(tenant.id, cancelled.id)
+        results.record(
+            tenant.id,
+            tenant.agentId,
+            cancelled.steps.single().id,
+            StepReport(StepState.CANCELLED, null, null),
+        )
+        val failed = held(source)
+        results.record(tenant.id, tenant.agentId, failed.steps.single().id, FAILED)
+
+        ticks()
+
+        val texts = fake.requests.indices.map { fake.shownText(it) }
+        assertEquals(1, texts.size, texts.toString())
+        assertTrue(texts.single().startsWith("❌ Бэкап завершился ошибкой"))
     }
 
     @Test

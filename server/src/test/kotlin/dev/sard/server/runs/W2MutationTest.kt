@@ -460,4 +460,31 @@ class W2MutationTest(
             got.steps.single().restore,
         )
     }
+
+    // J1c: a queued run knows whether its agent is online, a run in flight does not ask
+    @Test
+    fun `a run view of a queued run says its agent is offline and when its wait ends, one in flight does not`() {
+        val waiting = sources.create(tenant.id, tenant.draft(name = "waiting")).id
+        val active = sources.create(tenant.id, tenant.draft(name = "active")).id
+
+        assertWaitingAndActiveViews(runs, jdbc, tenant.id, waiting, active, listUnderTest = true)
+    }
+
+    // J1b: a source keeps the step timeouts it was drafted with
+    @Test
+    fun `a source keeps its timeouts, and a draft without them stores none`() {
+        val timed =
+            MutFlow.underTest {
+                sources.create(
+                    tenant.id,
+                    tenant.draft("t").copy(backupTimeoutMinutes = 5, restoreTimeoutMinutes = 7),
+                )
+            }
+        assertEquals(listOf(5, 7), listOf(timed.backupTimeoutMinutes, timed.restoreTimeoutMinutes))
+        assertEquals(timed, sources.get(tenant.id, timed.id))
+
+        val draft = tenant.draft("t").copy(backupTimeoutMinutes = 9)
+        val replaced = MutFlow.underTest { sources.replace(tenant.id, timed.id, draft) }
+        assertEquals(listOf(9, null), listOf(replaced.backupTimeoutMinutes, replaced.restoreTimeoutMinutes))
+    }
 }

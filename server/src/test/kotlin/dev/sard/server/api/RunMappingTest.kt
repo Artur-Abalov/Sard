@@ -241,6 +241,22 @@ class RunMappingTest {
     }
 
     @Test
+    fun `a run is told by its status and its step, as the contract names them`() {
+        val told =
+            listOf(
+                Triple(RunState.DISPATCHED, StepState.DISPATCHED, RunOutcome.DISPATCHED),
+                Triple(RunState.RUNNING, StepState.RUNNING, RunOutcome.RUNNING),
+                Triple(RunState.FAILED, StepState.REJECTED, RunOutcome.REJECTED),
+                Triple(RunState.FAILED, StepState.LOST, RunOutcome.LOST),
+                Triple(RunState.FAILED, StepState.FAILED, RunOutcome.FAILED),
+            )
+        for ((status, step, outcome) in told) {
+            val view = run(status).copy(steps = emptyList(), stepStatus = step)
+            assertEquals(outcome, MutFlow.underTest { RunMapping.run(view, null) }.outcome, "$status $step")
+        }
+    }
+
+    @Test
     fun `a run names its cancel, a run without one names none`() {
         val cancellation =
             dev.sard.server.runs

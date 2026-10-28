@@ -113,7 +113,7 @@ class SchedulerIntegrationTest(
 
     /** A second server on the same database: its own scheduler, nothing shared but the tables. */
     private fun anotherServer(metrics: SchedulerMetrics = SchedulerMetrics.NONE) =
-        Scheduler(sessions, clock, runs, UuidV7(clock, SecureRandom()), queued, settings, metrics)
+        Scheduler(sessions, clock, runs, UuidV7(clock, SecureRandom()), queued, settings, metrics, {})
 
     private fun nextRunAt(scheduleId: UUID): Instant? =
         jdbc

@@ -293,6 +293,17 @@ class RunNoticeFormatterTest {
         for (finished in quiet) assertNull(MutFlow.underTest { formatter.format(finished) }, "$finished")
     }
 
+    @Test
+    fun `Запуск по расписанию, ещё не законченный, не уведомляется, что бы ни было перед ним`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        for (trigger in listOf(Trigger.SCHEDULE, Trigger.CATCH_UP)) {
+            for (step in StepState.entries.filter { it.active }) {
+                val active = notice(step, trigger = trigger, previous = RunState.FAILED)
+                assertNull(MutFlow.underTest { formatter.format(active) }, "$trigger $step")
+            }
+        }
+    }
+
     // --- sizes
 
     private fun sizeLine(

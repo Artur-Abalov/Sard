@@ -393,4 +393,22 @@ class RestorePostgresMutationTest(
         assertEquals(false, MutFlow.underTest { bridge.isRoot(tenant.id) })
         assertEquals(true, MutFlow.underTest { bridge.isRoot(HibernateTenantBridge.SYSTEM_TENANT_ID) })
     }
+
+    // J1c: a queued run knows whether its agent is online, a run in flight does not ask
+    @Test
+    fun `a run view of a queued run says its agent is offline and when its wait ends, one in flight does not`() {
+        val waiting = scene.source("waiting", "postgresql", PG_BACKUP)
+        val active = scene.source("active", "postgresql", PG_BACKUP)
+
+        assertWaitingAndActiveViews(runs, jdbc, tenant.id, waiting, active)
+    }
+
+    // J1b, J1c: the restore waits for an offline agent for a day and its step has the default restore timeout
+    @Test
+    fun `a restore waits a day for its agent and its step has the default restore timeout`() {
+        val run = start(q(), draft(a))
+
+        assertEquals(RUNS_NOW.plusSeconds(24 * 3600), run.agentWaitUntil)
+        assertEquals(720 * 60L, run.steps.single().timeoutSeconds)
+    }
 }

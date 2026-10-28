@@ -365,6 +365,20 @@ class SourcesApiIntegrationTest(
         assertEquals(listOf(null, null), timeouts(world.api.get("/api/v1/sources/$id", admin)))
     }
 
+    // J1b: PUT is a full replacement; the spec is silent on an old client that omits the fields.
+    // Observed contract: an omitted timeout is stored as null (the installation's value).
+    @Test
+    fun `Полный PUT без полей сроков, как у старого клиента, сбрасывает сроки источника в значение установки`() {
+        val timed = ""","backupTimeoutMinutes":120,"restoreTimeoutMinutes":240"""
+        val id = create(body(timeouts = timed)).json.path("id").asString()
+
+        val old = replace(id, body(timeouts = ""))
+
+        assertEquals(200, old.status, old.toString())
+        assertEquals(listOf(null, null), timeouts(old))
+        assertEquals(listOf(null, null), timeouts(world.api.get("/api/v1/sources/$id", admin)))
+    }
+
     // J1b: Недопустимый срок источника отвечает 422 у поля
     @Test
     fun `Недопустимый срок источника отвечает 422 у поля и ничего не меняет`() {
