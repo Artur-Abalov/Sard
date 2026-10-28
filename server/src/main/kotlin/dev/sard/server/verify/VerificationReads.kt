@@ -11,6 +11,7 @@ import dev.sard.server.runs.VerificationRuns
 import org.hibernate.Session
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -20,7 +21,8 @@ private val JSON = JsonMapper.builder().build()
 private const val COLUMNS = """
     select rv.id, rv.job_id, rv.source_id, rv.snapshot_id, sn.snapshot_id, rv.step_id, rv.verifier_agent_id,
         rv.key_holders, rv.status, rv.level, rv.reason, cast(rv.stages as text), cast(rv.mismatches as text),
-        cast(rv.unsuitable as text), rv.restore_duration_ms, rv.recovered, rv.verified_at
+        cast(rv.unsuitable as text), rv.restore_duration_ms, rv.recovered, rv.verified_at, sn.fingerprint,
+        sn.fingerprint_sha256
     from restore_verifications rv join snapshots sn on sn.tenant_id = rv.tenant_id and sn.id = rv.snapshot_id"""
 private const val ONE = "$COLUMNS where rv.tenant_id = :tenant and rv.id = :id"
 private const val OF_SOURCE = "$COLUMNS where rv.tenant_id = :tenant and rv.source_id = :source"
@@ -39,7 +41,18 @@ private const val NEEDS = """
     join agents na on na.tenant_id = s.tenant_id and na.id = sn.agent_id
     where s.tenant_id = :tenant and s.id = :id and s.deleted_at is null"""
 private const val SANDBOXES =
-    "select id, verify_sandbox from agents where tenant_id = :tenant and role = 'verifier' and revoked_at is null"
+    "select id, verify_sandbox, verify_sandbox_version from agents " +
+        "where tenant_id = :tenant and role = 'verifier' and revoked_at is null"
+
+// What each verifier did lately (V6, ОВ8): its records, and among them its own failures.
+private const val COUNTERS = """
+    select verifier_agent_id, count(*), count(*) filter (where status = 'infrastructure_failure')
+    from restore_verifications
+    where tenant_id = :tenant and verifier_agent_id is not null and verified_at >= :since
+    group by verifier_agent_id"""
+
+/** How far back the counters of a verifier go. */
+private val COUNTER_WINDOW: Duration = Duration.ofDays(30)
 
 /** One verification as recorded, with its evidence. */
 data class VerificationView(
@@ -60,8 +73,12 @@ data class VerificationView(
     val mismatches: List<StepOutput.Mismatch>,
     val unsuitable: List<Misfit>?,
     val restoreMillis: Long?,
+    /** From the first stage's start to the last stage's finish; null without stage times. */
+    val durationMillis: Long?,
     val recovered: Boolean,
     val verifiedAt: Instant,
+    /** The source's fingerprint beside the copy's; empty when the snapshot kept none. */
+    val fingerprint: FingerprintView = FingerprintView.NONE,
 )
 
 /** A live verifier of the tenant, what it reported, and why it does not fit a source's job (when asked). */
@@ -69,6 +86,12 @@ data class VerifierView(
     val candidate: Candidate,
     /** none, docker, podman; null when unknown. */
     val sandbox: String?,
+    /** The runtime's version as the verifier reported it; null when unknown. */
+    val sandboxVersion: String?,
+    /** Records of verifications it did in the last 30 days (ОВ8). */
+    val done: Int,
+    /** Of those, the ones that ended as its own infrastructure failure. */
+    val infrastructureFailures: Int,
     /** Null when no source was asked about. */
     val reasons: Set<Unsuitable>?,
 )
@@ -124,10 +147,9 @@ class VerificationReads(
     ): List<VerifierView> =
         sessions.inTenant(tenantId) { session ->
             val candidates = pool.candidates(session, tenantId, clock.instant() - settings.recentWindow)
-            val sandboxes = sandboxes(session, tenantId)
-            if (sourceId == null) return@inTenant candidates.map { VerifierView(it, sandboxes[it.agentId], null) }
-            val needs = needs(session, tenantId, sourceId)
-            candidates.map { VerifierView(it, sandboxes[it.agentId], reasonsFor(needs, it)) }
+            val facts = VerifierFacts(sandboxes(session, tenantId), counters(session, tenantId))
+            val needs = sourceId?.let { needs(session, tenantId, it) }
+            candidates.map { facts.view(it, if (sourceId == null) null else reasonsFor(needs, it)) }
         }
 
     private fun reasonsFor(
@@ -163,12 +185,23 @@ class VerificationReads(
     private fun sandboxes(
         session: Session,
         tenantId: UUID,
-    ): Map<UUID, String?> =
+    ): Map<UUID, Pair<String?, String?>> =
         session
             .createNativeQuery(SANDBOXES, Array<Any?>::class.java)
             .setParameter("tenant", tenantId)
             .list()
-            .associate { it[0] as UUID to it[1] as String? }
+            .associate { it[0] as UUID to (it[1] as String? to it[2] as String?) }
+
+    private fun counters(
+        session: Session,
+        tenantId: UUID,
+    ): Map<UUID, Pair<Int, Int>> =
+        session
+            .createNativeQuery(COUNTERS.trimIndent(), Array<Any?>::class.java)
+            .setParameter("tenant", tenantId)
+            .setParameter("since", clock.instant() - COUNTER_WINDOW)
+            .list()
+            .associate { it[0] as UUID to ((it[1] as Number).toInt() to (it[2] as Number).toInt()) }
 
     private fun requireLive(
         session: Session,
@@ -182,6 +215,21 @@ class VerificationReads(
                 .setParameter("id", sourceId)
                 .list()
         if (live.isEmpty()) throw SourceNotFound(sourceId)
+    }
+}
+
+/** What the agents table and the history say of the verifiers, by agent id. */
+private class VerifierFacts(
+    private val sandboxes: Map<UUID, Pair<String?, String?>>,
+    private val counters: Map<UUID, Pair<Int, Int>>,
+) {
+    fun view(
+        candidate: Candidate,
+        reasons: Set<Unsuitable>?,
+    ): VerifierView {
+        val (runtime, version) = sandboxes[candidate.agentId] ?: (null to null)
+        val (done, failures) = counters[candidate.agentId] ?: (0 to 0)
+        return VerifierView(candidate, runtime, version, done, failures, reasons)
     }
 }
 
@@ -204,13 +252,25 @@ private enum class Column {
     RESTORE,
     RECOVERED,
     VERIFIED_AT,
+    FINGERPRINT,
+    FINGERPRINT_SHA256,
 }
 
 private operator fun Array<Any?>.get(column: Column): Any? = this[column.ordinal]
 
 /** A row of [COLUMNS]. */
-private fun viewOf(row: Array<Any?>) =
-    VerificationView(
+private fun viewOf(row: Array<Any?>): VerificationView {
+    val status = VerificationStatus.of(row[Column.STATUS] as String)
+    val stages = VerificationRuns.stagesOf(row[Column.STAGES] as String)
+    val mismatches = VerificationRuns.mismatchesOf(row[Column.MISMATCHES] as String)
+    val fingerprint =
+        FingerprintComparison.view(
+            row[Column.FINGERPRINT] as ByteArray?,
+            row[Column.FINGERPRINT_SHA256] as String?,
+            mismatches,
+            stages,
+        )
+    return VerificationView(
         id = row[Column.ID] as UUID,
         jobId = row[Column.JOB] as UUID,
         sourceId = row[Column.SOURCE] as UUID,
@@ -219,16 +279,19 @@ private fun viewOf(row: Array<Any?>) =
         stepId = row[Column.STEP] as UUID?,
         verifierId = row[Column.VERIFIER] as UUID?,
         keyHolders = (row[Column.KEY_HOLDERS] as Number).toInt(),
-        status = VerificationStatus.of(row[Column.STATUS] as String),
+        status = status,
         level = (row[Column.LEVEL] as Number).toInt(),
         reason = row[Column.REASON] as String?,
-        stages = VerificationRuns.stagesOf(row[Column.STAGES] as String),
-        mismatches = VerificationRuns.mismatchesOf(row[Column.MISMATCHES] as String),
+        stages = stages,
+        mismatches = mismatches,
         unsuitable = (row[Column.UNSUITABLE] as String?)?.let(::misfitsOf),
         restoreMillis = (row[Column.RESTORE] as Number?)?.toLong(),
+        durationMillis = ReportDuration.millis(stages),
         recovered = row[Column.RECOVERED] as Boolean,
         verifiedAt = row[Column.VERIFIED_AT] as Instant,
+        fingerprint = fingerprint,
     )
+}
 
 /** The stored form of [VerificationHistory.misfitsJson]. */
 internal fun misfitsOf(json: String): List<Misfit> {

@@ -97,6 +97,14 @@ class Agent(
     @Column(name = "verify_images", nullable = false)
     var verifyImages: String = "[]"
 
+    /**
+     * The secrets of the host with their bindings from the last Register (S11, migration V202610271000), JSON
+     * [{"name", "plugin", "targets", "auth", "allow_tls", "allow_no_channel_binding", "problem"}].
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "secret_bindings", nullable = false)
+    var secretBindings: String = "[]"
+
     /** The last confirmed duplicate session (S8b, migration V202610011200); null if there never was one. */
     @Column(name = "duplicate_session_at")
     var duplicateSessionAt: Instant? = null

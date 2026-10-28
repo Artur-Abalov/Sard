@@ -8,9 +8,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 )
 
 // runSecretSet is "sard-agent secret set <name>": args excludes "set". The
@@ -35,7 +37,7 @@ func runSecretSet(_ context.Context, args []string, stdout, stderr io.Writer, de
 // the value, then the lock and the writing.
 func (c *hostCmd) setSecret() int {
 	name := c.opts.name
-	if f := firstFailure(hostsetup.CheckName("secret", name), c.load()); f != nil {
+	if f := firstFailure(hostsetup.CheckName("secret", name), c.knownPlugin(), c.load()); f != nil {
 		return c.fail(f)
 	}
 	if _, f := hostsetup.PlanSecret(c.cfg, c.layout, name); f != nil {
@@ -46,6 +48,15 @@ func (c *hostCmd) setSecret() int {
 		return c.fail(f)
 	}
 	return c.setSecretLocked(name, value)
+}
+
+// knownPlugin: the secret is bound to a plugin of this agent (S11).
+func (c *hostCmd) knownPlugin() *refusal.Failure {
+	plugin := c.opts.binding.Plugin
+	if _, ok := c.deps.plugins.Get(plugin); ok {
+		return nil
+	}
+	return refusal.Fail(refusal.PluginUnknown, "the agent has no plugin %q to bind the secret to; it has: %s", plugin, strings.Join(c.deps.plugins.Names(), ", "))
 }
 
 // firstFailure is the first of the failures that is not nil.
@@ -68,20 +79,64 @@ func (c *hostCmd) setSecretLocked(name string, value []byte) int {
 }
 
 func (c *hostCmd) storeSecret(name string, value []byte, plan hostsetup.SecretPlan) int {
-	valueFile, fragment := c.layout.SecretFile(name), c.layout.SecretFragment(name)
-	yamlBody := hostsetup.SecretYAML(name, valueFile)
-	sameValue := c.fileHolds(valueFile, value)
-	if plan.OwnFragment && sameValue && c.fileHolds(fragment, yamlBody) {
-		_, _ = fmt.Fprintf(c.stdout, "Secret %q unchanged: the value file %s already holds this value.\n", name, valueFile)
+	s := secretWrite{
+		name: name, valueFile: c.layout.SecretFile(name), fragment: c.layout.SecretFragment(name), bindingFile: c.layout.SecretBinding(name),
+		value: value, binding: c.opts.binding.Marshal(),
+	}
+	s.yamlBody = hostsetup.SecretYAML(name, s.valueFile)
+	s.sameValue = c.fileHolds(s.valueFile, value)
+	if plan.OwnFragment && s.sameValue && c.fileHolds(s.fragment, s.yamlBody) && c.bindingHolds(name, s.binding) {
+		_, _ = fmt.Fprintf(c.stdout, "Secret %q unchanged: the value file %s already holds this value and the binding is the same.\n", name, s.valueFile)
 		return exitOK
 	}
-	if err := c.writeSecret(valueFile, fragment, value, yamlBody, sameValue); err != nil {
+	if err := c.writeSecret(s); err != nil {
 		return c.fail(writeFailed(err))
 	}
 	action := secretAction(plan)
 	c.record("secret", name, action)
-	_, _ = fmt.Fprintf(c.stdout, "Secret %q %s.\n  value file: %s\n  defined in: %s\n", name, action, valueFile, fragment)
+	_, _ = fmt.Fprintf(c.stdout, "Secret %q %s.\n  value file: %s\n  defined in: %s\n  bound to:   %s\n  binding:    %s\n",
+		name, action, s.valueFile, s.fragment, describeBinding(c.opts.binding), s.bindingFile)
 	return c.finish()
+}
+
+// secretWrite are the files of a secret and what they are to hold.
+type secretWrite struct {
+	name, valueFile, fragment, bindingFile string
+	value, yamlBody, binding               []byte
+	sameValue                              bool
+}
+
+// describeBinding is the binding in a line: the plugin, its targets and what
+// it allows beyond the plugin's rules.
+func describeBinding(b secretbind.Binding) string {
+	targets := make([]string, len(b.Targets))
+	for i, t := range b.Targets {
+		targets[i] = t.String()
+	}
+	line := b.Plugin + " at " + strings.Join(targets, ", ")
+	if allowed := allowedWords(b); len(allowed) > 0 {
+		line += " (" + strings.Join(allowed, "; ") + ")"
+	}
+	return line
+}
+
+// allowedWords say what the binding allows beyond the plugin's rules.
+func allowedWords(b secretbind.Binding) []string {
+	var out []string
+	for _, w := range []struct {
+		set  bool
+		word string
+	}{
+		{len(b.Auth) > 0, "auth " + strings.Join(b.Auth, ",")},
+		{b.AllowTLS != "", "tls " + b.AllowTLS},
+		{b.CAFile != "", "CA " + b.CAFile},
+		{b.AllowNoChannelBinding, "no channel binding"},
+	} {
+		if w.set {
+			out = append(out, w.word)
+		}
+	}
+	return out
 }
 
 // secretAction names what the command did to a secret it wrote.
@@ -106,20 +161,44 @@ func (c *hostCmd) fileHolds(path string, data []byte) bool {
 	return err == nil && bytes.Equal(got, data)
 }
 
-// writeSecret writes the value file, then the fragment (Р4): until the
-// fragment is there the agent does not see the secret. An unchanged value
-// file is not rewritten, an unchanged fragment neither.
-func (c *hostCmd) writeSecret(valueFile, fragment string, value, yamlBody []byte, sameValue bool) error {
+// writeSecret writes the binding, the value file, then the fragment (Р4,
+// S11): until the fragment is there the agent does not see the secret, and
+// it never sees it unbound; a new value never meets the old binding, so a
+// step in between sends the old value only where the new binding allows it.
+// The binding is root's, as a fragment: the service does not change where its
+// secrets go. An unchanged file is not rewritten.
+func (c *hostCmd) writeSecret(s secretWrite) error {
+	if err := c.writeUnlessHeld(s.bindingFile, s.binding, c.layout.BindingDir(), c.bindingHolds(s.name, s.binding)); err != nil {
+		return err
+	}
 	if _, err := hostsetup.EnsureDir(c.deps.fs, c.layout.SecretsDir(), c.serviceOwner(0o700)); err != nil {
 		return err
 	}
-	if !sameValue {
-		if err := hostsetup.WriteFile(c.deps.fs, valueFile, value, c.serviceOwner(0o600)); err != nil {
+	if !s.sameValue {
+		if err := hostsetup.WriteFile(c.deps.fs, s.valueFile, s.value, c.serviceOwner(0o600)); err != nil {
 			return err
 		}
 	}
-	if c.fileHolds(fragment, yamlBody) {
+	return c.writeUnlessHeld(s.fragment, s.yamlBody, "", c.fileHolds(s.fragment, s.yamlBody))
+}
+
+// bindingHolds says whether the binding of the secret holds exactly data and
+// the agent would use it: read as it reads it, by its rules (S11).
+func (c *hostCmd) bindingHolds(name string, data []byte) bool {
+	_, bound, err := c.deps.bindings(c.layout.Config, c.who.Service).Binding(name)
+	return err == nil && bound && c.fileHolds(c.layout.SecretBinding(name), data)
+}
+
+// writeUnlessHeld writes a file of root's that the service reads, in dir if
+// given (made like agent.d), unless it is held as it is.
+func (c *hostCmd) writeUnlessHeld(path string, data []byte, dir string, held bool) error {
+	if held {
 		return nil
 	}
-	return hostsetup.WriteFile(c.deps.fs, fragment, yamlBody, c.fragmentOwner())
+	if dir != "" {
+		if _, err := hostsetup.EnsureDir(c.deps.fs, dir, hostsetup.Attrs{UID: 0, GID: int(c.who.Service.GID), Mode: 0o750}); err != nil {
+			return err
+		}
+	}
+	return hostsetup.WriteFile(c.deps.fs, path, data, c.fragmentOwner())
 }

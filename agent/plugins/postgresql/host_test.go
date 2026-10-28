@@ -22,11 +22,12 @@ type host struct {
 	logs []string
 }
 
-func (*host) Secret(name string) ([]byte, error) {
+// SecretFor gives pg-app to any target, over any TLS mode.
+func (*host) SecretFor(name string, _ sdk.Target) (sdk.Secret, error) {
 	if name != "pg-app" {
-		return nil, &sdk.SecretError{Name: name}
+		return sdk.Secret{}, &sdk.SecretError{Name: name}
 	}
-	return []byte(P + "\n"), nil
+	return sdk.Secret{Value: []byte(P + "\n"), Grant: sdk.Grant{TLS: "disable"}}, nil
 }
 
 func (*host) Progress(uint64, uint64) {}

@@ -5,6 +5,7 @@ import type { components } from '../api/schema'
 import { freshTracker, type Tracker } from './lockout'
 import { defaultSelfBackup } from './selfBackupSources'
 import { verificationSchedule } from './verification'
+import { verificationRecords, withVerification } from './verificationFixtures'
 import {
   agents,
   deletedSources,
@@ -97,6 +98,8 @@ function fresh(options: ResetOptions): MockState {
   const complete = !freshInstall && !upgraded
   // A complete installation has its self-backup bound to "self", backed up and confirmed (Рк18).
   const bound = boundSelfBackup(complete)
+  const live = [...bound.sources, ...sources]
+  const records = verificationRecords(Date.now(), live)
   return structuredClone({
     signedIn: options.signedIn,
     password: MOCK_PASSWORD,
@@ -110,7 +113,7 @@ function fresh(options: ResetOptions): MockState {
       upgraded,
     },
     agents: complete ? agents : neighbourWithoutRepositories(agents),
-    sources: [...bound.sources, ...sources],
+    sources: live.map((source) => withVerification(source, records)),
     deletedSources,
     // Newest first: the runs of the binding are older than every fixture run.
     runs: [...runs, ...bound.runs],
@@ -124,7 +127,7 @@ function fresh(options: ResetOptions): MockState {
     runOutcomes: {},
     failFirstBackup: options.failFirstBackup ?? false,
     verificationJobs: {},
-    verifications: [],
+    verifications: records,
     verificationSchedule,
     runDefaults: { backupTimeoutMinutes: 360, restoreTimeoutMinutes: 720 },
   })

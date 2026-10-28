@@ -154,7 +154,7 @@ func TestEveryWayAFileOfASecretCannotBeUsedHasItsOwnWords(t *testing.T) {
 		{errors.New("secret file /s/pg is not a regular file"), "/s/pg is not a regular file"},
 		{&fs.PathError{Op: "read", Path: "/s/pg", Err: syscall.EIO}, "/s/pg cannot be used: input/output error"},
 	} {
-		if l := hostcheck.SecretLine("pg", "/s/pg", 0, c.err); l.Message != c.want {
+		if l := hostcheck.SecretLine("pg", "/s/pg", hostcheck.SecretSetHint("pg", ""), 0, c.err); l.Message != c.want {
 			t.Errorf("%q, want %q", l.Message, c.want)
 		}
 	}

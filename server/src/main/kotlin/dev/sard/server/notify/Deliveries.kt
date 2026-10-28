@@ -39,7 +39,8 @@ data class UnplannedCertificateEvent(
 
 /**
  * A pending delivery whose time has come: about a run, a schedule fire (F3b), an overdue episode's [episodeEvent]
- * (F6) or an agent certificate event (C1 phase 3), exactly one of them.
+ * (F6), an agent certificate event (C1 phase 3), a restore verification record, a stale episode or the «no verifier»
+ * state (V6), exactly one of them.
  */
 data class DueDelivery(
     val tenantId: UUID,
@@ -55,6 +56,9 @@ data class DueDelivery(
     /** The serial and the stored name of the certificate event, for the log. */
     val certificateSerial: String? = null,
     val certificateEvent: String? = null,
+    val verificationId: UUID? = null,
+    val staleEpisodeId: UUID? = null,
+    val noVerifierEpisodeId: UUID? = null,
 ) {
     /** What the delivery is about, as the log names it. */
     val subject: String
@@ -63,8 +67,16 @@ data class DueDelivery(
                 fireId != null -> "schedule fire $fireId"
                 certificateEventId != null -> "agent certificate $certificateSerial (${certificateLabel()})"
                 episodeId != null -> "overdue episode $episodeId ($episodeEvent)"
-                else -> "run $runId"
+                else -> verificationSubject()
             }
+
+    private fun verificationSubject(): String =
+        when {
+            verificationId != null -> "verification $verificationId"
+            staleEpisodeId != null -> "stale episode $staleEpisodeId"
+            noVerifierEpisodeId != null -> "no verifier $noVerifierEpisodeId"
+            else -> "run $runId"
+        }
 }
 
 /** "30/365" of a threshold event, "expired" of the expiry (П39). */
@@ -95,6 +107,21 @@ sealed interface Claimed {
     data class Certificate(
         val notice: CertificateNotice?,
     ) : Claimed
+
+    /** The restore verification subjects (V6). */
+    sealed interface Verifying : Claimed
+
+    data class Verification(
+        val notice: VerificationNotice,
+    ) : Verifying
+
+    data class Stale(
+        val notice: StaleNotice,
+    ) : Verifying
+
+    data class NoVerifier(
+        val notice: NoVerifierNotice,
+    ) : Verifying
 }
 
 private const val UNPLANNED = """
@@ -152,11 +179,11 @@ private const val PLAN_CERTIFICATE = """
 private const val DUE = """
     select new dev.sard.server.notify.DueDelivery(
         d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt, d.episodeId, d.episodeEvent,
-        d.certificateEventId, e.serial, e.event)
+        d.certificateEventId, e.serial, e.event, d.verificationId, d.staleEpisodeId, d.noVerifierEpisodeId)
     from NotificationDeliveryRecord d
     left join AgentCertificateEventRecord e on e.tenantId = d.tenantId and e.id = d.certificateEventId
     where d.status = 'pending' and d.nextAttemptAt <= :now and d.channel in :channels
-    order by d.nextAttemptAt, d.id"""
+    order by d.nextAttemptAt, case when d.staleEpisodeId is not null then 0 else 1 end, d.id"""
 
 private const val PENDING = "select count(*) from NotificationDeliveryRecord d where d.status = 'pending'"
 
@@ -343,7 +370,7 @@ class Deliveries(
             }
 
             else -> {
-                Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+                otherClaimed(session, delivery)
             }
         }
 }
@@ -471,4 +498,130 @@ class CertificateDeliveries(
                     .executeUpdate()
             }
         }
+}
+
+/** What a delivery about restore verification is about (V6): the column of the queue that names it. */
+enum class VerificationSubject(
+    val column: String,
+) {
+    /** A record: tells a failure, a pass after failures or after silence, or nothing. */
+    RECORD("verification_id"),
+
+    /** A stale episode that opened. */
+    STALE("stale_episode_id"),
+
+    /** The installation entering the «no verifier» state. */
+    NO_VERIFIER("no_verifier_episode_id"),
+}
+
+/** A subject of restore verification that has no delivery through a channel yet. */
+data class UnplannedVerification(
+    val tenantId: UUID,
+    val subject: VerificationSubject,
+    val id: UUID,
+)
+
+private const val UNPLANNED_RECORDS = """
+    select rv.tenant_id, rv.id from restore_verifications rv
+    where rv.verified_at >= :since
+      and not exists (
+        select 1 from notification_deliveries d
+        where d.tenant_id = rv.tenant_id and d.verification_id = rv.id and d.channel = :channel)
+    order by rv.verified_at, rv.id"""
+
+private const val UNPLANNED_STALE = """
+    select e.tenant_id, e.id from verification_stale_episodes e
+    where e.opened_at >= :since
+      and not exists (
+        select 1 from notification_deliveries d
+        where d.tenant_id = e.tenant_id and d.stale_episode_id = e.id and d.channel = :channel)
+    order by e.opened_at, e.id"""
+
+private const val UNPLANNED_NO_VERIFIER = """
+    select e.tenant_id, e.id from no_verifier_episodes e
+    where e.opened_at >= :since
+      and not exists (
+        select 1 from notification_deliveries d
+        where d.tenant_id = e.tenant_id and d.no_verifier_episode_id = e.id and d.channel = :channel)
+    order by e.opened_at, e.id"""
+
+/**
+ * The restore verification side of the queue (V6, docs/adr/00XX-draft-verification-notifications.md): finding records,
+ * stale episodes and «no verifier» episodes without a delivery reads across tenants in the read-only system session
+ * (ADR 0013); planning writes in the subject's own tenant, guarded by the key (tenant, subject, channel).
+ */
+class VerificationDeliveries(
+    private val sessions: TenantSessions,
+    private val ids: UuidV7,
+) {
+    /** The subjects made since [since] without a delivery through [channel], stale episodes first, oldest first. */
+    fun unplanned(
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<UnplannedVerification> =
+        sessions.system { session ->
+            listOf(
+                VerificationSubject.STALE to UNPLANNED_STALE,
+                VerificationSubject.NO_VERIFIER to UNPLANNED_NO_VERIFIER,
+                VerificationSubject.RECORD to UNPLANNED_RECORDS,
+            ).flatMap { (subject, sql) ->
+                session
+                    .createNativeQuery(sql.trimIndent(), Array<Any?>::class.java)
+                    .setParameter("since", since)
+                    .setParameter("channel", channel)
+                    .setMaxResults(limit)
+                    .list()
+                    .map { UnplannedVerification(it[0] as UUID, subject, it[1] as UUID) }
+            }
+        }
+
+    /** One pending delivery through [channel] for each of [subjects] of [tenantId]; returns how many are new. */
+    fun plan(
+        tenantId: UUID,
+        subjects: List<UnplannedVerification>,
+        channel: String,
+        now: Instant,
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            subjects.sumOf { subject ->
+                val column = subject.subject.column
+                session
+                    .createNativeMutationQuery(
+                        "insert into notification_deliveries (id, tenant_id, $column, channel, status, " +
+                            "next_attempt_at, created_at) values (:id, :tenant, :subject, :channel, 'pending', " +
+                            ":now, :now) on conflict (tenant_id, $column, channel) do nothing",
+                    ).setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter("subject", subject.id)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
+        }
+}
+
+/** The restore verification subjects (V6) and, when it is about none of them, the run. */
+private fun otherClaimed(
+    session: Session,
+    delivery: DueDelivery,
+): Claimed {
+    val tenant = delivery.tenantId
+    return when {
+        delivery.verificationId != null -> {
+            Claimed.Verification(VerificationNoticeReads.verification(session, tenant, delivery.verificationId))
+        }
+
+        delivery.staleEpisodeId != null -> {
+            Claimed.Stale(VerificationNoticeReads.stale(session, tenant, delivery.staleEpisodeId))
+        }
+
+        delivery.noVerifierEpisodeId != null -> {
+            Claimed.NoVerifier(VerificationNoticeReads.noVerifier(session, tenant, delivery.noVerifierEpisodeId))
+        }
+
+        else -> {
+            Claimed.Finished(Notices.finished(session, tenant, checkNotNull(delivery.runId)))
+        }
+    }
 }

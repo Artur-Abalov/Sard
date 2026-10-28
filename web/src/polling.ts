@@ -40,3 +40,10 @@ export function schedulePollInterval(
 ): Interval {
   return runPollInterval(schedule?.lastRun?.status)
 }
+
+// The tab of a source's verifications asks again while a job is queued or running; it ends with a new record (V6).
+export function verificationPollInterval(
+  job: { status: Schemas['VerificationJobStatus'] } | null | undefined,
+): Interval {
+  return job === null || job === undefined ? false : POLL_INTERVAL_MS
+}

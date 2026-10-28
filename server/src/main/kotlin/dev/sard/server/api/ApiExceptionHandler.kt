@@ -24,6 +24,8 @@ import dev.sard.server.selfbackup.LocationInvalid
 import dev.sard.server.selfbackup.RepositoryNotInitialized
 import dev.sard.server.selfbackup.SelfAgentMissing
 import dev.sard.server.selfbackup.SelfBackupNotConfigured
+import dev.sard.server.verify.InvalidReportPeriod
+import dev.sard.server.verify.InvalidStaleThreshold
 import dev.sard.server.verify.SnapshotUnusable
 import dev.sard.server.verify.VerificationActive
 import jakarta.persistence.PersistenceException
@@ -130,6 +132,12 @@ class VerificationExceptionHandler {
         val code = ErrorCode.VERIFICATION_ACTIVE
         return problemResponse(HttpStatus.CONFLICT, "Conflict", code)
     }
+
+    @ExceptionHandler(InvalidStaleThreshold::class)
+    fun staleThreshold(e: InvalidStaleThreshold) = invalidResponse("staleAfterDays", e.message.orEmpty())
+
+    @ExceptionHandler(InvalidReportPeriod::class)
+    fun reportPeriod(e: InvalidReportPeriod) = invalidResponse(e.field, e.message.orEmpty())
 
     @ExceptionHandler(SnapshotUnusable::class)
     fun snapshotUnusable(e: SnapshotUnusable): ResponseEntity<ValidationProblem> {

@@ -79,6 +79,12 @@ data class Source(
     val backupTimeoutMinutes: Int?,
     @field:Schema(description = RESTORE_TIMEOUT, nullable = true)
     val restoreTimeoutMinutes: Int?,
+    @field:Schema(
+        description =
+            "What the agent will refuse of this source by the bindings of its secrets on the agent host, as its " +
+                "last Register reported them (S11), with the command that allows it; empty when nothing",
+    )
+    val secretWarnings: List<String>,
 ) {
     override fun toString() = "Source(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }

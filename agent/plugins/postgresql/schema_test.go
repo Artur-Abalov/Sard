@@ -192,3 +192,25 @@ func TestEveryFieldOfTheSchemaFitsTheFormOfTheConsole(t *testing.T) {
 		}
 	}
 }
+
+// S11: the host, the port and the database are the target of the secret, for
+// the console to warn about a target its binding does not allow.
+func TestTheHostThePortAndTheDatabaseAreMarkedAsTheTarget(t *testing.T) {
+	for _, schema := range [][]byte{postgresql.Plugin{}.ConfigSchema(), postgresql.Plugin{}.RestoreConfigSchema()} {
+		var doc struct {
+			Properties map[string]map[string]any `json:"properties"`
+		}
+		if err := json.Unmarshal(schema, &doc); err != nil {
+			t.Fatal(err)
+		}
+		marked := map[string]string{}
+		for name, p := range doc.Properties {
+			if role, ok := p[sdk.TargetKeyword].(string); ok {
+				marked[name] = role
+			}
+		}
+		if want := map[string]string{"host": "host", "port": "port", "database": "database"}; !maps.Equal(marked, want) {
+			t.Errorf("marked %v, want %v", marked, want)
+		}
+	}
+}

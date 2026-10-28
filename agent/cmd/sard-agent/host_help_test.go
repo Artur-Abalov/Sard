@@ -18,7 +18,7 @@ func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
 		sudo  string
 		codes []int
 	}{
-		{[]string{"secret", "set"}, []string{"--stdin", "--from-file", "--no-restart", "--config"}, "sudo", []int{0, 1, 2, 6, 7}},
+		{[]string{"secret", "set"}, []string{"--plugin", "--target", "--auth", "--allow-tls", "--ca-file", "--allow-no-channel-binding", "--stdin", "--from-file", "--no-restart", "--config"}, "sudo", []int{0, 1, 2, 6, 7}},
 		{[]string{"secret", "list"}, []string{"--json", "--config"}, "service user", []int{0, 2}},
 		{[]string{"secret", "remove"}, []string{"--no-restart", "--config"}, "sudo", []int{0, 1, 2, 6, 7}},
 		{[]string{"repo", "show"}, []string{"--json", "--timeout", "--config"}, "service user", []int{0, 1, 2, 6}},

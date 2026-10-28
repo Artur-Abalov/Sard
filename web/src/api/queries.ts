@@ -2,7 +2,12 @@
 // Copyright 2026 Artur Abalov
 
 import { queryOptions } from '@tanstack/react-query'
-import { runPollInterval, schedulePollInterval, tokenPollInterval } from '../polling'
+import {
+  runPollInterval,
+  schedulePollInterval,
+  tokenPollInterval,
+  verificationPollInterval,
+} from '../polling'
 import { REPOSITORIES_POLL_MS } from '../recoveryKeyBanner'
 import { SELF_BACKUP_POLL_MS } from '../selfBackupBanner'
 import { ApiError, call } from './call'
@@ -138,6 +143,49 @@ export const sourcePickerQuery = () =>
     queryKey: ['sources', 'picker'],
     queryFn: () =>
       call(client.GET('/api/v1/sources', { params: { query: { limit: PICKER_SIZE } } })),
+  })
+
+// The verification of a source: the switch, the open job (polled while there is one), the hints (V6).
+export const sourceVerificationQuery = (sourceId: string) =>
+  queryOptions({
+    queryKey: ['verification', sourceId],
+    queryFn: () =>
+      call(
+        client.GET('/api/v1/sources/{sourceId}/verification', { params: { path: { sourceId } } }),
+      ),
+    refetchInterval: (query) => verificationPollInterval(query.state.data?.openJob),
+  })
+
+// The verifiers of the installation; with a source, why each fits it or not.
+export const verifiersQuery = (sourceId?: string) =>
+  queryOptions({
+    queryKey: ['verifiers', sourceId ?? null],
+    queryFn: () => call(client.GET('/api/v1/verifiers', { params: { query: { sourceId } } })),
+  })
+
+// How to set up the first verifier: commands to copy, built by the server.
+export const verificationSetupQuery = () =>
+  queryOptions({
+    queryKey: ['verification-setup'],
+    queryFn: () => call(client.GET('/api/v1/verification-setup')),
+  })
+
+// The cycle and the threshold of «not verified for too long».
+export const verificationScheduleQuery = () =>
+  queryOptions({
+    queryKey: ['verification-schedule'],
+    queryFn: () => call(client.GET('/api/v1/verification-schedule')),
+  })
+
+export const verificationQuery = (verificationId: string) =>
+  queryOptions({
+    queryKey: ['verification-record', verificationId],
+    queryFn: () =>
+      call(
+        client.GET('/api/v1/verifications/{verificationId}', {
+          params: { path: { verificationId } },
+        }),
+      ),
   })
 
 export const firstAgentQuery = () =>

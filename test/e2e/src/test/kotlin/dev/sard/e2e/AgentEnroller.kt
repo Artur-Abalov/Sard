@@ -42,8 +42,9 @@ internal object AgentEnroller {
         hostname: String = "e2e-agent",
         local: String = "",
         image: String = E2e.agentImage,
+        bindings: Map<String, String> = emptyMap(),
     ): EnrolledAgent {
-        val host = AgentHost(env, hostname, local, image)
+        val host = AgentHost(env, hostname, local, image, bindings = bindings)
         return EnrolledAgent(enroll(host, token), host)
     }
 

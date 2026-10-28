@@ -143,9 +143,20 @@ internal class PgAgent(
     private val sard: SardEnvironment,
     val major: Int,
     hostname: String,
+    /** More servers the secret `pg-app` is bound to (S11) besides [BOUND_SERVERS]. */
+    servers: List<String> = emptyList(),
+    /** The bindings of the host's secrets: by default `pg-app` to the plugin at the servers, TLS optional. */
+    bindings: Map<String, String> = mapOf("pg-app" to AgentHost.binding("postgresql", BOUND_SERVERS + servers)),
 ) {
     val agent: EnrolledAgent =
-        AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = hostname, local = LOCAL, image = E2e.pgAgentImage(major))
+        AgentEnroller.enroll(
+            sard,
+            EnrollmentTokens.create(sard),
+            hostname = hostname,
+            local = LOCAL,
+            image = E2e.pgAgentImage(major),
+            bindings = bindings,
+        )
     val container: GenericContainer<*>
 
     init {
@@ -235,6 +246,9 @@ internal class PgAgent(
         const val REPOSITORY_URL = "${AgentHost.STATE_DIR}/repo"
         const val PASSWORD_FILE = "${AgentHost.STATE_DIR}/$REPOSITORY.pass"
         const val SECRET_FILE = "/etc/sard/pg-app"
+
+        /** The servers of the stand the secret `pg-app` is bound to, any port and database (S11). */
+        val BOUND_SERVERS = listOf("db", "db-hba", "db-missing", "db-tls", "db-victim", "db14", "db-restore", "db-md5")
         private val SNAPSHOT_ID = Regex("\"id\":\"([0-9a-f]{64})\"")
 
         private val LOCAL =

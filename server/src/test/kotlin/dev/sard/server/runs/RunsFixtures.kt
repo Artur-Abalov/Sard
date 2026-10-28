@@ -105,7 +105,9 @@ internal class RunsTenant(
                 "sources",
                 "workflows",
             ) +
-                AGENT_TABLES
+                AGENT_TABLES +
+                // After the sources: an episode opens while there are sources to verify and no verifier.
+                listOf("notification_deliveries", "no_verifier_episodes")
         for (table in tables) {
             jdbc.update("delete from $table where tenant_id = ?", id)
         }

@@ -48,6 +48,11 @@ internal class AgentHost(
     private val mounts: List<Bind> = emptyList(),
     /** Supplementary groups of every container, e.g. the group of the Docker socket a verifier's sandboxes need (V5). */
     private val groups: List<String> = emptyList(),
+    /**
+     * The bindings of the secrets of [local] (S11): a secret's name to the text of its file, put in
+     * `/etc/sard/secret-bindings` of every container, root's and readable, as `secret set` leaves it.
+     */
+    private val bindings: Map<String, String> = emptyMap(),
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
@@ -286,6 +291,7 @@ internal class AgentHost(
             withNetwork(sardEnv.dockerNetwork)
             withNetworkAliases(hostname)
             withCopyToContainer(Transferable.of(configText(), TarFiles.READABLE), CONFIG)
+            bindings.forEach { (name, text) -> withCopyToContainer(Transferable.of(text, TarFiles.READABLE), "$BINDING_DIR/$name.yaml") }
             withCreateContainerCmdModifier { create ->
                 create.withHostName(hostname)
                 create.hostConfig?.withBinds(*binds().toTypedArray())
@@ -325,6 +331,19 @@ internal class AgentHost(
         /** What `sudo sard-agent repo add` makes under [ETC_DIR] (A8b, Р30). */
         const val SECRETS_DIR = "$ETC_DIR/secrets"
         const val FRAGMENT_DIR = "$ETC_DIR/agent.d"
+        const val BINDING_DIR = "$ETC_DIR/secret-bindings"
+
+        /**
+         * The text of the binding of a secret to [plugin] at [targets] (S11); [allowTls] is the weakest TLS mode
+         * allowed, disable by default: the servers of the stand have no TLS.
+         */
+        fun binding(
+            plugin: String,
+            targets: List<String>,
+            allowTls: String? = "disable",
+        ): String =
+            "plugin: $plugin\ntargets:\n" + targets.joinToString("") { "  - \"$it\"\n" } +
+                allowTls?.let { "allow_tls: $it\n" }.orEmpty()
         private const val SECRET_KEY_FILE = "/run/secret-key"
         const val STATE_DIR = "/var/lib/sard-agent"
         const val CACHE_DIR = "/var/cache/sard/restic"

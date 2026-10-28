@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 )
 
 // The healthy host of the conventions of docs/specs/agent/host-check.feature
@@ -221,8 +222,18 @@ func fullHost(t *testing.T) *setupHost {
 	ok(t, os.Chmod(h.agentD(), 0o750))
 	ok(t, os.Chmod(h.cfgPath, 0o640))
 	ok(t, os.MkdirAll(filepath.Join(h.stateDir(), "journal"), 0o700))
+	h.bindPg()
 	h.rootOwns(h.cfgPath, h.agentD())
 	return h
+}
+
+// bindPg binds the secret pg to postgresql at db:5432/app, as secret set does.
+func (h *setupHost) bindPg() {
+	b, err := secretbind.New("postgresql", []string{"db:5432/app"})
+	ok(h.t, err)
+	ok(h.t, os.MkdirAll(h.path("secret-bindings"), 0o750))
+	h.write(h.path("secret-bindings/pg.yaml"), string(b.Marshal()), 0o640)
+	h.rootOwns(h.path("secret-bindings"), h.path("secret-bindings/pg.yaml"))
 }
 
 // rootOwns makes the files root's, readable by the group of the service user (Р3).
@@ -263,7 +274,7 @@ var wantIDs = []string{
 	"tls.identity", "tls.chain", "tls.expiry", "tls.role",
 	"server.reachable", "server.tls", "server.accepted", "clock.skew",
 	"repository.storage", "repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.keys", "repository.locks",
-	"secret.readable", "plugin.declared", "plugin.programs", "plugin.programs", "restore.locations",
+	"secret.readable", "secret.bound", "plugin.declared", "plugin.programs", "plugin.programs", "restore.locations",
 	"selinux.labels", "selinux.denials", "service.running", "service.steps",
 }
 

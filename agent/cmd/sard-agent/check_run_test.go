@@ -165,7 +165,7 @@ var pinnedIDs = []string{
 	"service.user", "config.load", "config.names", "config.references", "files.permissions", "restic.binary",
 	"tls.identity", "tls.chain", "tls.expiry", "tls.role", "server.reachable", "server.tls", "server.accepted", "clock.skew",
 	"repository.storage", "repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.keys", "repository.locks",
-	"secret.readable", "plugin.declared", "plugin.programs", "restore.locations", "selinux.labels", "selinux.denials", "service.running", "service.steps",
+	"secret.readable", "secret.bound", "plugin.declared", "plugin.programs", "restore.locations", "selinux.labels", "selinux.denials", "service.running", "service.steps",
 }
 
 func TestTheIdentifiersAreTheOnesOfTheList(t *testing.T) {
@@ -185,7 +185,7 @@ func TestTheIdentifiersAreTheOnesOfTheList(t *testing.T) {
 	want := slices.Clone(pinnedIDs)
 	slices.Sort(got)
 	slices.Sort(want)
-	if !slices.Equal(got, want) || len(pinnedIDs) != 29 {
+	if !slices.Equal(got, want) || len(pinnedIDs) != 30 {
 		t.Errorf("identifiers\n%v\nwant\n%v", got, want)
 	}
 }

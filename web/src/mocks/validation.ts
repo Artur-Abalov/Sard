@@ -149,3 +149,35 @@ export function validateToken(body: {
 }): Schemas['ValidationProblem'] | null {
   return validateRole(body.role) ?? validateTtl(body.ttlSeconds) ?? validateLabel(body.label)
 }
+
+const STALE_AFTER_DAYS = { min: 1, max: 90 }
+
+/** The threshold of «not verified for longer than N days» (V6): a whole number of days from 1 to 90. */
+export function validateStaleAfterDays(days: number): Schemas['ValidationProblem'] | null {
+  const ok = Number.isInteger(days) && days >= STALE_AFTER_DAYS.min && days <= STALE_AFTER_DAYS.max
+  return ok ? null : rejected('validation_failed', 'staleAfterDays', 'must be from 1 to 90')
+}
+
+const MAX_REPORT_DAYS = 366
+const DAY_MS = 86_400_000
+
+function notADate(field: 'from' | 'to', value: string | null): Schemas['ValidationProblem'] | null {
+  return value !== null && Number.isNaN(Date.parse(value))
+    ? rejected('validation_failed', field, 'is not a date')
+    : null
+}
+
+/** The period of a verification report (V6): a date range of at most 366 days, the end not before the start. */
+export function validateReportPeriod(
+  from: string | null,
+  to: string | null,
+): Schemas['ValidationProblem'] | null {
+  const bad = notADate('from', from) ?? notADate('to', to)
+  if (bad !== null || from === null || to === null) return bad
+  const days = (Date.parse(to) - Date.parse(from)) / DAY_MS
+  if (days < 0) return rejected('validation_failed', 'to', 'must not be before from')
+  if (days > MAX_REPORT_DAYS) {
+    return rejected('validation_failed', 'from', 'the period must not be longer than 366 days')
+  }
+  return null
+}

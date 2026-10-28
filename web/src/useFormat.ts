@@ -14,6 +14,7 @@ import {
   formatTimestamp,
   type MissedFires,
 } from './format'
+import { verificationMetric, type MetricFields } from './verification'
 
 // The formatters of format.ts bound to the interface language.
 export function useFormat() {
@@ -32,5 +33,6 @@ export function useFormat() {
     timeout: (seconds: number) => formatTimeout(seconds, language),
     missed: (missed: MissedFires) => formatMissed(missed, language),
     catchUp: (missed: MissedFires) => formatCatchUp(missed, language),
+    verificationMetric: (fields: MetricFields) => verificationMetric(fields, Date.now(), language),
   }
 }

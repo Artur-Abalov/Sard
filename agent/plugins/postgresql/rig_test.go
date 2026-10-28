@@ -29,6 +29,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 	"github.com/Artur-Abalov/sard/agent/plugins/postgresql"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -497,6 +498,41 @@ func (s *secrets) For(*agentv1.RunStep) ([]executor.Secret, error) {
 	return []executor.Secret{{Name: "pg-app", Value: bytes.TrimRight(content, "\r\n"), Ref: "pg-app", Content: content}}, nil
 }
 
+// bindings are the bindings of the agent of the rig: every secret is bound to
+// the plugin at the hosts the tests use, without TLS allowed, until a test
+// binds it otherwise.
+type bindings struct {
+	mu  sync.Mutex
+	b   *secretbind.Binding
+	err error
+}
+
+func (b *bindings) Binding(string) (secretbind.Binding, bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.b == nil || b.err != nil {
+		return secretbind.Binding{}, false, b.err
+	}
+	return *b.b, true, nil
+}
+
+// bind sets the binding of every secret; nil: none.
+func (b *bindings) bind(binding *secretbind.Binding) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.b = binding
+}
+
+// binding is a binding of the plugin postgresql to targets.
+func binding(t *testing.T, targets ...string) *secretbind.Binding {
+	t.Helper()
+	b, err := secretbind.New("postgresql", targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &b
+}
+
 // --- the rig
 
 type rig struct {
@@ -505,6 +541,7 @@ type rig struct {
 	proc     *fakeRunner
 	restic   *fakeRestic
 	secrets  *secrets
+	bindings *bindings
 	env      []string
 	exec     *executor.Executor
 	sink     *sink
@@ -524,7 +561,10 @@ func newRig(t *testing.T) *rig { return newRigAs(t, role.Source) }
 // newRigAs is a rig whose agent has that role.
 func newRigAs(t *testing.T, role role.Role) *rig {
 	t.Helper()
-	r := &rig{t: t, sink: &sink{results: make(chan *agentv1.StepResult, 8)}, secrets: &secrets{}}
+	r := &rig{t: t, sink: &sink{results: make(chan *agentv1.StepResult, 8)}, secrets: &secrets{}, bindings: &bindings{}}
+	open := binding(t, "db", "/var/run/postgresql")
+	open.AllowTLS = "disable"
+	r.bindings.bind(open)
 	r.secrets.set(P + "\n")
 	r.tmpDir = t.TempDir()
 	t.Setenv("TMPDIR", r.tmpDir)
@@ -547,7 +587,7 @@ func newRigAs(t *testing.T, role role.Role) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(map[string]string{"pg-app": secretFn}, r.secrets.read),
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(map[string]string{"pg-app": secretFn}, r.secrets.read, r.bindings),
 		func(name, _ string, stderr io.Writer) (restic.Repository, bool) {
 			return repo.WithStderr(stderr), name == "R"
 		}, filepath.Join(t.TempDir(), "restore"))

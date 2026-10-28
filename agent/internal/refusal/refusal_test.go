@@ -12,7 +12,7 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		ResticOutputUnexpected, RepositoryExists, WrongPassword, BackendUnavailable, BackendRefused,
 		Interrupted, Timeout, InitInProgress, PasswordFileWrite, LockWrite,
 		PrivilegesRequired, ServiceUserUnknown, NameInvalid, DefinedInConfig, PathInUse, SecretSourceMissing,
-		SecretSourceConflict, SecretEmpty, SecretTooLarge, SecretMismatch, BackendNotSupported,
+		SecretSourceConflict, SecretEmpty, SecretTooLarge, SecretMismatch, PluginUnknown, BackendNotSupported,
 		LocalPathInvalid, RevealRequired, RepositoryConflict, ConfigLocked, ConfigWrite, ServiceRestartFailed,
 		AddressInvalid, SecretInvalid, S3KeyRejected, StorageAccessDenied, BucketNotFound,
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,

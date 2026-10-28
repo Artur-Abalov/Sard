@@ -36,9 +36,10 @@ class StatusController(
     @GetMapping("/status", produces = [MediaType.APPLICATION_JSON_VALUE])
     @SecurityRequirements
     @Operation(summary = "Server status", description = "Public: the dashboard shows it before sign-in.")
-    fun status(): StatusResponse = StatusResponse(build.version ?: UNKNOWN_VERSION, verifications.lastVerifiedAt())
-
-    private companion object {
-        const val UNKNOWN_VERSION = "unknown"
-    }
+    fun status(): StatusResponse = StatusResponse(build.serverVersion(), verifications.lastVerifiedAt())
 }
+
+private const val UNKNOWN_VERSION = "unknown"
+
+/** The version of this server, as /status and the verification report tell it. */
+internal fun BuildProperties.serverVersion(): String = version ?: UNKNOWN_VERSION

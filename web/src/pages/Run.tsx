@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { runQuery, type Run as RunModel } from '../api/queries'
 import { AgentName } from '../components/AgentName'
 import { CancelRunButton } from '../components/CancelRunButton'
-import { OutcomeBadge } from '../components/OutcomeBadge'
+import { RunOutcomeBadge } from '../components/RunOutcomeBadge'
 import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { RestoreButton } from '../components/RestoreButton'
@@ -151,7 +151,7 @@ function RunCard({ run }: { run: RunModel }) {
         <Title order={2}>
           <SourceLabel run={run} />
         </Title>
-        <OutcomeBadge run={run} timeoutSeconds={timeoutOfRun(run.steps)} />
+        <RunOutcomeBadge run={run} timeoutSeconds={timeoutOfRun(run.steps)} />
         <Badge variant="outline" color={tones.neutral}>
           {t(`enum.RunKind.${run.kind}`)}
         </Badge>

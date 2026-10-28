@@ -961,7 +961,7 @@
     Сценарий: Здоровый хост
       Когда оператор выполняет check
       Тогда код выхода класса «в порядке»
-      И строки идут в порядке service.user, config.load, config.names, config.references, files.permissions, restic.binary, tls.identity, tls.chain, tls.expiry, tls.role, server.reachable, server.tls, server.accepted, clock.skew, шесть строк repository с предметом base, secret.readable с предметом pg, plugin.declared, plugin.programs с предметом files, plugin.programs с предметом postgresql, restore.locations, selinux.labels, selinux.denials, service.running, service.steps
+      И строки идут в порядке service.user, config.load, config.names, config.references, files.permissions, restic.binary, tls.identity, tls.chain, tls.expiry, tls.role, server.reachable, server.tls, server.accepted, clock.skew, шесть строк repository с предметом base, secret.readable с предметом pg, secret.bound с предметом pg (S11), plugin.declared, plugin.programs с предметом files, plugin.programs с предметом postgresql, restore.locations, selinux.labels, selinux.denials, service.running, service.steps
       И строки tls.role и restore.locations — SKIP, остальные — OK
       И у строк OK нет строки подсказки
 
@@ -1036,7 +1036,7 @@
     Сценарий: Ошибка конфига пропускает проверки, которые зависят от него
       Дано C содержит неразбираемый YAML
       Когда оператор выполняет check
-      Тогда строки config.names, config.references, files.permissions, tls.identity, tls.chain, tls.expiry, server.reachable, server.tls, server.accepted, clock.skew, secret.readable и все repository — SKIP с сообщением "not checked: config.load failed"
+      Тогда строки config.names, config.references, files.permissions, tls.identity, tls.chain, tls.expiry, server.reachable, server.tls, server.accepted, clock.skew, secret.readable, secret.bound и все repository — SKIP с сообщением "not checked: config.load failed"
       И строки restic.binary, plugin.declared, service.running и service.steps выполнены
       И restic не вызывался кроме version
 

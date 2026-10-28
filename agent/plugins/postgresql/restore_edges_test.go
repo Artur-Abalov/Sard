@@ -214,7 +214,7 @@ func TestALongErrorOfAProgramIsCutInTheMessage(t *testing.T) {
 	}
 }
 
-func TestASocketHostConnectsWithoutTLSAndATCPHostRequiresIt(t *testing.T) {
+func TestASocketHostConnectsWithoutTLSAndATCPHostChecksTheCertificate(t *testing.T) {
 	h := newPGHost(t)
 	req := h.request()
 	req.Plan.Host, req.Plan.TLSMode = "/var/run/postgresql", ""
@@ -230,7 +230,7 @@ func TestASocketHostConnectsWithoutTLSAndATCPHostRequiresIt(t *testing.T) {
 	if _, f := h.run(req); f != nil {
 		t.Fatal(f)
 	}
-	if got := h.server.ran("psql")[0].conninfo(); !strings.Contains(got, "sslmode='require'") || !strings.Contains(got, "sslrootcert='/etc/ca.pem'") {
+	if got := h.server.ran("psql")[0].conninfo(); !strings.Contains(got, "sslmode='verify-full'") || !strings.Contains(got, "sslrootcert='/etc/ca.pem'") {
 		t.Errorf("tcp: %s", got)
 	}
 	if got := h.lastRestore().conninfo(); !strings.Contains(got, `dbname='it\'s'`) {

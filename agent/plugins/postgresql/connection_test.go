@@ -394,12 +394,19 @@ func TestConnectionParametersGoInAConnectionStringWithTimeouts(t *testing.T) {
 	}
 }
 
-// Scenario: Без tls_mode для TCP-хоста используется require.
-func TestWithoutTlsModeATcpHostGetsRequire(t *testing.T) {
-	r := newRig(t)
-	want(t, r.backup(k(o{"tls_mode": nil})), succeeded)
-	if got := connection(t, r.proc.ran("psql")[0]).values["sslmode"]; got != "require" {
-		t.Errorf("sslmode = %q", got)
+// Scenario: Без tls_mode сервер в сети проверяется по сертификату, сервер на этом хосте — require (S11).
+func TestWithoutTlsModeAServerOnTheNetworkGetsVerifyFullAndOneOnThisHostRequire(t *testing.T) {
+	for host, mode := range map[string]string{"db": "verify-full", "localhost": "require", "127.0.0.1": "require", "::1": "require"} {
+		r := newRig(t)
+		r.bindings.bind(binding(t, host))
+		want(t, r.backup(k(o{"host": host, "tls_mode": nil})), succeeded)
+		c := connection(t, r.proc.ran("psql")[0])
+		if c.values["sslmode"] != mode {
+			t.Errorf("%s: sslmode = %q, want %q", host, c.values["sslmode"], mode)
+		}
+		if mode == "verify-full" && c.values["sslrootcert"] != "system" {
+			t.Errorf("%s: sslrootcert = %q, want the CA store of the system", host, c.values["sslrootcert"])
+		}
 	}
 }
 

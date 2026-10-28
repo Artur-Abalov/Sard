@@ -101,6 +101,7 @@ export const sourceHandlers = [
       ...neverVerified,
       backupTimeoutMinutes: input.backupTimeoutMinutes ?? null,
       restoreTimeoutMinutes: input.restoreTimeoutMinutes ?? null,
+      secretWarnings: [],
     }
     state.sources.unshift(source)
     return response(201).json(source)

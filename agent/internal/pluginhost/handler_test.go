@@ -56,7 +56,7 @@ func newHandlersWith(t *testing.T, opts []pluginhost.Option, plugins ...sdk.Plug
 		t.Fatal(err)
 	}
 	f := &handlersFixture{repo: &repo{}, restoreDir: filepath.Join(t.TempDir(), "restore")}
-	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read)
+	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read, bound{plugin: "fake"})
 	repos := func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 		f.stderr = append(f.stderr, stderr)
 		f.commands = append(f.commands, commandID)
@@ -129,7 +129,7 @@ func TestActionsOfAPluginFollowWhatItImplements(t *testing.T) {
 
 func TestNewHandlersRejectsAPluginWhoseSchemaDoesNotCompile(t *testing.T) {
 	reg, _ := sdk.NewRegistry(&badSchema{})
-	if _, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), nil, ""); err == nil {
+	if _, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), nil, ""); err == nil {
 		t.Fatal("NewHandlers accepted an invalid schema")
 	}
 }

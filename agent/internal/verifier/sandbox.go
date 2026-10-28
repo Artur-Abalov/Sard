@@ -127,12 +127,14 @@ var _ sdk.SandboxHost = sandboxHost{}
 
 func (x *run) sandboxHost() sandboxHost { return sandboxHost{copyHost{x}} }
 
-// Secret gives the password of the sandbox, and nothing else.
-func (h sandboxHost) Secret(name string) ([]byte, error) {
+// SecretFor gives the password of the sandbox, and nothing else: its server is
+// the sandbox's own, whatever the target, so nothing beyond the plugin's own
+// rules is granted.
+func (h sandboxHost) SecretFor(name string, _ sdk.Target) (sdk.Secret, error) {
 	if name == sdk.SandboxPassword {
-		return []byte(h.x.password), nil
+		return sdk.Secret{Value: []byte(h.x.password)}, nil
 	}
-	return nil, errNoSecret
+	return sdk.Secret{}, errNoSecret
 }
 
 // Run runs a program in the sandbox.

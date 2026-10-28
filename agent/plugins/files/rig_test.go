@@ -351,7 +351,7 @@ func newRigAs(t *testing.T, role role.Role) *rig {
 		t.Fatal(err)
 	}
 	r.restoreDir = filepath.Join(t.TempDir(), "restore")
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil),
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil),
 		func(name, _ string, stderr io.Writer) (restic.Repository, bool) {
 			return repo.WithStderr(stderr), name == "R"
 		}, r.restoreDir)

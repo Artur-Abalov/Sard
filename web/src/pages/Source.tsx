@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Alert, Badge, Card, Code, Group, Stack, Table, Text, Title } from '@mantine/core'
+import { Alert, Badge, Card, Code, Group, Stack, Table, Tabs, Text, Title } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
@@ -20,7 +20,9 @@ import { Loaded } from '../components/Loaded'
 import { PagedList } from '../components/PagedList'
 import { RestoreButton } from '../components/RestoreButton'
 import { RunBackupButton } from '../components/RunBackupButton'
+import { SourceVerifications } from '../components/SourceVerifications'
 import { SystemSourceMark } from '../components/SystemSourceMark'
+import { VerificationMetric } from '../components/VerificationMetric'
 import { ScheduleBlock } from '../components/ScheduleBlock'
 import { usePaged } from '../components/usePaged'
 import { useFormat } from '../useFormat'
@@ -181,28 +183,30 @@ function DeleteButton({ source }: { source: SourceModel }) {
   )
 }
 
-function SourceCard({ source }: { source: SourceModel }) {
+// What the agent will refuse by the bindings of the secrets on its host (S11): the server's words, with the command.
+function SecretWarnings({ source }: { source: SourceModel }) {
+  const { t } = useTranslation()
+  if (source.secretWarnings.length === 0) return null
+  return (
+    <Alert color={tones.warning} title={t('source.secretWarningsTitle')}>
+      <Stack gap="xs">
+        <Text size="sm">{t('source.secretWarningsWhy')}</Text>
+        {source.secretWarnings.map((warning) => (
+          <Code key={warning} block>
+            {warning}
+          </Code>
+        ))}
+      </Stack>
+    </Alert>
+  )
+}
+
+function SourceOverview({ source }: { source: SourceModel }) {
   const { t } = useTranslation()
   return (
     <Stack>
-      <Group>
-        <Title order={2}>{source.name}</Title>
-        <SystemSourceMark source={source} />
-        <RunBackupButton sourceId={source.id} />
-        {source.systemRole === null && (
-          <>
-            <ButtonLink
-              to="/sources/$sourceId/edit"
-              params={{ sourceId: source.id }}
-              variant="default"
-            >
-              {t('source.edit')}
-            </ButtonLink>
-            <DeleteButton source={source} />
-          </>
-        )}
-      </Group>
       {source.systemRole !== null && <Text c="dimmed">{t('source.systemWhy')}</Text>}
+      <SecretWarnings source={source} />
       <Table>
         <Table.Tbody>
           <Table.Tr>
@@ -237,6 +241,61 @@ function SourceCard({ source }: { source: SourceModel }) {
         <Code block>{JSON.stringify(source.config, null, 2)}</Code>
       </Card>
       <Snapshots sourceId={source.id} />
+    </Stack>
+  )
+}
+
+function SourceCard({ source }: { source: SourceModel }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { tab } = route.useSearch()
+  return (
+    <Stack>
+      <Group>
+        <Title order={2}>{source.name}</Title>
+        <SystemSourceMark source={source} />
+        <RunBackupButton sourceId={source.id} />
+        {source.systemRole === null && (
+          <>
+            <ButtonLink
+              to="/sources/$sourceId/edit"
+              params={{ sourceId: source.id }}
+              variant="default"
+            >
+              {t('source.edit')}
+            </ButtonLink>
+            <DeleteButton source={source} />
+          </>
+        )}
+      </Group>
+      <Text>
+        <VerificationMetric
+          enabled={source.verificationEnabled}
+          lastVerifiedAt={source.lastVerifiedAt}
+          lastVerifiedLevel={source.lastVerifiedLevel}
+        />
+      </Text>
+      <Tabs
+        value={tab ?? 'overview'}
+        onChange={(value) =>
+          void navigate({
+            to: '/sources/$sourceId',
+            params: { sourceId: source.id },
+            search: value === 'verifications' ? { tab: 'verifications' } : {},
+          })
+        }
+      >
+        <Tabs.List>
+          <Tabs.Tab value="overview">{t('verification.tab.overview')}</Tabs.Tab>
+          <Tabs.Tab value="verifications">{t('verification.tab.title')}</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="overview" pt="md">
+          <SourceOverview source={source} />
+        </Tabs.Panel>
+        <Tabs.Panel value="verifications" pt="md">
+          <SourceVerifications sourceId={source.id} />
+        </Tabs.Panel>
+      </Tabs>
     </Stack>
   )
 }

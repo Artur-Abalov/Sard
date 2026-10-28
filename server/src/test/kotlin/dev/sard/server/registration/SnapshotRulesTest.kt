@@ -41,6 +41,7 @@ private fun snapshot(
     machineId: String = HEX64,
     restoreDir: String = "",
     verifier: VerifierReport? = null,
+    secrets: List<SecretEntry> = emptyList(),
 ) = AgentSnapshot(
     hostname,
     agentVersion,
@@ -54,6 +55,7 @@ private fun snapshot(
     machineId,
     restoreDir,
     verifier,
+    secrets,
 )
 
 /** What a refusal says on the wire: the reason and the ErrorInfo metadata. */
@@ -395,6 +397,58 @@ class SnapshotRulesTest {
                 refusal,
                 schema,
             )
+        }
+    }
+
+    // --- the bindings of the secrets (S11)
+
+    @Test
+    fun `secrets with their bindings at the limits are accepted`() {
+        val long = "h".repeat(SnapshotRules.MAX_SECRET_TEXT_BYTES)
+        val targets = List(SnapshotRules.MAX_SECRET_TARGETS) { "db$it" }
+        val bound = SecretEntry("pg-prod", "postgresql", targets, listOf("md5"), "require", true)
+        val secrets = listOf(bound, SecretEntry("old", problem = long), SecretEntry("t", targets = listOf(long)))
+        assertNull(refusalOf(snapshot(secrets = secrets)))
+    }
+
+    @Test
+    fun `a secret of a bad name, twice, or of a bad plugin is refused`() {
+        assertEquals(
+            Refusal(Reason.NAME_INVALID, mapOf("field" to "secrets[0].name")),
+            refusalOf(snapshot(secrets = listOf(SecretEntry("-x")))),
+        )
+        assertEquals(
+            Refusal(Reason.NAME_DUPLICATE, mapOf("field" to "secrets[1].name")),
+            refusalOf(snapshot(secrets = listOf(SecretEntry("a"), SecretEntry("a")))),
+        )
+        assertEquals(
+            invalid("secrets[0].plugin"),
+            refusalOf(snapshot(secrets = listOf(SecretEntry("a", plugin = "pg sql")))),
+        )
+    }
+
+    @Test
+    fun `too many targets or methods is SNAPSHOT_TOO_LARGE`() {
+        val many = List(SnapshotRules.MAX_SECRET_TARGETS + 1) { "db$it" }
+        assertEquals(
+            tooLarge("secrets[0].targets", SnapshotRules.MAX_SECRET_TARGETS),
+            refusalOf(snapshot(secrets = listOf(SecretEntry("a", targets = many)))),
+        )
+        assertEquals(
+            tooLarge("secrets[0].auth", SnapshotRules.MAX_SECRET_TARGETS),
+            refusalOf(snapshot(secrets = listOf(SecretEntry("a", auth = many)))),
+        )
+    }
+
+    @Test
+    fun `a text of a binding too long or holding NUL is refused`() {
+        val long = "h".repeat(SnapshotRules.MAX_SECRET_TEXT_BYTES + 1)
+        for (entry in listOf(
+            SecretEntry("a", problem = long),
+            SecretEntry("a", targets = listOf("d\u0000b")),
+            SecretEntry("a", allowTls = "x\u0000"),
+        )) {
+            assertEquals(invalid("secrets[0]"), refusalOf(snapshot(secrets = listOf(entry))))
         }
     }
 }

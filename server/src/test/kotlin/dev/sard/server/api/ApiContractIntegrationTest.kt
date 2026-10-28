@@ -104,7 +104,7 @@ class ApiContractIntegrationTest(
         assertEquals(listOf("overview"), operation.path("tags").strings())
 
         fun required(name: String) = schema(name).path("required").strings().toSet()
-        assertEquals(setOf("agentsOnline", "agentsTotal", "firstSteps"), required("Overview"))
+        assertEquals(setOf("agentsOnline", "agentsTotal", "firstSteps", "verification"), required("Overview"))
         val steps = setOf("tokenIssued", "agentConnected", "repositoryInitialized", "sourceCreated", "backupSucceeded")
         assertEquals(steps + "complete", required("FirstSteps"))
         for (name in listOf("RunSummary", "Run")) {
@@ -441,6 +441,8 @@ class ApiContractIntegrationTest(
             // Out of range: the defaults stay as they were for the other tests of this database.
             Triple("PUT", "/api/v1/run-defaults", """{"backupTimeoutMinutes":0,"restoreTimeoutMinutes":720}"""),
             Triple("GET", "/api/v1/verifiers?sourceId=$id", null),
+            Triple("GET", "/api/v1/verification-setup", null),
+            Triple("GET", "/api/v1/sources/{sourceId}/verification-report", null),
         ) + restoreCalls(id)
     }
 

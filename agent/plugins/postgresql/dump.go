@@ -93,7 +93,7 @@ var errNoSnapshot = errors.New("pg_dump: no snapshot of the fingerprint was expo
 // export opens the transaction, exports its snapshot and takes the
 // fingerprint in it; a failure ends the transaction and the backup.
 func (p Plugin) export(ctx context.Context, h sdk.Host, c config) (*exported, sdk.Fingerprint, error) {
-	password, t, err := p.setup(h, c)
+	c, password, t, err := p.setup(h, c)
 	if err != nil {
 		return nil, sdk.Fingerprint{}, err
 	}
@@ -124,7 +124,7 @@ func (p Plugin) exportIn(ctx context.Context, h sdk.Host, s *session, c config) 
 
 // globals runs pg_dumpall --globals-only into memory.
 func (p Plugin) globals(ctx context.Context, h sdk.Host, c config, done checked) (sdk.ExtraFile, error) {
-	password, t, err := p.setup(h, c)
+	c, password, t, err := p.setup(h, c)
 	if err != nil {
 		return sdk.ExtraFile{}, err
 	}

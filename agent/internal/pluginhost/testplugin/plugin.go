@@ -33,6 +33,10 @@ type Config struct {
 	Token   string   `json:"token"` // a secret name
 }
 
+// Target is where the plugin says it sends its token: a binding of the token
+// names it.
+var Target = sdk.Target{Host: "testplugin.local"}
+
 // Plugin is the test source plugin.
 type Plugin struct{}
 
@@ -80,10 +84,11 @@ func checkToken(h sdk.Host, name string) error {
 	if name == "" {
 		return nil
 	}
-	token, err := h.Secret(name)
+	secret, err := h.SecretFor(name, Target)
 	if err != nil {
 		return err
 	}
+	token := secret.Value
 	if len(token) == 0 {
 		return fmt.Errorf("secret %q is empty", name)
 	}

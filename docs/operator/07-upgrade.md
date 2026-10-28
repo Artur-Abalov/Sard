@@ -35,6 +35,27 @@
 Пометка не снимается удалением агентов и источников; завершённый онбординг
 снимает ограничение.
 
+### Обновление до версии с привязкой секретов (S11)
+
+Агент отдаёт пароль плагину только по привязке секрета. Образ соседа несёт привязку
+пароля самобэкапа `secret-bindings/sard-db.yaml`, но в существующий том
+`sard_sard-self-config` Docker копирует файлы образа только при создании тома. После
+`docker compose up -d` (шаг 3) допишите её один раз, иначе шаг самобэкапа базы
+завершится с ошибкой `SECRET_NOT_ALLOWED`:
+
+```bash
+docker compose exec -T -u 0 self-agent sh -c 'mkdir -p /etc/sard/self/secret-bindings && cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
+plugin: postgresql
+targets:
+  - postgres:5432/sard
+allow_tls: disable
+YAML
+docker compose restart self-agent
+```
+
+С внешней базой (`SARD_SELF_BACKUP_DATABASE_HOST`) цель и `allow_tls` — её
+([самоагент](../operations/self-agent.md#без-compose-и-с-внешним-postgresql)).
+
 ## Порядок
 
 Сначала сервер, потом агенты. Образ сервера версии N несёт и раздаёт

@@ -136,7 +136,10 @@ class DispatchIntegrationTest(
     fun `drop the tenants`() {
         for (tenant in listOf(clients, other)) {
             tenant.closeChannels()
-            for (table in listOf("run_steps", "runs", "sources", "agent_plugins", "agent_repositories")) {
+            val tables =
+                listOf("no_verifier_episodes", "run_steps", "runs", "sources") +
+                    listOf("agent_plugins", "agent_repositories")
+            for (table in tables) {
                 jdbc.update("delete from $table where tenant_id = ?", tenant.tenant)
             }
             tenant.close()

@@ -12,6 +12,7 @@ import dev.sard.server.runs.SnapshotView
 import dev.sard.server.runs.Snapshots
 import dev.sard.server.runs.SourceDraft
 import dev.sard.server.runs.SourceView
+import dev.sard.server.runs.SourceWarnings
 import dev.sard.server.runs.Sources
 import dev.sard.server.runs.UnknownPlugin
 import dev.sard.server.runs.UnknownRepository
@@ -38,6 +39,7 @@ class SourcesApiImpl(
     private val tenants: TenantResolver,
     private val mapper: ObjectMapper,
     private val verifications: Verifications,
+    private val warnings: SourceWarnings,
 ) : SourcesApi {
     override fun listSources(
         agentId: UUID?,
@@ -48,7 +50,11 @@ class SourcesApiImpl(
         val rows = sources.list(tenants.currentTenantId(), agentId, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.createdAt, it.id) }
         val summaries = verifications.summaries(tenants.currentTenantId(), slice.items.map { it.id })
-        return SourcePage(slice.items.map { sourceOf(it, summaries[it.id] ?: NEVER_VERIFIED) }, slice.nextCursor)
+        val warned = warnings.of(tenants.currentTenantId(), slice.items)
+        return SourcePage(
+            slice.items.map { sourceOf(it, summaries[it.id] ?: NEVER_VERIFIED, warned[it.id].orEmpty()) },
+            slice.nextCursor,
+        )
     }
 
     override fun createSource(source: SourceInput): Source {
@@ -124,12 +130,14 @@ class SourcesApiImpl(
 
     private fun sourceOf(view: SourceView): Source {
         val summaries = verifications.summaries(tenants.currentTenantId(), listOf(view.id))
-        return sourceOf(view, summaries[view.id] ?: NEVER_VERIFIED)
+        val warned = warnings.of(tenants.currentTenantId(), listOf(view))
+        return sourceOf(view, summaries[view.id] ?: NEVER_VERIFIED, warned[view.id].orEmpty())
     }
 
     private fun sourceOf(
         view: SourceView,
         verification: VerificationSummary,
+        secretWarnings: List<String>,
     ) = Source(
         view.id,
         view.name,
@@ -146,5 +154,6 @@ class SourcesApiImpl(
         lastVerifiedLevel = verification.lastVerifiedLevel,
         backupTimeoutMinutes = view.backupTimeoutMinutes,
         restoreTimeoutMinutes = view.restoreTimeoutMinutes,
+        secretWarnings = secretWarnings,
     )
 }

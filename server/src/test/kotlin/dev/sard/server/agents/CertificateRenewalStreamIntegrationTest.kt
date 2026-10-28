@@ -77,7 +77,7 @@ class CertificateRenewalStreamIntegrationTest(
     fun cleanUp() {
         clock.now = start
         clients.closeChannels()
-        for (table in listOf("snapshots", "step_logs", "run_steps", "runs", "sources")) {
+        for (table in listOf("no_verifier_episodes", "snapshots", "step_logs", "run_steps", "runs", "sources")) {
             jdbc.update("delete from $table where tenant_id = ?", tenant)
         }
         fixtures.close()

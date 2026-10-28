@@ -15,6 +15,7 @@ const (
 	CheckServerAccepted   = "server.accepted"
 	CheckClockSkew        = "clock.skew"
 	CheckSecretReadable   = "secret.readable"
+	CheckSecretBound      = "secret.bound"
 	CheckPluginDeclared   = "plugin.declared"
 	CheckPluginPrograms   = "plugin.programs"
 	CheckRestoreLocations = "restore.locations"

@@ -296,6 +296,7 @@ function keep(role: Role, agentId: string, repositoryName: string, now: string):
       repositoryName,
       ...neverVerified,
       ...noTimeouts,
+      secretWarnings: [],
       config: CONFIGS[role],
       createdAt: now,
       updatedAt: now,

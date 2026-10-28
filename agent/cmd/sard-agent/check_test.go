@@ -39,7 +39,7 @@ func TestAHealthyHostHasALineForEveryCheckInTheOrderOfTheList(t *testing.T) {
 	for _, l := range lines {
 		assertHealthyLine(t, l)
 	}
-	if summary != "summary: 28 ok, 0 warnings, 0 errors, 2 skipped" {
+	if summary != "summary: 29 ok, 0 warnings, 0 errors, 2 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }
@@ -112,7 +112,10 @@ func TestHostErrorsHaveAHint(t *testing.T) {
 		{"a secret that points nowhere", func(h *setupHost) {
 			h.cfg.Secrets["pg"] = h.path("secrets/none")
 			h.saveHostConfig()
-		}, "config.references", "sudo sard-agent secret set pg"},
+		}, "config.references", "which commands never change: fix it there"},
+		{"a secret of a fragment that points nowhere", func(h *setupHost) {
+			h.writeFragment("secret-db.yaml", "secrets:\n  db: "+h.path("secrets/none")+"\n", 0o640)
+		}, "config.references", "sudo sard-agent secret set db --plugin"},
 		{"a key open to others", func(h *setupHost) { ok(h.t, os.Chmod(h.cfg.TLS.KeyFile, 0o644)) }, "files.permissions", "sudo chmod 0600"},
 		{"a secret of root", func(h *setupHost) { h.fsys.setOwner(h.path("secrets/pg"), 0, 0) }, "files.permissions", "sudo chown sard-agent"},
 		{"a secrets directory open to others", func(h *setupHost) { ok(h.t, os.Chmod(h.secretsDir(), 0o755)) }, "files.permissions", "sudo chmod 0700"},
@@ -137,13 +140,13 @@ func TestHostErrorsHaveAHint(t *testing.T) {
 			ok(h.t, os.Remove(h.path("secrets/pg")))
 			ok(h.t, os.Mkdir(h.path("secrets/pg"), 0o700))
 			h.deps.readOwned = readAsTester
-		}, "secret.readable", "sudo sard-agent secret set pg"},
+		}, "secret.readable", "which commands never change: fix it there"},
 		{"a secret that is a link", func(h *setupHost) {
 			ok(h.t, os.Remove(h.path("secrets/pg")))
 			h.write(h.path("secrets/real"), "value", 0o600)
 			ok(h.t, os.Symlink(h.path("secrets/real"), h.path("secrets/pg")))
 			h.deps.readOwned = readAsTester
-		}, "secret.readable", "sudo sard-agent secret set pg"},
+		}, "secret.readable", "which commands never change: fix it there"},
 		{"psql beside pg_dump is missing", func(h *setupHost) { h.progs.remove(pgBin + "/psql --version") }, "plugin.programs", "postgresql-client"},
 		{"pg_dumpall beside pg_dump is missing", func(h *setupHost) { h.progs.remove(pgBin + "/pg_dumpall --version") }, "plugin.programs", "postgresql-client"},
 		{"the service failed", func(h *setupHost) {
@@ -210,7 +213,7 @@ func TestAConfigErrorSkipsTheChecksThatDependOnIt(t *testing.T) {
 	lines, _, code := h.checkLines()
 	assertCode(t, code, exitAgentError)
 	skipped := []string{"config.names", "config.references", "files.permissions", "tls.identity", "tls.chain", "tls.expiry",
-		"server.reachable", "server.tls", "server.accepted", "clock.skew", "secret.readable", "repository.storage"}
+		"server.reachable", "server.tls", "server.accepted", "clock.skew", "secret.readable", "secret.bound", "repository.storage"}
 	for _, id := range skipped {
 		l := line(t, lines, id, lines[slices.IndexFunc(lines, func(l outLine) bool { return l.check == id })].subject)
 		if l.status != "SKIP" || l.message != "not checked: config.load failed" || l.hint == "" {

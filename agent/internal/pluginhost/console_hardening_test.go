@@ -19,7 +19,7 @@ type badRestoreSchema struct{ restorer }
 func (*badRestoreSchema) RestoreConfigSchema() []byte { return []byte(`{"type": 5}`) }
 
 func TestAPluginWhoseRestoreSchemaDoesNotCompileIsNotAccepted(t *testing.T) {
-	if _, err := pluginhost.NewSource(&badRestoreSchema{}, pluginhost.NewSecrets(nil, nil)); err == nil {
+	if _, err := pluginhost.NewSource(&badRestoreSchema{}, pluginhost.NewSecrets(nil, nil, nil)); err == nil {
 		t.Fatal("NewSource accepted a restore schema that does not compile")
 	}
 }

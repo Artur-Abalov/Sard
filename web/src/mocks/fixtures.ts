@@ -508,6 +508,7 @@ export const sources: Schemas['Source'][] = [
     systemRole: null,
     ...neverVerified,
     ...noTimeouts,
+    secretWarnings: [],
   },
   {
     id: ids.homeSource,
@@ -521,6 +522,7 @@ export const sources: Schemas['Source'][] = [
     systemRole: null,
     ...neverVerified,
     ...noTimeouts,
+    secretWarnings: [],
   },
   {
     id: ids.srvSource,
@@ -534,6 +536,7 @@ export const sources: Schemas['Source'][] = [
     systemRole: null,
     ...neverVerified,
     ...noTimeouts,
+    secretWarnings: [],
   },
 ]
 
@@ -557,6 +560,7 @@ const appSource: Schemas['Source'] = {
   systemRole: null,
   ...neverVerified,
   ...noTimeouts,
+  secretWarnings: [],
 }
 sources.push(appSource)
 
@@ -574,6 +578,7 @@ export const deletedSources: Schemas['Source'][] = [
     systemRole: null,
     ...neverVerified,
     ...noTimeouts,
+    secretWarnings: [],
   },
 ]
 

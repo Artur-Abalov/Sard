@@ -11,6 +11,7 @@ import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
 import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.registration.RepositoryEntry
+import dev.sard.server.registration.SecretEntry
 
 /**
  * The wire action as the domain knows it; null for one it does not (unspecified, or a value
@@ -55,4 +56,16 @@ internal fun RegisterRequest.toSnapshot(): AgentSnapshot =
         machineId = machineId,
         restoreDir = restoreDir,
         verifier = if (hasVerifier()) verifier.toReport() else null,
+        secrets =
+            secretsList.map {
+                SecretEntry(
+                    it.name,
+                    it.plugin,
+                    it.targetsList.toList(),
+                    it.authList.toList(),
+                    it.allowTls,
+                    it.allowNoChannelBinding,
+                    it.bindingProblem,
+                )
+            },
     )

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
 import { AppLink } from './links'
 import { CancelRunButton } from './CancelRunButton'
-import { OutcomeBadge } from './OutcomeBadge'
+import { RunOutcomeBadge } from './RunOutcomeBadge'
 import { tones } from '../theme'
 import { Mono } from './Mono'
 import { Time } from './Time'
@@ -82,7 +82,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
                 </Badge>
               </Table.Td>
               <Table.Td>
-                <OutcomeBadge run={run} timeoutSeconds={run.timeoutSeconds} />
+                <RunOutcomeBadge run={run} timeoutSeconds={run.timeoutSeconds} />
               </Table.Td>
               <Table.Td>
                 <TriggerLabel run={run} />

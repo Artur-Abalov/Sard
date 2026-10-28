@@ -107,6 +107,15 @@ executor:
 secrets: # the password of the database role sard_backup, written by db-init into its own volume (DB2)
   sard-db: /run/sard-self/db-password
 EOF
+COPY --chmod=0644 <<EOF /etc/sard/self/secret-bindings/sard-db.yaml
+# The binding of sard-db (S11, docs/operations/self-agent.md): the agent gives the password to the postgresql
+# plugin for the server's own database only, the compose service postgres, which has no TLS on the compose
+# network. With SARD_SELF_BACKUP_DATABASE_HOST set, change the target in the sard-self-config volume.
+plugin: postgresql
+targets:
+  - postgres:5432/sard
+allow_tls: disable
+EOF
 USER 65532:65532
 ENTRYPOINT ["/usr/libexec/sard/sard-agent"]
 CMD ["--config", "/etc/sard/agent.yaml"]

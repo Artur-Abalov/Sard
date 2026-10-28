@@ -25,12 +25,12 @@ type host struct {
 	logs     []string
 }
 
-func (h *host) Secret(name string) ([]byte, error) {
+func (h *host) SecretFor(name string, _ sdk.Target) (sdk.Secret, error) {
 	v, ok := h.secrets[name]
 	if !ok {
-		return nil, &sdk.SecretError{Name: name}
+		return sdk.Secret{}, &sdk.SecretError{Name: name}
 	}
-	return []byte(v), nil
+	return sdk.Secret{Value: []byte(v)}, nil
 }
 
 func (h *host) Progress(done, total uint64)  { h.progress = append(h.progress, [2]uint64{done, total}) }

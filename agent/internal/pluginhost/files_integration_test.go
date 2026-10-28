@@ -29,7 +29,7 @@ import (
 
 func filesSource(t *testing.T) *pluginhost.Source {
 	t.Helper()
-	s, err := pluginhost.NewSource(filesplugin.Plugin{AgentVersion: "test"}, pluginhost.NewSecrets(nil, os.ReadFile))
+	s, err := pluginhost.NewSource(filesplugin.Plugin{AgentVersion: "test"}, pluginhost.NewSecrets(nil, os.ReadFile, nil))
 	if err != nil {
 		t.Fatal(err)
 	}

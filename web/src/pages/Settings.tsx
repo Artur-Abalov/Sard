@@ -12,6 +12,7 @@ import { passwordChangeResult, type Notice } from '../onboarding/outcomes'
 import { tones } from '../theme'
 import { RunDefaultsSection } from './settings/RunDefaultsSection'
 import { SelfBackupSection } from './settings/SelfBackupSection'
+import { VerificationSection } from './settings/VerificationSection'
 
 type Outcome = { kind: 'changed' } | { kind: 'failed'; notice: Notice } | null
 
@@ -91,6 +92,7 @@ export function Settings() {
       </form>
       <RunDefaultsSection />
       <SelfBackupSection />
+      <VerificationSection />
     </Stack>
   )
 }

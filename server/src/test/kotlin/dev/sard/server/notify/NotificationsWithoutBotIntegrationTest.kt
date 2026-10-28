@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
@@ -53,6 +54,16 @@ class NotificationsWithoutBotIntegrationTest(
 
     @AfterTest
     fun `drop the tenant`() {
+        val verification =
+            listOf(
+                "no_verifier_episodes",
+                "verification_stale_episodes",
+                "restore_verifications",
+                "verification_jobs",
+                "snapshots",
+            )
+        val admin = TestAdmin.of(jdbc)
+        for (table in verification) admin.update("delete from $table where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedule_fires where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedules where tenant_id = ?", tenant.id)
         tenant.drop()
@@ -77,6 +88,97 @@ class NotificationsWithoutBotIntegrationTest(
         repeat(3) { service.tick() }
 
         assertEquals(0, jdbc.queryForObject("select count(*) from notification_deliveries", Int::class.java))
+    }
+
+    private val at = java.sql.Timestamp.from(RUNS_NOW)
+
+    /** What a record of a verification refers to. */
+    private class Verifiable(
+        val source: java.util.UUID,
+        val snapshot: java.util.UUID,
+        val step: java.util.UUID,
+        val job: java.util.UUID,
+        val verifier: java.util.UUID,
+    )
+
+    /** A source with a snapshot, a closed job and a verifier. */
+    private fun verifiable(): Verifiable {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        val run = runs.start(tenant.id, source).id
+        tenant.finish(run)
+        val step = jdbc.queryForObject("select id from run_steps where run_id = ?", java.util.UUID::class.java, run)!!
+        val (snapshot, job, verifier) = List(3) { java.util.UUID.randomUUID() }
+        jdbc.update(
+            "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, 'vrf1', ?, 'verifier')",
+            verifier,
+            tenant.id,
+            at,
+        )
+        jdbc.update(
+            "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
+                "snapshot_id, total_bytes, added_bytes, created_at, partial) " +
+                "values (?, ?, ?, ?, ?, 'main', 'r', 's', 10, 1, ?, false)",
+            snapshot,
+            tenant.id,
+            source,
+            step,
+            tenant.agentId,
+            at,
+        )
+        jdbc.update(
+            "insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason, " +
+                "status, created_at, deadline, closed_at) " +
+                "values (?, ?, ?, ?, ?, 'postgresql', 'cycle', 'closed', ?, ?, ?)",
+            job,
+            tenant.id,
+            source,
+            snapshot,
+            "c".repeat(64),
+            at,
+            at,
+            at,
+        )
+        return Verifiable(source, snapshot, step, job, verifier)
+    }
+
+    @Test
+    fun `a failed verification, a stale episode and no verifier plan nothing without a bot`(output: CapturedOutput) {
+        clock.now = RUNS_NOW
+        val v = verifiable()
+        jdbc.update(
+            "insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id, " +
+                "verifier_agent_id, key_holders, status, level, verified_at) " +
+                "values (?, ?, ?, ?, ?, ?, ?, 1, 'failed', 3, ?)",
+            java.util.UUID.randomUUID(),
+            tenant.id,
+            v.job,
+            v.source,
+            v.snapshot,
+            v.step,
+            v.verifier,
+            at,
+        )
+        jdbc.update(
+            "insert into verification_stale_episodes (id, tenant_id, source_id, counted_from, opened_at, " +
+                "threshold_days, timezone) values (?, ?, ?, ?, ?, 2, 'UTC')",
+            java.util.UUID.randomUUID(),
+            tenant.id,
+            v.source,
+            at,
+            at,
+        )
+        jdbc.update(
+            "insert into no_verifier_episodes (id, tenant_id, sources, opened_at) values (?, ?, 1, ?)",
+            java.util.UUID.randomUUID(),
+            tenant.id,
+            at,
+        )
+
+        repeat(3) { service.tick() }
+
+        assertEquals(0, jdbc.queryForObject("select count(*) from notification_deliveries", Int::class.java))
+        val problems = output.all.lines().filter { (" WARN " in it || " ERROR " in it) && ".server.notify." in it }
+        assertEquals(1, problems.size, "only the startup warning: $problems")
     }
 
     @Test

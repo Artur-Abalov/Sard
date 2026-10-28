@@ -112,6 +112,14 @@ func newSetupHost(t *testing.T) *setupHost {
 		h.readOwned = append(h.readOwned, ownedRead{p, uid})
 		return os.ReadFile(p)
 	}
+	h.deps.readBinding = func(p string) ([]byte, secrets.Info, error) {
+		info, err := h.deps.stat(p)
+		if err != nil {
+			return nil, info, err
+		}
+		data, err := h.deps.readFile(p)
+		return data, info, err
+	}
 	h.deps.terminal = func(io.Writer) hostsetup.Terminal { return nil }
 	h.deps.stdoutTerminal = true // the conventions of restic-keys.feature: stdout is a terminal unless a scenario says otherwise
 	h.deps.openFile = func(p string) (io.ReadCloser, error) { return os.Open(p) }

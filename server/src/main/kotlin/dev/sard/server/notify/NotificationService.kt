@@ -6,6 +6,7 @@ package dev.sard.server.notify
 import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 
 private val log = LoggerFactory.getLogger(NotificationService::class.java)
 
@@ -58,11 +59,13 @@ class NotificationService(
     private val deliveries: Deliveries,
     private val episodes: OverdueDeliveries,
     private val certificates: CertificateDeliveries,
+    private val verifications: VerificationDeliveries,
     channels: List<NotificationChannel>,
     private val formatter: NotificationFormatter,
     private val alertFormatter: SkipAlertFormatter,
     private val overdueFormatter: OverdueFormatter,
     private val certificateFormatter: CertificateFormatter,
+    private val verificationFormatter: VerificationFormatter,
     private val policy: RetryPolicy,
     private val settings: QueueSettings,
     private val clock: Clock,
@@ -81,22 +84,42 @@ class NotificationService(
         // One cut-off for every subject: older ones expire instead of being planned.
         val since = now - settings.ttl
         for (channel in channels.keys) {
-            val runs = deliveries.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
-                deliveries.plan(tenantId, tenantRuns, channel, now)
-            }
-            val alerts = deliveries.unplannedAlerts(channel, since, settings.batch)
-            for ((tenantId, fires) in alerts.groupBy({ it.tenantId }, { it.fireId })) {
-                deliveries.planAlerts(tenantId, fires, channel, now)
-            }
-            val overdue = episodes.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
-                episodes.plan(tenantId, tenantEpisodes, channel, now)
-            }
-            val expiring = certificates.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
-                certificates.plan(tenantId, tenantEvents, channel, now)
-            }
+            planOperations(channel, since, now)
+            planVerifications(channel, since, now)
+        }
+    }
+
+    private fun planOperations(
+        channel: String,
+        since: Instant,
+        now: Instant,
+    ) {
+        val runs = deliveries.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
+            deliveries.plan(tenantId, tenantRuns, channel, now)
+        }
+        val alerts = deliveries.unplannedAlerts(channel, since, settings.batch)
+        for ((tenantId, fires) in alerts.groupBy({ it.tenantId }, { it.fireId })) {
+            deliveries.planAlerts(tenantId, fires, channel, now)
+        }
+        val overdue = episodes.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
+            episodes.plan(tenantId, tenantEpisodes, channel, now)
+        }
+        val expiring = certificates.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
+            certificates.plan(tenantId, tenantEvents, channel, now)
+        }
+    }
+
+    private fun planVerifications(
+        channel: String,
+        since: Instant,
+        now: Instant,
+    ) {
+        val checked = verifications.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantSubjects) in checked.groupBy { it.tenantId }) {
+            verifications.plan(tenantId, tenantSubjects, channel, now)
         }
     }
 
@@ -139,6 +162,7 @@ class NotificationService(
             is Claimed.Alert -> alertFormatter.format(claimed.notice)
             is Claimed.Overdue -> overdueFormatter.format(claimed.notice)
             is Claimed.Certificate -> claimed.notice?.let(certificateFormatter::format)
+            is Claimed.Verifying -> verificationFormatter.message(claimed)
         }
 
     private fun finish(
@@ -170,3 +194,10 @@ class NotificationService(
         log.warn("Notification of {} through {} {}: {}", delivery.subject, delivery.channel, status, reason)
     }
 }
+
+private fun VerificationFormatter.message(claimed: Claimed.Verifying): Message? =
+    when (claimed) {
+        is Claimed.Verification -> verification(claimed.notice)
+        is Claimed.Stale -> stale(claimed.notice)
+        is Claimed.NoVerifier -> noVerifier(claimed.notice)
+    }

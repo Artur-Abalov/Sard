@@ -134,6 +134,7 @@ class ScheduleNotificationsIntegrationTest(
     fun `drop the tenant`() {
         TestAdmin.of(jdbc).execute("drop trigger if exists fail_alert_fires on schedule_fires")
         jdbc.update("delete from notification_deliveries where tenant_id = ?", tenant.id)
+        jdbc.update("delete from no_verifier_episodes where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedule_fires where tenant_id = ?", tenant.id)
         jdbc.update("update runs set schedule_id = null where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedules where tenant_id = ?", tenant.id)
@@ -248,6 +249,30 @@ class ScheduleNotificationsIntegrationTest(
         fireNight(8)
         ticks()
         assertEquals(2, alerts().size)
+    }
+
+    @Test
+    fun `Начавшееся состояние без верификатора планируется и уходит той же очередью`() {
+        jdbc.update(
+            "insert into no_verifier_episodes (id, tenant_id, sources, opened_at) values (?, ?, 2, ?)",
+            UUID.randomUUID(),
+            tenant.id,
+            Timestamp.from(clock.now),
+        )
+
+        ticks()
+
+        assertEquals(
+            1,
+            jdbc.queryForObject(
+                "select count(*) from notification_deliveries where tenant_id = ? and status = 'delivered' " +
+                    "and no_verifier_episode_id is not null",
+                Int::class.java,
+                tenant.id,
+            ),
+        )
+        assertEquals(1, fake.requests.size)
+        assertTrue(fake.shownText(0).startsWith("⚠️ Проверка восстановления не работает"), fake.shownText(0))
     }
 
     @Test
@@ -377,11 +402,13 @@ class ScheduleNotificationsIntegrationTest(
                 Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                VerificationDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(CapturingChannel()),
                 formatter,
                 alertFormatter,
                 { null },
                 { Message(Message.Text("certificate")) },
+                VerificationNoticeFormatter(NoticeLanguage.EN, null),
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = Duration.ofMinutes(5), ttl = TTL),
                 clock,
@@ -413,11 +440,13 @@ class ScheduleNotificationsIntegrationTest(
                 Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                VerificationDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(channel),
                 formatter,
                 alertFormatter,
                 { null },
                 { Message(Message.Text("certificate")) },
+                VerificationNoticeFormatter(NoticeLanguage.EN, null),
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = lease, ttl = TTL),
                 clock,

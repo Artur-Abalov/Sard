@@ -23,7 +23,7 @@ S3» ниже) и **SFTP** (срез A8b-2, раздел «Репозитори�
 Все команды выполняются через `sudo` — от имени root:
 
 ```bash
-sudo sard-agent secret set pg-prod --stdin < /root/pg-prod.pass
+sudo sard-agent secret set pg-prod --plugin postgresql --target db.example.com:5432/prod --stdin < /root/pg-prod.pass
 sudo sard-agent repo add main /srv/sard/main
 sudo sard-agent check
 ```
@@ -91,7 +91,9 @@ list` и `secret list` тоже отказывают. Команды **нико�
 ## Секреты
 
 ```bash
-sudo sard-agent secret set <имя> [--stdin | --from-file <путь>] [--no-restart]
+sudo sard-agent secret set <имя> --plugin <плагин> --target <цель> [--target …] \
+  [--auth <методы>] [--allow-tls require|disable] [--ca-file <путь>] [--allow-no-channel-binding] \
+  [--stdin | --from-file <путь>] [--no-restart]
 sudo sard-agent secret list [--json]
 sudo sard-agent secret remove <имя> [--no-restart]
 ```
@@ -111,11 +113,21 @@ sudo sard-agent secret remove <имя> [--no-restart]
 через `printf '%s' "$VALUE" | sudo sard-agent secret set db --stdin`, а не
 `echo`.
 
-Повтор с тем же значением ничего не меняет (`unchanged`, без перезапуска и
-строки аудита). Новое значение существующего секрета заменяет старое атомарно и
+Секрет всегда привязан к плагину и целям (S11): `--plugin` и хотя бы один
+`--target` обязательны, без них команда ничего не пишет (код 2); неизвестный
+плагин — `PLUGIN_UNKNOWN`. Агент отдаёт значение только этому плагину и только
+этим целям, что бы ни прислал сервер. Привязка пишется раньше значения и фрагмента
+(новое значение не встретит старую привязку) в
+`secret-bindings/<имя>.yaml` рядом с главным конфигом (root, группа службы,
+`0640`, каталог `0750`); повторный `secret set` заменяет её целиком. Шаблоны целей
+и флаги — [плагин postgresql](../plugins/postgresql.md#привязка-секрета).
+
+Повтор с тем же значением и той же привязкой ничего не меняет (`unchanged`, без
+перезапуска и строки аудита). Новое значение существующего секрета заменяет старое атомарно и
 применяется перезапуском: маскирование значений в логах шагов строится при
-старте агента. `secret list` показывает только имена (`NAME DEFINED_IN`) и не
-открывает файлы значений. `secret remove` удаляет фрагмент и файл значения;
+старте агента. `secret list` показывает имена и привязки (`NAME DEFINED_IN BOUND_TO`; в
+`--json` — объект `binding` или `null` и `binding_error`) и не открывает файлы
+значений. `secret remove` удаляет фрагмент, привязку и файл значения;
 несуществующего секрета нет — `nothing to remove`, код 0.
 
 ## Локальный репозиторий
