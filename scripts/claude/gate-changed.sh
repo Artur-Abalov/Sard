@@ -35,7 +35,7 @@ modules_for() {
     server/* | build.gradle.kts | settings.gradle.kts | gradle.properties | gradle/* | gradlew) echo server ;;
     web/*) echo web ;;
     scripts/gate.sh | Makefile) echo "${ORDER[@]}" ;;
-    scripts/mutate-exec.sh | scripts/mutation-weights/* | scripts/lib/lpt.awk | .golangci.yml | go.work | go.work.sum) echo "${GO[@]}" ;;
+    scripts/mutate-exec.sh | scripts/mutation-weights/* | scripts/lib/lpt.awk | scripts/lib/covering-tests.awk | .golangci.yml | go.work | go.work.sum) echo "${GO[@]}" ;;
   esac
 }
 

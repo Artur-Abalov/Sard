@@ -193,6 +193,9 @@ jobs:
       # The split of the e2e classes over the e2e-shard runners.
       - name: e2e shards
         run: scripts/test-e2e-shard.sh
+      # The tests a Go mutant runs against first (docs/adr/0057-go-mutation-exec.md).
+      - name: Covering tests of a mutant
+        run: scripts/test-covering-tests.sh
       # The helper that scripts use to go through the first-start wizard by the code from the log (F4a).
       - name: Setup wizard helper
         run: scripts/test-setup-wizard.sh

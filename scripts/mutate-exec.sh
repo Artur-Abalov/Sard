@@ -17,6 +17,17 @@
 # - Test binaries run with -test.failfast: the first failing test kills the
 #   mutant, so no later test of the package is started for it. It changes the
 #   time of a kill, never whether a mutant is killed.
+# - Covering tests first: once per package and process every test runs alone
+#   with coverage, child processes included (GOCOVERDIR), into a map of the
+#   blocks each test covers. A mutant runs first against the tests covering
+#   its changed lines (scripts/lib/covering-tests.awk); if one fails, the
+#   mutant is killed. If they all pass, or no test covers the lines (package
+#   level variables are in no block), every test runs, as before: a survivor
+#   is always one that every test lets through. A test that fails or hangs
+#   alone leaves the package without a map, reported on a "mutate-exec: NOMAP"
+#   line; its mutants run against every test. Only a package whose unmutated
+#   tests take SELECT_MIN_BASELINE_MS or more gets a map: below that the choice
+#   costs more than it saves.
 # - Test binaries run with at most MEMORY_LIMIT_MB of address space: a
 #   mutant that allocates without end is killed by "out of memory", not the
 #   runner by the kernel.
@@ -35,6 +46,14 @@ BASELINE_LIMIT_S=600
 # of taking the host down. Every agent, sdk, cli and tools package passes
 # well within it unmutated.
 MEMORY_LIMIT_MB=3072
+# The longest -test.run pattern of covering tests, in bytes; a longer choice
+# runs every test. A single exec argument is limited to 128 KiB.
+SELECT_MAX_BYTES=65536
+# Measured 2026-10-28: the map pays off for cmd/sard-agent (~10 s), postgresql
+# and executor; packages of tens of milliseconds ran twice as long with it.
+SELECT_MIN_BASELINE_MS=1000
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${MUTATE_ORIGINAL:?}" "${MUTATE_CHANGED:?}" "${MUTATE_PACKAGE:?}" "${MUTATE_STATE_DIR:?}"
 
@@ -42,17 +61,52 @@ say() { echo "mutate-exec: $*" >&2; }
 
 now_ms() { echo $(($(date +%s%N) / 1000000)); }
 
-# run_tests <binary> <dir> <limit_s>: the test binary in its package directory,
-# killed after limit_s. Prints the elapsed milliseconds; returns the binary's
-# status, or 124 on timeout.
+# run_tests <binary> <dir> <limit_s> [flag...]: the test binary in its package
+# directory, killed after limit_s. Prints the elapsed milliseconds; returns the
+# binary's status, or 124 on timeout.
 run_tests() {
-  local start status
+  local bin="$1" in="$2" limit="$3" start status
+  shift 3
   start="$(now_ms)"
-  (ulimit -v $((MEMORY_LIMIT_MB * 1024)) && cd "$2" && timeout --signal=KILL "$3" "$1" -test.count=1 -test.timeout=0 -test.failfast >/dev/null 2>&1)
+  (ulimit -v $((MEMORY_LIMIT_MB * 1024)) && cd "$in" && timeout --signal=KILL "$limit" "$bin" -test.count=1 -test.timeout=0 -test.failfast "$@" >/dev/null 2>&1)
   status=$?
   echo $(($(now_ms) - start))
   [ "$status" -eq 137 ] && status=124
   return "$status"
+}
+
+# covering_map: every test of the package alone, with coverage, into
+# $work/covering.idx ("<test> <cover profile line>" per covered block). Leaves
+# no map if a test fails or hangs alone.
+covering_map() {
+  local start
+  start="$(now_ms)"
+  go test -c -cover -covermode=set -o "$work/cover.test" "$MUTATE_PACKAGE" >/dev/null 2>&1 &&
+    (cd "$dir" && "$work/cover.test" -test.list '.*' >"$work/tests" 2>/dev/null) ||
+    { say "NOMAP $MUTATE_PACKAGE: the coverage build or the test list failed"; return; }
+  mkdir -p "$work/cover"
+  if ! BIN="$work/cover.test" DIR="$dir" OUT="$work/cover" LIMIT="$BASELINE_LIMIT_S" MEM_KB=$((MEMORY_LIMIT_MB * 1024)) \
+    xargs -d '\n' -P "$(nproc)" -I{} bash -c 'd="$OUT/$1" && mkdir -p "$d" && ulimit -v "$MEM_KB" && cd "$DIR" &&
+      GOCOVERDIR="$d" timeout --signal=KILL "$LIMIT" "$BIN" -test.run "^$1\$" -test.count=1 -test.timeout=0 \
+        -test.gocoverdir="$d" -test.coverprofile="$d.out" >/dev/null 2>&1 || { echo "$1"; exit 1; }' _ {} \
+    <"$work/tests" >"$work/cover-failed"; then
+    say "NOMAP $MUTATE_PACKAGE: fails or hangs alone: $(paste -sd' ' "$work/cover-failed")"
+    return
+  fi
+  while IFS= read -r t; do
+    awk -v t="$t" 'NR > 1 && $NF > 0 { print t, $0 }' "$work/cover/$t.out"
+  done <"$work/tests" >"$work/covering.tmp"
+  mv "$work/covering.tmp" "$work/covering.idx"
+  say "COVERMAP $MUTATE_PACKAGE $(wc -l <"$work/tests") tests $(($(now_ms) - start))ms"
+}
+
+# judge <status>: a run of the mutant that failed kills it.
+judge() {
+  case $1 in
+    0) return ;;
+    124) say "TIMEOUT $MUTATE_PACKAGE $original after ${limit_s}s (baseline ${baseline_ms}ms)"; exit 0 ;;
+    *) exit 0 ;;
+  esac
 }
 
 key="$(printf '%s' "$MUTATE_PACKAGE" | md5sum | cut -c1-16)"
@@ -70,6 +124,7 @@ if [ ! -f "$work/baseline-ms" ]; then
   elif ms="$(run_tests "$work/base.test" "$dir" "$BASELINE_LIMIT_S")"; then
     echo "$ms" >"$work/baseline-ms"
     say "BASELINE $MUTATE_PACKAGE ${ms}ms"
+    [ "$ms" -ge "$SELECT_MIN_BASELINE_MS" ] && covering_map
   else
     say "ERROR unmutated tests of $MUTATE_PACKAGE fail or hang (${ms}ms); mutants cannot be judged"; exit 3
   fi
@@ -91,9 +146,19 @@ if ! go test -c -overlay "$work/overlay.json" -o "$work/mutant.test" "$MUTATE_PA
 fi
 [ -x "$work/mutant.test" ] || exit 1
 
-ms="$(run_tests "$work/mutant.test" "$dir" "$limit_s")"
-case $? in
-  0) diff -u --label original --label mutant "$original" "$changed" >&2; exit 1 ;;
-  124) say "TIMEOUT $MUTATE_PACKAGE $original after ${limit_s}s (baseline ${baseline_ms}ms)"; exit 0 ;;
-  *) exit 0 ;;
-esac
+# The covering tests first, unless they are none, all, or too many to name.
+if [ -s "$work/covering.idx" ]; then
+  diff "$original" "$changed" |
+    awk -f "$ROOT/scripts/lib/covering-tests.awk" -v idx="$work/covering.idx" -v file="$(basename "$original")" >"$work/selected"
+  selected="$(paste -sd'|' "$work/selected")"
+  if [ -n "$selected" ] && [ "$(wc -l <"$work/selected")" -lt "$(wc -l <"$work/tests")" ] &&
+    [ "$(printf '%s' "$selected" | wc -c)" -le "$SELECT_MAX_BYTES" ]; then
+    run_tests "$work/mutant.test" "$dir" "$limit_s" -test.run "^($selected)\$" >/dev/null
+    judge $?
+  fi
+fi
+
+run_tests "$work/mutant.test" "$dir" "$limit_s" >/dev/null
+judge $?
+diff -u --label original --label mutant "$original" "$changed" >&2
+exit 1
