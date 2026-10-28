@@ -187,6 +187,22 @@ func TestBackupFromStdinWithExitCode3FailsWithoutASnapshot(t *testing.T) {
 	}
 }
 
+func TestBackupFromStdinWithExitCode3AndNoOutputStillFails(t *testing.T) {
+	f := backupFixture(t, reply{code: 3, readStdin: true})
+	req := restic.BackupRequest{Stdin: write("x"), StdinFilename: "db.sql"}
+	sum, err := f.build().Backup(context.Background(), req, nil)
+	want := "restic backup: exit code 3 on a stream: the stream may not have been stored completely"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v", err)
+	}
+	if sum != (restic.BackupSummary{}) {
+		t.Errorf("summary = %+v", sum)
+	}
+	if errors.Is(err, restic.ErrUnreadableSource) {
+		t.Errorf("err matches ErrUnreadableSource: %v", err)
+	}
+}
+
 func TestBackupFromStdinWithExitCode3NamesResticsMessage(t *testing.T) {
 	f := backupFixture(t, reply{stderr: "backup-missing.stderr", code: 3, readStdin: true})
 	req := restic.BackupRequest{Stdin: write("x"), StdinFilename: "db.sql"}
