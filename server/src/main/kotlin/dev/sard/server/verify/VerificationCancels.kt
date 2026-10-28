@@ -19,7 +19,7 @@ import java.util.UUID
 private const val LOCK = """
     select status, run_id, source_id, snapshot_ref, repository_id, cancel_requested_at
     from verification_jobs where tenant_id = :tenant and id = :id for update"""
-private const val OF_RUN = "select id, true from verification_jobs where tenant_id = :tenant and run_id = :run"
+private const val OF_RUN = "select id from verification_jobs where tenant_id = :tenant and run_id = :run"
 private const val IS_ATTEMPT =
     "select true from runs where tenant_id = :tenant and id = :run and trigger = 'verification'"
 private const val MARK = """
@@ -154,12 +154,7 @@ class VerificationCancels(
                 cancelledAt = now,
             )
         history.record(session, tenantId, entry, now)
-        session
-            .createNativeMutationQuery(CLOSE)
-            .setParameter("now", now)
-            .setParameter("tenant", tenantId)
-            .setParameter("id", job.id)
-            .executeUpdate()
+        closeJob(session, tenantId, job.id, now)
         session
             .createNativeMutationQuery(QUEUED_RESULT)
             .setParameter("tenant", tenantId)
@@ -200,10 +195,9 @@ class VerificationCancels(
         runId: UUID,
     ): UUID? =
         session
-            .createNativeQuery(OF_RUN, Array<Any?>::class.java)
+            .createNativeQuery(OF_RUN, UUID::class.java)
             .setParameter("tenant", tenantId)
             .setParameter("run", runId)
             .list()
             .firstOrNull()
-            ?.let { it[0] as UUID }
 }

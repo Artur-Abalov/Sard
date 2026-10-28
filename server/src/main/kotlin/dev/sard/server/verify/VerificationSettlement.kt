@@ -132,7 +132,7 @@ class VerificationSettlement(
             )
         history.record(session, tenantId, entry, now)
         if (ended.cancelRequestedAt != null) recordCancelResult(session, tenantId, ended, cancelled)
-        close(session, tenantId, ended.jobId, now)
+        closeJob(session, tenantId, ended.jobId, now)
     }
 
     /** How the job's cancel ended: the attempt's own result when it was cancelled, else the verdict came first. */
@@ -155,18 +155,6 @@ class VerificationSettlement(
             .setParameter("id", ended.jobId)
             .executeUpdate()
     }
-
-    private fun close(
-        session: Session,
-        tenantId: UUID,
-        jobId: UUID,
-        now: Instant,
-    ) = session
-        .createNativeMutationQuery(CLOSE)
-        .setParameter("now", now)
-        .setParameter("tenant", tenantId)
-        .setParameter("id", jobId)
-        .executeUpdate()
 
     private fun requeue(
         session: Session,
