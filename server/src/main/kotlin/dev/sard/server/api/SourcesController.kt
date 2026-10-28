@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import java.util.Optional
 import java.util.UUID
 
 private const val REPOSITORY_NAME = "A repository from the agent's last Register; its snapshots live there"
@@ -28,6 +29,7 @@ private const val BACKUP_TIMEOUT =
     "The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)"
 private const val RESTORE_TIMEOUT =
     "The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default"
+private const val OMITTED = "; omitted: kept on a replace, the default on a create (ДJ13)"
 private const val CONFIG = "Plugin config, valid against the plugin's configSchema; secrets by name only"
 
 @Schema(description = "What to back up, where from and where to")
@@ -40,10 +42,22 @@ data class SourceInput(
     val repositoryName: String,
     @field:Schema(description = CONFIG)
     val config: Map<String, Any?>,
-    @field:Schema(description = BACKUP_TIMEOUT, nullable = true, minimum = "1", maximum = "1440")
-    val backupTimeoutMinutes: Int? = null,
-    @field:Schema(description = RESTORE_TIMEOUT, nullable = true, minimum = "1", maximum = "1440")
-    val restoreTimeoutMinutes: Int? = null,
+    @field:Schema(
+        description = BACKUP_TIMEOUT + OMITTED,
+        implementation = Int::class,
+        nullable = true,
+        minimum = "1",
+        maximum = "1440",
+    )
+    val backupTimeoutMinutes: Optional<Int>? = null,
+    @field:Schema(
+        description = RESTORE_TIMEOUT + OMITTED,
+        implementation = Int::class,
+        nullable = true,
+        minimum = "1",
+        maximum = "1440",
+    )
+    val restoreTimeoutMinutes: Optional<Int>? = null,
 ) {
     // Spring logs the bodies it reads and writes at DEBUG: never the config (its values stay out of the log).
     override fun toString() = "SourceInput(name=$name, agentId=$agentId, plugin=$plugin)"

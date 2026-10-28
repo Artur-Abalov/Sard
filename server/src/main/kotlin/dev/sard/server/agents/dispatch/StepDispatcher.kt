@@ -45,7 +45,7 @@ class StepDispatcher(
     roles: RoleLedger,
     private val startGrace: Duration = Duration.ZERO,
     /** Closes the runs whose wait for an offline agent is over (J1c); never throws. */
-    private val expireWaits: () -> Unit = {},
+    private val expireWaits: () -> Unit,
     private val waiting: () -> WaitingSteps,
 ) {
     private val locks = ConcurrentHashMap<UUID, Any>()

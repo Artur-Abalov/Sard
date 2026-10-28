@@ -385,6 +385,26 @@ describe('sources', () => {
     config: {},
   }
 
+  test('a replace keeps an omitted timeout, null resets it, a number stores it (ДJ13)', async () => {
+    const timed = { ...input, backupTimeoutMinutes: 120, restoreTimeoutMinutes: 240 }
+    const created = await api.POST('/api/v1/sources', { body: timed })
+    const path = { params: { path: { sourceId: created.data?.id ?? '' } } }
+    const put = async (body: typeof input & { backupTimeoutMinutes?: number | null }) =>
+      (await api.PUT('/api/v1/sources/{sourceId}', { ...path, body })).data
+    expect(await put(input)).toMatchObject({
+      backupTimeoutMinutes: 120,
+      restoreTimeoutMinutes: 240,
+    })
+    expect(await put({ ...input, backupTimeoutMinutes: null })).toMatchObject({
+      backupTimeoutMinutes: null,
+      restoreTimeoutMinutes: 240,
+    })
+    expect(await put({ ...input, backupTimeoutMinutes: 30 })).toMatchObject({
+      backupTimeoutMinutes: 30,
+      restoreTimeoutMinutes: 240,
+    })
+  })
+
   test('create, read, replace and delete', async () => {
     const created = await api.POST('/api/v1/sources', { body: input })
     expect(created.response.status).toBe(201)

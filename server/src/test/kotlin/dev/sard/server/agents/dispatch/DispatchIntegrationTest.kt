@@ -476,6 +476,7 @@ class DispatchIntegrationTest(
                 settings.lostAfter,
                 RecordingDispatchMetrics(),
                 roles,
+                expireWaits = {},
             ) {
                 dev.sard.server.runs
                     .WaitingSteps(0, 0)

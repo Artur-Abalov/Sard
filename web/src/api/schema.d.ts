@@ -1018,12 +1018,12 @@ export interface components {
             };
             /**
              * Format: int32
-             * @description The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)
+             * @description The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults); omitted: kept on a replace, the default on a create (ДJ13)
              */
             backupTimeoutMinutes?: number | null;
             /**
              * Format: int32
-             * @description The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default
+             * @description The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default; omitted: kept on a replace, the default on a create (ДJ13)
              */
             restoreTimeoutMinutes?: number | null;
         };

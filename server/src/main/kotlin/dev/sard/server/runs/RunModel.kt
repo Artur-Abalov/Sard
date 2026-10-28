@@ -144,6 +144,9 @@ data class SourceDraft(
     /** The backup and restore timeouts of the source in minutes; null: the tenant's default (J1b). */
     val backupTimeoutMinutes: Int? = null,
     val restoreTimeoutMinutes: Int? = null,
+    /** A replace leaves the stored timeout as it is (the caller omitted it, ДJ13); a create ignores these. */
+    val keepBackupTimeout: Boolean = false,
+    val keepRestoreTimeout: Boolean = false,
 ) {
     override fun toString(): String {
         val names = "plugin=$plugin, repositoryName=$repositoryName"

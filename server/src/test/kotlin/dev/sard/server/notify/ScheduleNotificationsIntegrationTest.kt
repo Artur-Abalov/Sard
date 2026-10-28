@@ -380,6 +380,7 @@ class ScheduleNotificationsIntegrationTest(
                 StepsQueued.NONE,
                 settings.copy(skipAlertThreshold = 5),
                 SchedulerMetrics.NONE,
+                {},
             )
 
         for (night in 1..4) fireNight(night, strict)

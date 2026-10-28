@@ -86,7 +86,7 @@ class Scheduler(
     private val settings: SchedulerSettings,
     private val metrics: SchedulerMetrics,
     /** Closes the runs whose wait for an offline agent is over (J1c); never throws. */
-    private val expireWaits: () -> Unit = {},
+    private val expireWaits: () -> Unit,
 ) {
     fun tick() {
         // Before the fires are chosen: a fire at the moment a wait ends starts a run, it does not skip (Р-J12).
