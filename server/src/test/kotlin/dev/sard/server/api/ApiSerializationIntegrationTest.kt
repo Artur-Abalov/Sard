@@ -91,6 +91,9 @@ class ApiSerializationIntegrationTest(
                     fingerprint =
                         Fingerprint("f".repeat(64), 1, "files", listOf(FingerprintFact("files", "exact", "3")), 2),
                     warnings = listOf("the size fell by 50% since the last snapshot (20 → 10 bytes)"),
+                    unreadableCount = null,
+                    unreadablePaths = emptyList(),
+                    incompleteReason = null,
                 ),
             restore = RestoreOutput("/r/etc", 2, 4, null, null, null, ownersRestored = false, leftover = null),
             RestoreOutcome.RESTORED,
@@ -186,6 +189,7 @@ class ApiSerializationIntegrationTest(
             partial = false,
             restorable = true,
             restoreBlockedReason = null,
+            incompleteReason = null,
         )
     private val schedule =
         Schedule(
@@ -199,7 +203,7 @@ class ApiSerializationIntegrationTest(
             at,
             0,
             notifyOnSuccess = false,
-            lastRun = ScheduleLastRun(id, RunTrigger.SCHEDULE, RunStatus.FAILED, at, at),
+            lastRun = ScheduleLastRun(id, RunTrigger.SCHEDULE, RunStatus.FAILED, at, at, partial = true),
             createdAt = at,
             updatedAt = at,
         )
@@ -234,6 +238,7 @@ class ApiSerializationIntegrationTest(
             catchUp = null,
             kind = RunKind.BACKUP,
             requestedBy = "admin",
+            partial = true,
         )
 
     private fun onboarding(
@@ -443,6 +448,7 @@ class ApiSerializationIntegrationTest(
                 kind = RunKind.RESTORE,
                 requestedBy = "admin",
                 restore = RunRestore("4f1c", at, "main", mapOf("destination" to "etc/x"), "/r/etc/x"),
+                partial = false,
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
             LogPage(

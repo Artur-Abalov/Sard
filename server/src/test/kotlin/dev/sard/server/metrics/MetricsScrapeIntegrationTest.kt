@@ -244,6 +244,25 @@ class MetricsScrapeIntegrationTest(
     }
 
     @Test
+    fun `Неполный бэкап виден в счётчике неполных сразу, без тика состояния`() {
+        val scene = tenant()
+        val run = scene.run(scene.source(), T0, status = "failed", steps = 1)
+        val output =
+            """{"kind":"backup","snapshotId":"s","totalBytes":1,"addedBytes":1,"repositoryId":"r",""" +
+                """"partial":true,"unreadableCount":2,"unreadablePaths":["/srv/QA-PATH-MARKER"]}"""
+        jdbc.update("update run_steps set output = ?::jsonb where run_id = ?", output, run.id)
+        val before = scrape()
+
+        announcer.announce(scene.id, run.steps.single())
+
+        val now = scrape()
+        val partial = { e: Exposition, reason: String -> e.value("sard_run_partial_total", "reason" to reason) }
+        assertEquals(partial(before, "unreadable_files")!! + 1, partial(now, "unreadable_files"))
+        assertEquals(partial(before, "unknown"), partial(now, "unknown"))
+        assertFalse("QA-PATH-MARKER" in now.text)
+    }
+
+    @Test
     fun `Запуск, отменённый до начала, не попадает в гистограмму, а запуск проверки - вид verify`() {
         val scene = tenant()
         val source = scene.source()

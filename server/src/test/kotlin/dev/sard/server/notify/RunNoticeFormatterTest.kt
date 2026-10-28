@@ -483,33 +483,7 @@ class RunNoticeFormatterTest {
         assertEquals(expected, format(rejected).text())
     }
 
-    // --- a snapshot that was made
-
-    @Test
-    fun `Ошибка с сохранённым снимком сообщает о снимке`() {
-        val failed = notice(StepState.FAILED, "11 files could not be read", backup = GIB)
-        val expected =
-            """
-            ❌ Бэкап завершился ошибкой: db-main
-            Агент: db1.example.com
-            Длительность: 2 мин 30 с
-            Причина: 11 files could not be read
-            Снимок создан, но неполный: часть данных в него не попала. Восстановить его можно только на хосте командой repo restore.
-            Всего: 1,5 ГиБ, добавлено: 12,3 МиБ
-            Запуск: $RUN
-            $LINK
-            """.trimIndent()
-        assertEquals(expected, format(failed).text())
-    }
-
-    @Test
-    fun `Ошибка с сохранённым снимком на английском`() {
-        val message = format(notice(StepState.FAILED, "boom", backup = GIB), NoticeLanguage.EN)
-        val note =
-            "The snapshot was created but is incomplete: part of the data did not get into it. " +
-                "It can be restored only on the host, with repo restore."
-        assertEquals(listOf("Reason: boom", note), message.lines().subList(3, 5))
-    }
+    // --- a snapshot that was made (the reasons of incompleteness: PartialNoticeFormatterTest)
 
     @Test
     fun `Ошибка без снимка не упоминает снимок и размеры`() {

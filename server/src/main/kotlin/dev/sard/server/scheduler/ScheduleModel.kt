@@ -71,6 +71,8 @@ data class LastRun(
     val status: RunState,
     val queuedAt: Instant,
     val finishedAt: Instant?,
+    /** The run's backup output is that of a failed result: a snapshot exists but is incomplete (PL7-2). */
+    val partial: Boolean = false,
 )
 
 /** A source's schedule; [nextRunAt] is null while disabled, [catchUpAt] set while a catch-up is owed. */

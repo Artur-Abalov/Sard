@@ -10,6 +10,7 @@ import dev.sard.server.notify.telegram.TEST_TOKEN
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.runs.IncompleteReason
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.Runs
@@ -479,7 +480,8 @@ class NotificationsIntegrationTest(
 
         assertEquals(StepState.FAILED, notice.stepStatus)
         assertEquals("11 files could not be read", notice.message)
-        assertEquals(BackupSizes(totalBytes = 1_000, addedBytes = 100), notice.backup)
+        val unknown = BackupSizes(totalBytes = 1_000, addedBytes = 100, incompleteReason = IncompleteReason.UNKNOWN)
+        assertEquals(unknown, notice.backup)
     }
 
     @Test

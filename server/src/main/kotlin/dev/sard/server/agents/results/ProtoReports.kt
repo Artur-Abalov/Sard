@@ -97,6 +97,8 @@ object ProtoReports {
                 repositoryId,
                 fingerprint = sent,
                 totalFiles = totalFiles.takeIf { sent != null },
+                unreadableCount = unreadableCount.takeIf { hasUnreadableCount() },
+                unreadablePaths = unreadablePathsList.toList(),
             )
         }
 

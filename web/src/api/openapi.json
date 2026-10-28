@@ -4469,9 +4469,13 @@
           "finishedAt" : {
             "type" : [ "string", "null" ],
             "format" : "date-time"
+          },
+          "partial" : {
+            "type" : "boolean",
+            "description" : "The backup failed after saving a snapshot: it is incomplete (RunSummary.partial)"
           }
         },
-        "required" : [ "finishedAt", "id", "queuedAt", "status", "trigger" ]
+        "required" : [ "finishedAt", "id", "partial", "queuedAt", "status", "trigger" ]
       },
       "PasswordChangeRequest" : {
         "type" : "object",
@@ -4774,9 +4778,29 @@
             "items" : {
               "type" : "string"
             }
+          },
+          "unreadableCount" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "How many distinct paths restic could not read; null when the agent did not say (older than PL7-2) or the output is not partial"
+          },
+          "unreadablePaths" : {
+            "type" : "array",
+            "description" : "The first of them (at most 10) in the order restic reported them: paths only, masked by the agent, each cut at 4096 characters; empty when unreadableCount is null or 0",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "incompleteReason" : {
+            "description" : "Why the snapshot is incomplete; null when the output is not partial",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/IncompleteReason"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "addedBytes", "fingerprint", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes", "totalFiles", "warnings" ]
+        "required" : [ "addedBytes", "fingerprint", "incompleteReason", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes", "totalFiles", "unreadableCount", "unreadablePaths", "warnings" ]
       },
       "CatchUp" : {
         "type" : "object",
@@ -4854,6 +4878,10 @@
           }
         },
         "required" : [ "name", "rule", "value" ]
+      },
+      "IncompleteReason" : {
+        "type" : "string",
+        "enum" : [ "unreadable_files", "snapshot_set_incomplete", "unknown" ]
       },
       "RestoreOutcome" : {
         "type" : "string",
@@ -4971,9 +4999,13 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "partial" : {
+            "type" : "boolean",
+            "description" : "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "partial", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
       },
       "RunKind" : {
         "type" : "string",
@@ -6261,9 +6293,17 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "incompleteReason" : {
+            "description" : "Why it is incomplete, as the backup output of its step says; null when it is whole",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/IncompleteReason"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "addedBytes", "agentId", "createdAt", "forgottenAt", "id", "partial", "repositoryId", "repositoryName", "restorable", "restoreBlockedReason", "runId", "snapshotId", "sourceId", "stepId", "totalBytes" ]
+        "required" : [ "addedBytes", "agentId", "createdAt", "forgottenAt", "id", "incompleteReason", "partial", "repositoryId", "repositoryName", "restorable", "restoreBlockedReason", "runId", "snapshotId", "sourceId", "stepId", "totalBytes" ]
       },
       "SnapshotPage" : {
         "type" : "object",
@@ -6686,9 +6726,13 @@
           "requestedBy" : {
             "type" : [ "string", "null" ],
             "description" : "Who started a manual run: \"admin\" in the open core, which has one administrator; null for a schedule"
+          },
+          "partial" : {
+            "type" : "boolean",
+            "description" : "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "partial", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
       },
       "LogLevel" : {
         "type" : "string",

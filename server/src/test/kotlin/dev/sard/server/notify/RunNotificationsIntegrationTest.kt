@@ -335,10 +335,63 @@ class RunNotificationsIntegrationTest(
         val lines = shown().lines()
         assertEquals("Причина: 11 files could not be read", lines[3])
         val note =
-            "Снимок создан, но неполный: часть данных в него не попала. " +
+            "Снимок создан, но бэкап не завершён, поэтому снимок считается неполным. " +
                 "Восстановить его можно только на хосте командой repo restore."
         assertEquals(note, lines[4])
         assertEquals("Всего: 1,5 ГиБ, добавлено: 12,3 МиБ", lines[5])
+    }
+
+    private fun unreadableFiles(
+        count: Long,
+        paths: List<String>,
+    ) = SNAPSHOT.copy(unreadableCount = count, unreadablePaths = paths)
+
+    @Test
+    fun `Нечитаемые файлы названы в Telegram числом, путями и подсказкой о правах`() {
+        val paths = listOf("/srv/data/locked", "/srv/<b>x</b> & y")
+        failed("at least one source file could not be read", unreadableFiles(2, paths))
+
+        ticks(1)
+
+        val lines = shown().lines()
+        assertEquals(
+            listOf("Причина: файлов, которые агент не смог прочитать: 2", "/srv/data/locked", "/srv/<b>x</b> & y"),
+            lines.subList(3, 6),
+        )
+        val hint = "Проверьте, что пользователь sard-agent может читать эти файлы: https://"
+        assertTrue(lines[6].startsWith(hint), lines[6])
+        assertTrue("/srv/&lt;b&gt;x&lt;/b&gt; &amp; y" in sent(), sent())
+        assertTrue("at least one source file" !in sent())
+    }
+
+    @Test
+    fun `Сообщение с десятью путями предельной длины не обрезается пределом Telegram`() {
+        val name = "s".repeat(200)
+        jdbc.update("update agents set hostname = ? where id = ?", "h".repeat(253), tenant.agentId)
+        val paths = (1..10).map { "я".repeat(4096) + "…" }
+        val run = failed("m", unreadableFiles(100_000, paths), name)
+
+        ticks(1)
+
+        val text = shown()
+        assertTrue(text.length < 4096, "${text.length}")
+        assertTrue(text.endsWith("$CONSOLE/runs/$run"), text)
+    }
+
+    @Test
+    fun `Потерянный шаг с поздним выводом о нечитаемых файлах сообщается так же, как без него`() {
+        val plain = finished(report = null, source = "db-plain")
+        ticks(1)
+        val late = finished(report = null, source = "db-late")
+        val step = jdbc.queryForObject("select id from run_steps where run_id = ?", UUID::class.java, late)!!
+        val output = unreadableFiles(2, listOf("/srv/a"))
+        results.record(tenant.id, tenant.agentId, step, StepReport(StepState.FAILED, "x", output))
+
+        ticks(1)
+
+        val withoutOutput = shown(0).replace("db-plain", "db-x").replace("$plain", "RUN")
+        val withOutput = shown(1).replace("db-late", "db-x").replace("$late", "RUN")
+        assertEquals(withoutOutput, withOutput)
     }
 
     @Test
