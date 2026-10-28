@@ -457,11 +457,7 @@ func (r *result) streamExitError() error {
 
 // itemsLine names the distinct items restic reported, quoted.
 func (r *result) itemsLine() string {
-	paths := distinctPaths(r.items)
-	for i, p := range paths {
-		paths[i] = fmt.Sprintf("%q", p)
-	}
-	return strings.Join(paths, ", ")
+	return quoteJoin(distinctPaths(r.items))
 }
 
 // exitError is the error for any other exit code; a fatal message the

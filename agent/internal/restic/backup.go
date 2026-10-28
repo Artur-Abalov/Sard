@@ -77,10 +77,16 @@ func (e *PartialError) Error() string {
 		head += fmt.Sprintf(", first %d", maxNamedPaths)
 		paths = paths[:maxNamedPaths]
 	}
+	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, quoteJoin(paths))
+}
+
+// quoteJoin writes the paths quoted, separated by commas.
+func quoteJoin(paths []string) string {
+	quoted := make([]string, len(paths))
 	for i, p := range paths {
-		paths[i] = fmt.Sprintf("%q", p)
+		quoted[i] = fmt.Sprintf("%q", p)
 	}
-	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, strings.Join(paths, ", "))
+	return strings.Join(quoted, ", ")
 }
 
 // distinctPaths are the paths of the items, each once, in the order of the
