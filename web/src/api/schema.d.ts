@@ -2183,6 +2183,16 @@ export interface components {
             requestedBy: string | null;
             /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline) */
             outcome: components["schemas"]["RunOutcome"];
+            /**
+             * Format: date-time
+             * @description Until when the queued run waits for an offline agent: the console shows "starts when the agent connects, waiting until <time>". null once the run left the queue, and for a run that never waited
+             */
+            agentWaitUntil: string | null;
+            /**
+             * Format: int64
+             * @description The timeout the run's step was created with, in seconds, as RunStep.timeoutSeconds: the list says "timed out (6 h)" with it. null for records before J1b
+             */
+            timeoutSeconds: number | null;
         };
         /** @enum {string} */
         LogLevel: "debug" | "info" | "warn" | "error";

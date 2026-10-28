@@ -352,6 +352,8 @@ data class RunView(
     val agentUnavailableSince: Instant? = null,
     /** The run's agent has a session; read only for a queued run, for the others it is true (J1c). */
     val agentOnline: Boolean = true,
+    /** The timeout of the run's step when [steps] is left out (a list); null: none, or the steps are there (J1e). */
+    val stepTimeoutSeconds: Long? = null,
 ) {
     val outcome: RunOutcome
         get() = RunOutcome.of(status, steps.firstOrNull()?.status ?: stepStatus, cancellation, agentOnline)

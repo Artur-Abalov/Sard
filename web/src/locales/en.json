@@ -265,9 +265,10 @@
     "remove": "Remove",
     "save": "Save",
     "schema": "Schema of the config",
-    "backupTimeout": "Backup timeout (minutes)",
-    "restoreTimeout": "Restore timeout (minutes)",
-    "timeoutDefault": "Empty: the installation default, {{value}}"
+    "backupTimeout": "Backup timeout (hours)",
+    "restoreTimeout": "Restore timeout (hours)",
+    "timeoutDefault": "Empty: the installation default, {{value}}",
+    "timeoutStored": "Stored: {{value}} (not whole hours). Type whole hours to change it"
   },
   "run": {
     "added": "Added: <m>{{size}}</m>",
@@ -671,8 +672,8 @@
     },
     "runDefaults": {
       "title": "Default step timeouts",
-      "backup": "Backup timeout (minutes)",
-      "restore": "Restore timeout (minutes)",
+      "backup": "Backup timeout (hours)",
+      "restore": "Restore timeout (hours)",
       "submit": "Save the timeouts",
       "saved": "The timeouts are saved.",
       "hint": "A source that sets none of its own takes these. 1 to 1440 minutes."

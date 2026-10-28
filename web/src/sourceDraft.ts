@@ -25,7 +25,7 @@ export interface Draft {
   values: FormValues
   // The config as JSON text, when it cannot.
   json: string
-  // The step timeouts in minutes; null: the installation's default (J1b).
+  // The step timeouts in minutes (the console enters hours); null: the installation's default (J1b).
   backupTimeout: number | null
   restoreTimeout: number | null
 }
@@ -148,7 +148,20 @@ export function buildSourceInput(
   }
 }
 
-// What a number field holds: its minutes, or null while it is empty (the installation's default).
-export function timeoutOfField(value: number | string): number | null {
-  return typeof value === 'number' ? value : null
+const MINUTES_PER_HOUR = 60
+
+// The timeout fields take whole hours; the API holds minutes. A field that is empty holds null (the default).
+export function minutesOfHoursField(value: number | string): number | null {
+  return typeof value === 'number' ? value * MINUTES_PER_HOUR : null
+}
+
+// What a field shows for the stored minutes: the hours, or nothing for no value and for a value that is not
+// a whole number of hours (the hint names it exactly, see oddTimeout).
+export function hoursFieldOf(minutes: number | null): number | string {
+  return minutes !== null && minutes % MINUTES_PER_HOUR === 0 ? minutes / MINUTES_PER_HOUR : ''
+}
+
+// The stored minutes that are not whole hours (set through REST): shown in the hint, kept until a new value is typed.
+export function oddTimeout(minutes: number | null): number | null {
+  return minutes !== null && minutes % MINUTES_PER_HOUR !== 0 ? minutes : null
 }

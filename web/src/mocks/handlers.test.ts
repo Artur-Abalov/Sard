@@ -902,6 +902,19 @@ describe('W2 mocks', () => {
     })
   })
 
+  test('a run in the list has the wait deadline and the step timeout, like the server', async () => {
+    const items = must(await api.GET('/api/v1/runs')).items
+    const waiting = items.find((r) => r.id === ids.queuedRun)
+    const timedOut = items.find((r) => r.id === ids.timedOutRun)
+
+    expect(waiting).toMatchObject({
+      outcome: 'waiting_for_agent',
+      agentWaitUntil: expect.any(String),
+    })
+    expect(timedOut).toMatchObject({ outcome: 'timed_out', timeoutSeconds: 21_600 })
+    expect(items.find((r) => r.id === ids.runningRun)?.timeoutSeconds).toBeNull()
+  })
+
   test('a deleted source keeps its name in its runs, which are marked deleted', async () => {
     const run = state.runs.find((r) => r.id === ids.runningRun)
     if (run === undefined) throw new Error('no fixture run')

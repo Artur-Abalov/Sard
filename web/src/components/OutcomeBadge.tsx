@@ -14,7 +14,7 @@ export function OutcomeBadge({
   run,
   timeoutSeconds = null,
 }: {
-  // A list row has the outcome only: the deadline of a wait comes with the run itself (Run, not RunSummary).
+  // The deadline of a wait comes with the run, a list row has it too (RunSummary).
   run: { outcome: Outcome; agentWaitUntil?: string | null }
   timeoutSeconds?: number | null
 }) {

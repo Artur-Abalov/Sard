@@ -20,6 +20,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 private val DAY: Duration = Duration.ofHours(24)
@@ -104,6 +105,24 @@ class AgentWaitIntegrationTest(
         assertEquals(RunOutcome.WAITING_FOR_AGENT, listed.outcome)
         val online = runsSeeing(online = true).list(tenant.id, RunFilter(), null, 10)
         assertEquals(RunOutcome.QUEUED, online.single().outcome)
+    }
+
+    // J1e follow-up: the list carries the deadline of the wait and the timeout of the step
+    @Test
+    fun `a listed run has its wait deadline and the timeout of its step`() {
+        val run = started()
+
+        val listed = runsSeeing(online = false).list(tenant.id, RunFilter(), null, 10).single()
+
+        assertEquals(RUNS_NOW + DAY, listed.agentWaitUntil)
+        val timeout =
+            runs
+                .get(tenant.id, run.id)!!
+                .steps
+                .single()
+                .timeoutSeconds
+        assertNotNull(timeout)
+        assertEquals(timeout, listed.stepTimeoutSeconds)
     }
 
     // J1c: Ожидание не дольше потолка

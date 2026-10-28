@@ -28,9 +28,11 @@ private const val STEPS_OF = "from RunStepRecord where runId = :run order by ord
 private const val FORGOTTEN =
     "select s.stepId from SnapshotRecord s where s.stepId = :step and s.forgottenAt is not null"
 private const val LIST_RUNS =
-    "select r, s.agentId, src, s.status from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
+    "select r, s.agentId, src, s.status, s.timeoutSeconds " +
+        "from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
         "join SourceRecord src on src.id = r.sourceId"
 private const val LIST_STEP_STATUS = 3
+private const val LIST_STEP_TIMEOUT = 4
 private val JSON = JsonMapper.builder().build()
 
 /**
@@ -230,6 +232,7 @@ class Runs(
             emptyList(),
             StepState.of(row[LIST_STEP_STATUS] as String),
             onlineOf(run, agent),
+            row[LIST_STEP_TIMEOUT] as Long?,
         )
     }
 
@@ -322,6 +325,7 @@ internal object RunViews {
         steps: List<RunStepRecord>,
         stepStatus: StepState? = null,
         agentOnline: Boolean = true,
+        stepTimeoutSeconds: Long? = null,
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
@@ -343,6 +347,7 @@ internal object RunViews {
         agentWaitUntil = run.agentWaitUntil.takeIf { RunState.of(run.status) == RunState.QUEUED },
         agentUnavailableSince = run.agentUnavailableSince,
         agentOnline = agentOnline,
+        stepTimeoutSeconds = stepTimeoutSeconds,
     )
 
     private fun cancellation(run: RunRecord): Cancellation? {

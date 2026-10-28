@@ -187,9 +187,9 @@ class AgentUnavailableNotificationsIntegrationTest(
         assertEquals(listOf("delivered", "skipped", "delivered"), listOf(first, second, again).map(::status))
     }
 
-    // J1c: Недоступный агент не входит в число ошибок подряд
+    // ДJ12: Недоступный агент прерывает счёт ошибок подряд
     @Test
-    fun `Недоступный агент не входит в число ошибок подряд`() {
+    fun `Недоступный агент прерывает счёт ошибок подряд`() {
         val source = sources.create(tenant.id, tenant.draft("db-main")).id
 
         scheduled(source, FAILED, 0)
@@ -198,6 +198,6 @@ class AgentUnavailableNotificationsIntegrationTest(
         val back = scheduled(source, SUCCEEDED, 5)
 
         assertEquals("delivered", status(back))
-        assertTrue("Ошибок подряд перед этим: 2" in shown(fake.requests.size - 1).lines())
+        assertTrue("Ошибок подряд перед этим: 1" in shown(fake.requests.size - 1).lines())
     }
 }

@@ -243,6 +243,8 @@ class ApiSerializationIntegrationTest(
             kind = RunKind.BACKUP,
             requestedBy = "admin",
             outcome = RunOutcome.TIMED_OUT,
+            agentWaitUntil = null,
+            timeoutSeconds = 21_600,
         )
 
     private fun onboarding(

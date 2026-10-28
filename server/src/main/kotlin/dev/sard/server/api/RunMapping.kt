@@ -70,6 +70,8 @@ internal object RunMapping {
         kind(view.kind),
         view.requestedBy,
         CancelMapping.outcome(view.outcome),
+        view.agentWaitUntil,
+        view.stepTimeoutSeconds,
     )
 
     private fun catchUp(period: CatchUpPeriod?) =

@@ -32,7 +32,9 @@ import {
   emptyDraft,
   offeredSourceAgents,
   offeredPlugins,
-  timeoutOfField,
+  hoursFieldOf,
+  minutesOfHoursField,
+  oddTimeout,
   withAgent,
   withPlugin,
   type Draft,
@@ -148,7 +150,7 @@ function ConfigSection({ draft, onChange, agent, errors }: Props) {
   )
 }
 
-const MAX_TIMEOUT_MINUTES = 1440
+const MAX_TIMEOUT_HOURS = 24
 
 // The step timeouts: empty means the installation's default, which the hint names.
 function TimeoutFields({ draft, onChange, errors }: Omit<Props, 'agent'>) {
@@ -156,30 +158,33 @@ function TimeoutFields({ draft, onChange, errors }: Omit<Props, 'agent'>) {
   const text = useErrorText()
   const format = useFormat()
   const defaults = useQuery(runDefaultsQuery()).data
-  const hint = (minutes: number | undefined) =>
-    minutes === undefined
+  const hint = (own: number | null, installation: number | undefined) => {
+    const odd = oddTimeout(own)
+    if (odd !== null) return t('form.timeoutStored', { value: format.timeout(odd * 60) })
+    return installation === undefined
       ? undefined
-      : t('form.timeoutDefault', { value: format.timeout(minutes * 60) })
+      : t('form.timeoutDefault', { value: format.timeout(installation * 60) })
+  }
   return (
     <Group align="flex-start" grow>
       <NumberInput
         label={t('form.backupTimeout')}
-        description={hint(defaults?.backupTimeoutMinutes)}
+        description={hint(draft.backupTimeout, defaults?.backupTimeoutMinutes)}
         min={1}
-        max={MAX_TIMEOUT_MINUTES}
+        max={MAX_TIMEOUT_HOURS}
         allowDecimal={false}
-        value={draft.backupTimeout ?? ''}
-        onChange={(value) => onChange({ ...draft, backupTimeout: timeoutOfField(value) })}
+        value={hoursFieldOf(draft.backupTimeout)}
+        onChange={(value) => onChange({ ...draft, backupTimeout: minutesOfHoursField(value) })}
         error={text(errors.backupTimeout)}
       />
       <NumberInput
         label={t('form.restoreTimeout')}
-        description={hint(defaults?.restoreTimeoutMinutes)}
+        description={hint(draft.restoreTimeout, defaults?.restoreTimeoutMinutes)}
         min={1}
-        max={MAX_TIMEOUT_MINUTES}
+        max={MAX_TIMEOUT_HOURS}
         allowDecimal={false}
-        value={draft.restoreTimeout ?? ''}
-        onChange={(value) => onChange({ ...draft, restoreTimeout: timeoutOfField(value) })}
+        value={hoursFieldOf(draft.restoreTimeout)}
+        onChange={(value) => onChange({ ...draft, restoreTimeout: minutesOfHoursField(value) })}
         error={text(errors.restoreTimeout)}
       />
     </Group>

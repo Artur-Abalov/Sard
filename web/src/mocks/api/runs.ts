@@ -18,8 +18,9 @@ function named(run: Schemas['Run']): Schemas['Run'] {
 }
 
 function summary(run: Schemas['Run']): Schemas['RunSummary'] {
-  const { steps: _steps, ...rest } = named(run)
-  return rest
+  const { steps, ...rest } = named(run)
+  // The timeout of the step the run has, as the server's list reads it from the first step.
+  return { ...rest, timeoutSeconds: steps[0]?.timeoutSeconds ?? null }
 }
 
 /** Queued at or after [from] and before [to]; an absent bound is open. */

@@ -82,7 +82,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
                 </Badge>
               </Table.Td>
               <Table.Td>
-                <OutcomeBadge run={run} />
+                <OutcomeBadge run={run} timeoutSeconds={run.timeoutSeconds} />
               </Table.Td>
               <Table.Td>
                 <TriggerLabel run={run} />

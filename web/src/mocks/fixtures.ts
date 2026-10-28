@@ -798,6 +798,7 @@ export const runs: Schemas['Run'][] = [
       }),
       phase: 'uploading',
       message: 'deadline exceeded',
+      timeoutSeconds: 21_600,
     },
     'failed',
   ),

@@ -295,6 +295,18 @@ class RunMappingTest {
         assertEquals(listOf(null, null), listOf(none.timeoutSeconds, none.timedOutBy))
     }
 
+    // J1e follow-up: a list says "waiting until" and the timeout too (rule 24)
+    @Test
+    fun `a summary names the wait deadline and the timeout of the step, a run without them names none`() {
+        val view = run().copy(agentWaitUntil = AT, stepTimeoutSeconds = 21_600)
+
+        val mapped = MutFlow.underTest { RunMapping.summary(view, null) }
+
+        assertEquals(listOf(AT, 21_600L), listOf(mapped.agentWaitUntil, mapped.timeoutSeconds))
+        val none = MutFlow.underTest { RunMapping.summary(run(), null) }
+        assertEquals(listOf(null, null), listOf(none.agentWaitUntil, none.timeoutSeconds))
+    }
+
     // Сценарий: Поздний итог шага, закрытого сервером по сроку, сохраняется, статус не меняется
     @Test
     fun `a restore step the server timed out says where its late data is, or what its rollback left`() {

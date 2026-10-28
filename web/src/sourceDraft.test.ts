@@ -12,7 +12,9 @@ import {
   offeredSourceAgents,
   offeredPlugins,
   withAgent,
-  timeoutOfField,
+  hoursFieldOf,
+  minutesOfHoursField,
+  oddTimeout,
   withPlugin,
 } from './sourceDraft'
 
@@ -217,11 +219,31 @@ describe('the create-source button on the card of an agent', () => {
   })
 })
 
-describe('a timeout field', () => {
+describe('a timeout field is entered in whole hours, the API holds minutes', () => {
   test.each([
-    [360, 360],
+    [6, 360],
+    [24, 1440],
     ['', null],
-  ] as const)('%s holds %s minutes', (field, minutes) => {
-    expect(timeoutOfField(field)).toBe(minutes)
+  ] as const)('%s in the field is %s minutes', (field, minutes) => {
+    expect(minutesOfHoursField(field)).toBe(minutes)
+  })
+
+  test.each([
+    [480, 8],
+    [60, 1],
+    [90, ''],
+    [100, ''],
+    [null, ''],
+  ] as const)('%s minutes show %s in the field', (minutes, field) => {
+    expect(hoursFieldOf(minutes)).toBe(field)
+  })
+
+  test.each([
+    [90, 90],
+    [100, 100],
+    [480, null],
+    [null, null],
+  ] as const)('%s minutes stored are odd: %s', (minutes, odd) => {
+    expect(oddTimeout(minutes)).toBe(odd)
   })
 })

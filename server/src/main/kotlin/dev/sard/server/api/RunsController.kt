@@ -55,6 +55,10 @@ data class Cancellation(
     val result: CancelResult,
 )
 
+private const val AGENT_WAIT_UNTIL =
+    "Until when the queued run waits for an offline agent: the console shows \"starts when the agent " +
+        "connects, waiting until <time>\". null once the run left the queue, and for a run that never waited"
+
 private const val CATCH_UP = "Set only for trigger catch_up: the downtime it stands for"
 
 private const val REQUESTED_BY =
@@ -98,6 +102,14 @@ data class RunSummary(
     val requestedBy: String?,
     @field:Schema(description = OUTCOME)
     val outcome: RunOutcome,
+    @field:Schema(description = AGENT_WAIT_UNTIL)
+    val agentWaitUntil: Instant?,
+    @field:Schema(
+        description =
+            "The timeout the run's step was created with, in seconds, as RunStep.timeoutSeconds: the list says " +
+                "\"timed out (6 h)\" with it. null for records before J1b",
+    )
+    val timeoutSeconds: Long?,
 )
 
 @Schema(description = "What a backup step produced")
@@ -272,11 +284,7 @@ data class Run(
     val outcome: RunOutcome,
     @field:Schema(description = "Set once somebody asked to cancel the run; null otherwise")
     val cancellation: Cancellation?,
-    @field:Schema(
-        description =
-            "Until when the queued run waits for an offline agent: the console shows \"starts when the agent " +
-                "connects, waiting until <time>\". null once the run left the queue, and for a run that never waited",
-    )
+    @field:Schema(description = AGENT_WAIT_UNTIL)
     val agentWaitUntil: Instant?,
     @field:Schema(
         description =

@@ -174,8 +174,8 @@ internal object Notices {
     ): Boolean = run.scheduleId?.let { session.find(ScheduleRecord::class.java, it).notifyOnSuccess } ?: false
 
     /**
-     * How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded one ends it. A run
-     * that was not run because its agent was unavailable is neither a failure nor the end of the series (J1c, Р-J14).
+     * How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded one ends it, and so
+     * does a run that was not run because its agent was unavailable (ДJ12): the failure after it starts a new series.
      */
     private fun failuresBefore(
         session: Session,
@@ -184,7 +184,6 @@ internal object Notices {
         previousStatuses(session, run).resultStream.use { statuses ->
             statuses
                 .map(RunState::of)
-                .filter { it != RunState.AGENT_UNAVAILABLE }
                 .takeWhile { it == RunState.FAILED }
                 .count()
                 .toInt()
