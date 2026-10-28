@@ -528,6 +528,19 @@ yet: restore into an empty or new directory`». Слияние появится 
 запуск, цель, число восстановленных файлов и байт и слово `restored`; затем
 строка, что файлы лежат в цели под исходными путями.
 
+### Полнота снимка
+
+`sard-agent repo snapshots` показывает колонку COMPLETE: `confirmed` (к снимку
+привязан снимок отпечатка files — бэкап подтвердил, что прочитал каждый файл),
+`unconfirmed` (подтверждения нет) или `-` (не применимо: снимок не Sard, снимки
+PostgreSQL, сам снимок отпечатка). Если есть `unconfirmed`, в stderr идёт одна
+строка-пояснение; в `--json` это поле `completeness`. `repo restore` снимка с
+`unconfirmed` восстанавливает как обычно, но предупреждает в stderr
+(`warning: completeness of snapshot … is not confirmed`) и добавляет в итог
+`completeness: not confirmed`; флага нет, `latest` только предупреждает. Что
+делать: проверьте права пользователя `sard-agent` на источник
+([docs/plugins/files.md](../plugins/files.md)) и запустите бэкап снова.
+
 ### Снимок PostgreSQL
 
 Снимок с меткой `postgresql.part=database` или `globals` не раскладывается под

@@ -63,7 +63,7 @@ func (h *setupHost) snapshots(extra ...string) (int, string, string) {
 func rowsOf(t *testing.T, stdout string) [][]string {
 	t.Helper()
 	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
-	if len(lines) == 0 || strings.Join(strings.Fields(lines[0]), " ") != "ID TIME HOST SOURCE RUN PATHS" {
+	if len(lines) == 0 || strings.Join(strings.Fields(lines[0]), " ") != "ID TIME HOST SOURCE RUN COMPLETE PATHS" {
 		t.Fatalf("header of %q", stdout)
 	}
 	var rows [][]string
@@ -77,7 +77,7 @@ func TestTheListNamesTheSourceAndTheRunFromTheSardTags(t *testing.T) {
 	h := snapshotsHost(t)
 	code, stdout, stderr := h.snapshots()
 	assertCode(t, code, exitOK)
-	if stderr != "" {
+	if !strings.Contains(stderr, "completeness of 2 snapshot(s)") {
 		t.Errorf("stderr %q", stderr)
 	}
 	byID := map[string][]string{}
@@ -85,9 +85,9 @@ func TestTheListNamesTheSourceAndTheRunFromTheSardTags(t *testing.T) {
 		byID[r[0]] = r
 	}
 	for id, want := range map[string][]string{
-		"aaaa1111": {"aaaa1111", "2026-10-10T03:00:00Z", "db1", "s1", "r1", "/srv/data"},
-		"bbbb1111": {"bbbb1111", "2026-10-11T03:00:00Z", "db1", "s2", "r2", "/app.dump"},
-		"dddd1111": {"dddd1111", "2026-10-09T12:00:00Z", "old-host", "-", "-", "/etc"},
+		"aaaa1111": {"aaaa1111", "2026-10-10T03:00:00Z", "db1", "s1", "r1", "unconfirmed", "/srv/data"},
+		"bbbb1111": {"bbbb1111", "2026-10-11T03:00:00Z", "db1", "s2", "r2", "-", "/app.dump"},
+		"dddd1111": {"dddd1111", "2026-10-09T12:00:00Z", "old-host", "-", "-", "-", "/etc"},
 	} {
 		if !slices.Equal(byID[id], want) {
 			t.Errorf("row %s = %v, want %v", id, byID[id], want)
@@ -108,7 +108,7 @@ func TestSeveralPathsAreJoinedByCommas(t *testing.T) {
 	h := newSetupHost(t)
 	h.base().snapshots = []restic.Snapshot{{ID: idF, Time: time.Now(), Hostname: "h", Paths: []string{"/a", "/b"}}}
 	_, stdout, _ := h.snapshots()
-	if rows := rowsOf(t, stdout); rows[0][5] != "/a,/b" {
+	if rows := rowsOf(t, stdout); rows[0][6] != "/a,/b" {
 		t.Fatalf("rows %v", rows)
 	}
 }
@@ -523,7 +523,7 @@ func TestSnapshotsHelp(t *testing.T) {
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "snapshots", "--help")
 	assertCode(t, code, exitOK)
-	for _, want := range []string{"--source", "--json", "--timeout", "--connect-timeout", "ID", "TIME", "HOST", "SOURCE", "RUN", "PATHS",
+	for _, want := range []string{"--source", "--json", "--timeout", "--connect-timeout", "ID", "TIME", "HOST", "SOURCE", "RUN", "COMPLETE", "PATHS", "confirmed", "unconfirmed",
 		"only reads", "sudo", "service user", "  0  ", "  1  ", "  2  ", "  6  "} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help lacks %q:\n%s", want, stdout)

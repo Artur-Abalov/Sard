@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,7 +160,7 @@ func TestIntegrationARepositoryAttachedWithThePasswordOfACopyIsRestoredWithoutRe
 	}
 	code, _, stderr = h.sudo("repo", "restore", "main", "latest", "--source", "s1", "--target", h.target(), "--config", "C")
 	assertCode(t, code, exitOK)
-	if stderr != "" {
+	if stderr != "" && !strings.HasPrefix(stderr, completenessWarning) {
 		t.Errorf("stderr %q", stderr)
 	}
 	sameFile(t, src+"/a.txt", filepath.Join(h.target(), src, "a.txt"))
@@ -326,5 +327,37 @@ func TestIntegrationADatabaseSnapshotIsWrittenByTheAgentByteForByte(t *testing.T
 	}
 	if got := h.names(h.target()); len(got) != 1 {
 		t.Errorf("target holds %v", got)
+	}
+}
+
+// Настоящий restic со снимком отпечатка даёт подтверждённую полноту
+func TestIntegrationARealFingerprintSnapshotConfirmsTheCompleteness(t *testing.T) {
+	h := realRestoreHost(t)
+	src := h.path("src")
+	h.write(src+"/a.txt", "AAA", 0o644)
+	h.backupBase(src, "sard.run=r1", "sard.source=s1")
+	first := h.onlySnapshotID()
+	h.backupStdinBase("sard-fingerprint.json", "{}", "files.part=fingerprint", "files.main_snapshot="+first, "sard.run=r1", "sard.source=s1")
+	h.backupBase(src, "sard.run=r2", "sard.source=s1")
+	code, stdout, stderr := h.sudo("repo", "snapshots", "--config", "C", "--json", "base")
+	assertCode(t, code, exitOK)
+	var got struct {
+		Snapshots []struct {
+			Completeness *string `json:"completeness"`
+		} `json:"snapshots"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got.Snapshots) != 3 {
+		t.Fatalf("stdout %q stderr %q: %v", stdout, stderr, err)
+	}
+	var shown []string
+	for _, s := range got.Snapshots {
+		if s.Completeness == nil {
+			shown = append(shown, "null")
+			continue
+		}
+		shown = append(shown, *s.Completeness)
+	}
+	if strings.Join(shown, ",") != "confirmed,null,unconfirmed" {
+		t.Fatalf("completeness %v", shown)
 	}
 }

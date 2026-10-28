@@ -40,7 +40,23 @@ type Snapshot struct {
 	// Source, Run and Step are the values of the tags sard.source, sard.run
 	// and sard.step; nil when the tag is missing or its value is empty.
 	Source, Run, Step *string
+	// Completeness is whether the backup confirmed that it read every file
+	// (Р89).
+	Completeness Completeness
 }
+
+// Completeness of a snapshot, as the tags of the repository tell it.
+type Completeness string
+
+const (
+	// NotApplicable: the snapshot is not a main snapshot of a Sard step (no
+	// sard.run) or belongs to a plugin's own part.
+	NotApplicable Completeness = ""
+	// Confirmed: a snapshot of the fingerprint is linked to it.
+	Confirmed Completeness = "confirmed"
+	// Unconfirmed: the backup did not confirm completeness.
+	Unconfirmed Completeness = "unconfirmed"
+)
 
 // Stamp is the time of the snapshot in UTC, RFC 3339 to the second with "Z" (Н33).
 func (s Snapshot) Stamp() string { return s.Time.UTC().Format("2006-01-02T15:04:05Z") }
@@ -61,6 +77,7 @@ func List(ctx context.Context, l Lister, source string) ([]Snapshot, error) {
 	for i, s := range listed {
 		snapshots[i] = fromRestic(s)
 	}
+	markCompleteness(snapshots)
 	slices.SortFunc(snapshots, func(a, b Snapshot) int {
 		return cmp.Or(a.Time.Compare(b.Time), strings.Compare(a.ID, b.ID))
 	})
@@ -107,4 +124,49 @@ func ListFailure(ctx context.Context, err error, target repoinit.Target) *refusa
 		return refusal.Fail(refusal.RepositoryNotInitialized, "repository %q is not initialized: nothing is stored at its address; check the address with `sard-agent repo show %s`", target.Name, target.Name)
 	}
 	return repoinit.FromRestic(ctx, err, target)
+}
+
+const (
+	fingerprintPartTag = "files.part=fingerprint"
+	filesMainTag       = "files.main_snapshot="
+)
+
+// markCompleteness is Р89: reads the list only. A fingerprint snapshot links
+// a snapshot when it carries files.part=fingerprint and the full id of it in
+// files.main_snapshot.
+func markCompleteness(list []Snapshot) {
+	linked := map[string]bool{}
+	for _, s := range list {
+		if !slices.Contains(s.Tags, fingerprintPartTag) {
+			continue
+		}
+		for _, t := range s.Tags {
+			if id, ok := strings.CutPrefix(t, filesMainTag); ok {
+				linked[id] = true
+			}
+		}
+	}
+	for i := range list {
+		list[i].Completeness = completenessOf(list[i], linked)
+	}
+}
+
+func completenessOf(s Snapshot, linked map[string]bool) Completeness {
+	switch {
+	case s.Run == nil || hasPluginLabel(s.Tags):
+		return NotApplicable
+	case linked[s.ID]:
+		return Confirmed
+	default:
+		return Unconfirmed
+	}
+}
+
+// hasPluginLabel: a tag whose key has a dot and does not start with "sard."
+// is the label of a plugin's part.
+func hasPluginLabel(tags []string) bool {
+	return slices.ContainsFunc(tags, func(t string) bool {
+		key, _, _ := strings.Cut(t, "=")
+		return strings.Contains(key, ".") && !strings.HasPrefix(key, "sard.")
+	})
 }
