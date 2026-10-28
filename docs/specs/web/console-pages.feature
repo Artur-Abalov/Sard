@@ -163,7 +163,7 @@
 #   П10 Мок создания токена отвечает agentEndpointConfigured false (как сейчас),
 #       чтобы предупреждение было видно на моках.
 #
-# ПОПРАВКА PL7-2 (SARD-15), срез PL7-2c. ЧЕРНОВИК — ждёт утверждения владельцем
+# ПОПРАВКА PL7-2 (SARD-15), срез PL7-2c. утверждена владельцем 2026-10-28
 # вместе с docs/specs/proto/partial-backup.feature (НБ8, НБ9, вопросы ВН1, ВН6,
 # ВН10). Контракт — docs/specs/server/rest-api-w2.feature К18–К22 и
 # docs/specs/server/schedules.feature К8 (make openapi). Сценарии помечены

@@ -166,7 +166,7 @@
 #   sard_metrics_state_refresh_timestamp_seconds           gauge
 #   sard_metrics_state_refresh_failures_total              counter
 #
-# Экспозиция — поправка PL7-2 (SARD-15), ЧЕРНОВИК, ждёт утверждения владельцем
+# Экспозиция — поправка PL7-2 (SARD-15), утверждена владельцем 2026-10-28
 # вместе с docs/specs/proto/partial-backup.feature (НБ10, вопрос ВН8):
 #   sard_run_partial_total{reason}          counter (Micrometer sard.run.partial)
 #       reason unreadable_files|snapshot_set_incomplete|unknown — причина

@@ -11,8 +11,8 @@
 `docs/specs/server/run-notifications.feature` (Р11–Р13),
 `docs/specs/server/server-metrics.feature` (`sard_run_partial_total`),
 `docs/specs/server/schedules.feature` (К8), `docs/specs/web/console-pages.feature`
-(Г10–Г13), `docs/specs/web/schedules.feature`. **ЧЕРНОВИК** — проходится после
-утверждения спецификации владельцем и реализации срезов PL7-2a…PL7-2d. Шаги,
+(Г10–Г13), `docs/specs/web/schedules.feature`. Спецификация утверждена владельцем 2026-10-28; процедура проходится после
+реализации срезов PL7-2a…PL7-2d. Шаги,
 зависящие от ответа владельца, помечены «(ВН…)».
 
 Здесь вручную проходятся сквозные пути: нечитаемый файл на хосте → вывод
