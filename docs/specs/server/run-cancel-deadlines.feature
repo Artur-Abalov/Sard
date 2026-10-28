@@ -1272,11 +1272,18 @@
       И когда база снова доступна, у задания J нет записи отмены и верификатору не ушёл CancelStep
 
     @http @grpc
-    Сценарий: Отмена задания в гонке с вердиктом даёт либо 409, либо вердикт
-      Дано задание J в running
-      Когда отмена задания J и StepResult шага P с вердиктом passed приходят одновременно
-      Тогда запись проверки задания J — passed
-      И отмена ответила 409 run_finished или 200 с cancellation result finished_first
+    Сценарий: Отмена задания, чей вердикт уже записан, отвечает 409 и оставляет вердикт
+      # Уточнено по построенному 2026-10-28: отмена сначала разбирает задание
+      Дано задание J в running, StepResult шага P с вердиктом passed записан, такт цикла проверок ещё не прошёл
+      Когда администратор отменяет задание J
+      Тогда ответ 409 run_finished
+      И запись проверки задания J — passed, у задания J нет записи отмены
+
+    @http @grpc
+    Сценарий: Вердикт, пришедший после пометки отмены, закрывает задание с finished_first
+      Дано задание J в running, администратор отменил его, ответ 200 с cancellation result pending
+      Когда верификатор V присылает StepResult шага P с вердиктом passed и проходит такт цикла проверок
+      Тогда запись проверки задания J — passed, cancellation result finished_first
 
   # J1f
   Правило: Отменённая проверка не уведомляет и не считается провалом
@@ -1293,6 +1300,30 @@
       Дано у db-main последняя запись проверки cancelled, перед ней passed 3 часа назад
       Когда администратор запрашивает GET api v1 overview
       Тогда db-main не учтён в verification failed и notHeld, verifiedLastDay учитывает его по успеху 3 часа назад
+
+    # Выведено из ВJf2 («cancelled прозрачна»), не новое решение владельца;
+    # так построено в J1f (2026-10-28)
+    @server
+    Структура сценария: Статус проверки источника с последней отменённой записью — последний неотменённый
+      Дано записи проверки db-main от старых к новым — <записи>
+      Когда администратор запрашивает GET api v1 sources db-main verification и GET api v1 overview
+      Тогда status проверки db-main — <статус>
+      И обзор учитывает db-main по статусу <статус>
+
+      Примеры:
+        | записи                                   | статус         |
+        | failed, cancelled                        | failed         |
+        | passed, cancelled, cancelled             | passed         |
+        | cannot_verify, cancelled                 | cannot_verify  |
+
+    # Выведено из ВJf2, не новое решение владельца; так построено в J1f
+    # (Verifications.kt, SUMMARY_COLUMNS берёт новейшую запись не cancelled)
+    @server
+    Сценарий: Источник только с отменёнными записями показан как ещё не проверявшийся
+      Дано у db-main две записи проверки, обе cancelled, а у files-www записей проверки нет
+      Когда администратор запрашивает GET api v1 sources db-main verification, GET api v1 sources files-www verification и GET api v1 overview
+      Тогда status, lastVerifiedAt и lastVerifiedLevel db-main те же, что у files-www, lastVerifiedAt null
+      И обзор учитывает db-main в neverVerified, как files-www
 
     @server
     Сценарий: Отменённая проверка не закрывает эпизод давно не проверялся
