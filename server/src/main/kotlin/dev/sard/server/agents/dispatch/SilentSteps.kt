@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.UUID
 
-private val log = LoggerFactory.getLogger(StepDispatcher::class.java)
+private val log = LoggerFactory.getLogger(SilentSteps::class.java)
 
 /**
  * A running step whose agent sent nothing past the timeout and the lost [window] is closed as timed out (J1b, Р-J7),

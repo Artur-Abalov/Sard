@@ -235,18 +235,20 @@ internal class FakeLinks : AgentLinks {
     fun sentIds() = sent.map { UUID.fromString(it.commandId).leastSignificantBits }
 }
 
-/** What the dispatcher logs while [block] runs, as formatted messages. */
+/** What the dispatcher and its silent-step timeouts log while [block] runs, as formatted messages. */
 internal fun dispatchLog(block: () -> Unit): List<String> {
-    val logger = org.slf4j.LoggerFactory.getLogger(StepDispatcher::class.java) as ch.qos.logback.classic.Logger
+    val loggers =
+        listOf(StepDispatcher::class.java, SilentSteps::class.java)
+            .map { org.slf4j.LoggerFactory.getLogger(it) as ch.qos.logback.classic.Logger }
     val appender =
         ch.qos.logback.core.read
             .ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>()
     appender.start()
-    logger.addAppender(appender)
+    loggers.forEach { it.addAppender(appender) }
     try {
         block()
     } finally {
-        logger.detachAppender(appender)
+        loggers.forEach { it.detachAppender(appender) }
         appender.stop()
     }
     return appender.list.map { it.formattedMessage }

@@ -127,10 +127,11 @@ class StepDispatcher(
 
     /** Marks steps whose deadline passed, retries queued steps of online agents, refreshes the metric. */
     fun tick() {
-        for (step in deadlines.overdue(clock.instant())) {
+        val now = clock.instant()
+        for (step in deadlines.overdue(now)) {
             if (ledger.lost(step.tenantId, step.id)) log.warn("step {} lost: its agent did not report it", step.id)
         }
-        for (step in deadlines.silent(clock.instant(), lostAfter)) {
+        for (step in deadlines.silent(now, lostAfter)) {
             silent.timeOut(step) { agent, work -> locked(agent, work) }
         }
         expireWaits()

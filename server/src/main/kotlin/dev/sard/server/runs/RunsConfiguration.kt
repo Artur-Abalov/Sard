@@ -140,14 +140,14 @@ class RunsConfiguration {
         clock: Clock,
         queued: ObjectProvider<StepsQueued>,
         waiting: AgentWaitProperties,
-        presence: ObjectProvider<AgentPresence>,
+        presence: ObjectProvider<AgentOnline>,
     ) = Runs(
         sessions,
         clock,
         UuidV7(clock, SecureRandom()),
         queued.getIfUnique { StepsQueued.NONE },
         waiting.limit(),
-        presence.getIfUnique { AgentPresence.ALWAYS },
+        presence.getIfUnique { AgentOnline.ALWAYS },
     )
 }
 

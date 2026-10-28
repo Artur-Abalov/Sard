@@ -39,11 +39,11 @@ private val JSON = JsonMapper.builder().build()
  * Whether an agent has a session now. The runs package does not know sessions: agents/dispatch implements it (J1c),
  * and where nobody does, every agent counts as online.
  */
-fun interface AgentPresence {
+fun interface AgentOnline {
     fun online(agentId: UUID): Boolean
 
     companion object {
-        val ALWAYS = AgentPresence { true }
+        val ALWAYS = AgentOnline { true }
     }
 }
 
@@ -123,7 +123,7 @@ class Runs(
     /** The longest a run waits for an offline agent (J1c, `sard.run.agent-wait.max`). */
     private val agentWaitMax: Duration = DEFAULT_AGENT_WAIT_MAX,
     /** Whether an agent has a session now; a queued run of an offline agent is waiting for it (J1c). */
-    private val presence: AgentPresence = AgentPresence.ALWAYS,
+    private val presence: AgentOnline = AgentOnline.ALWAYS,
 ) {
     /** A manual run of [sourceId] in [tenantId], the tenant of the caller. */
     fun start(

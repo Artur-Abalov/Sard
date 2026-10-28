@@ -5,7 +5,7 @@ package dev.sard.server.agents.dispatch
 
 import dev.sard.server.agents.stream.AgentConnections
 import dev.sard.server.persistence.TenantSessions
-import dev.sard.server.runs.AgentPresence
+import dev.sard.server.runs.AgentOnline
 import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepDeadlines
@@ -17,7 +17,7 @@ import java.time.Clock
 @Configuration(proxyBeanMethods = false)
 class AgentWaitConfiguration {
     @Bean
-    fun agentPresence(connections: AgentConnections) = AgentPresence(connections::online)
+    fun agentOnline(connections: AgentConnections) = AgentOnline(connections::online)
 
     /** The dispatcher's tick and the scheduler's call it; the server's start is the moment of this bean (ДJ9). */
     @Bean
@@ -26,7 +26,7 @@ class AgentWaitConfiguration {
         sessions: TenantSessions,
         clock: Clock,
         announcer: RunAnnouncer,
-        presence: AgentPresence,
+        presence: AgentOnline,
         settings: DispatchSettings,
     ) = AgentWaits(deadlines, sessions, clock, announcer, presence, clock.instant(), settings.reconnectGrace)
 }

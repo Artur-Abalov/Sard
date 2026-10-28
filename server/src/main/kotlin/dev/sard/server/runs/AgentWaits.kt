@@ -41,7 +41,7 @@ class AgentWaits(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val announcer: RunAnnouncer,
-    private val presence: AgentPresence,
+    private val presence: AgentOnline,
     private val startedAt: Instant,
     private val grace: Duration,
 ) {
