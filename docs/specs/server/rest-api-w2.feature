@@ -35,6 +35,31 @@
 #        Решение владельца 2026-10-02, вариант А (OQ-085): правило было только
 #        в консоли (П6 W2), сервер — его единственный арбитр.
 #
+# Поправка PL7-2 (SARD-15), срез PL7-2b. ЧЕРНОВИК — ждёт утверждения владельцем
+# вместе с docs/specs/proto/partial-backup.feature (НБ4–НБ6, вопросы ВН1, ВН5,
+# ВН6). Сценарии помечены «# PL7-2 К<номер>».
+#   К18. BackupOutput + unreadableCount (int64, nullable, ключ обязателен) —
+#        число нечитаемых путей из BackupOutput.unreadable_count агента; null,
+#        если агент поля не прислал (агент N−1) или partial false.
+#        + unreadablePaths (array of string, обязателен) — до 10 путей в
+#        порядке агента; пуст, если partial false.
+#        + incompleteReason (IncompleteReason, nullable, ключ обязателен).
+#   К19. IncompleteReason — enum unreadable_files | snapshot_set_incomplete |
+#        unknown; правило — НБ6: null при partial false; unknown — число не
+#        прислано; unreadable_files — число больше 0; snapshot_set_incomplete —
+#        число 0.
+#   К20. Snapshot + incompleteReason (IncompleteReason, nullable, ключ
+#        обязателен) — то же значение, что у вывода шага, создавшего снимок.
+#   К21. RunSummary и Run + partial (boolean, обязателен) — у шага бэкапа
+#        запуска есть вывод с partial true. Новых статусов запуска нет.
+#   К22. Хранение (НБ4): путей больше 10 — первые 10; путь длиннее 4096
+#        символов — первые 4096 и «…»; число меньше числа хранимых путей —
+#        число путей; у вывода с partial false число и пути не хранятся.
+#        Пути повторно не маскируются. StepResult.message хранится и отдаётся
+#        как раньше (RunStep.message).
+#        restorable и restoreBlockedReason снимка (R2 ВВ8) не меняются: у
+#        любого снимка с partial true — false и partial (ВН1).
+#
 # Правила «первых шагов» (все — в тенанте сессии, считаются при каждом запросе,
 # не хранятся; complete — все пять true)
 #   tokenIssued           в тенанте создан хотя бы один токен регистрации, в любом
@@ -242,6 +267,149 @@
       Тогда backup шага partial и снимок "a1b2c3" partial оба равны true
 
   # ===========================================================================
+  # PL7-2
+  Правило: Вывод бэкапа называет число и пути нечитаемых файлов и причину неполноты
+
+    # PL7-2 К18 К19
+    @http @grpc
+    Структура сценария: Причину неполноты решает сервер по статусу и числу нечитаемых
+      Дано агент прислал StepResult <результат> с BackupOutput snapshot "a1b2c3" и <поля>
+      Когда администратор запрашивает карточку запуска
+      Тогда backup шага содержит partial <partial>, unreadableCount <число>, unreadablePaths <пути> и incompleteReason <причина>
+
+      Примеры:
+        | результат | поля                                                  | partial | число | пути                 | причина                 |
+        | failed    | unreadable_count 2 и путями "/srv/a", "/srv/b"         | true    | 2     | ["/srv/a","/srv/b"]  | unreadable_files        |
+        | failed    | unreadable_count 0 без путей                           | true    | 0     | []                   | snapshot_set_incomplete |
+        | failed    | без поля unreadable_count                              | true    | null  | []                   | unknown                 |
+        | timed_out | unreadable_count 0 без путей                           | true    | 0     | []                   | snapshot_set_incomplete |
+        | succeeded | unreadable_count 0 без путей                           | false   | null  | []                   | null                    |
+        | succeeded | без поля unreadable_count                              | false   | null  | []                   | null                    |
+        | succeeded | unreadable_count 3 и путём "/x"                        | false   | null  | []                   | null                    |
+
+    # PL7-2 К18
+    @http @grpc
+    Сценарий: Сообщение шага с нечитаемыми файлами хранится как прислал агент
+      Дано агент прислал StepResult failed с message M, BackupOutput и unreadable_count 2
+      Когда администратор запрашивает карточку запуска
+      Тогда message шага равно M символ в символ
+
+    # PL7-2 К19
+    @http @grpc
+    Сценарий: Поздний неполный вывод потерянного шага называет нечитаемые файлы
+      Дано шаг стал lost, затем пришёл его StepResult failed с BackupOutput "a1b2c3", unreadable_count 1 и путём "/srv/a"
+      Когда администратор запрашивает карточку запуска
+      Тогда шаг lost, а backup содержит partial true, unreadableCount 1 и incompleteReason unreadable_files
+
+    # PL7-2 К22
+    @http @grpc
+    Сценарий: Больше десяти путей от агента — сервер хранит первые десять
+      Дано агент прислал StepResult failed с BackupOutput, unreadable_count 40 и 12 путями от "/p01" до "/p12"
+      Когда администратор запрашивает карточку запуска
+      Тогда unreadablePaths — от "/p01" до "/p10" в этом порядке
+      И unreadableCount 40
+
+    # PL7-2 К22
+    @http @grpc
+    Сценарий: Число меньше числа путей заменяется числом путей
+      Дано агент прислал StepResult failed с BackupOutput, unreadable_count 1 и путями "/a", "/b", "/c"
+      Когда администратор запрашивает карточку запуска
+      Тогда unreadableCount 3 и incompleteReason unreadable_files
+
+    # PL7-2 К22
+    @http @grpc
+    Сценарий: Путь длиннее 4096 символов обрезается с меткой
+      Дано агент прислал StepResult failed с BackupOutput, unreadable_count 1 и путём из 5000 символов "я"
+      Когда администратор запрашивает карточку запуска
+      Тогда единственный элемент unreadablePaths — 4096 символов "я" и "…"
+
+    # PL7-2 К22
+    @http @grpc
+    Сценарий: Маркер маскирования в пути отдаётся как прислал агент
+      Дано агент прислал StepResult failed с BackupOutput, unreadable_count 1 и путём "/srv/[REDACTED]/a.txt"
+      Когда администратор запрашивает карточку запуска
+      Тогда unreadablePaths — ["/srv/[REDACTED]/a.txt"]
+
+    # PL7-2 К22
+    @http @grpc
+    Сценарий: Число и пути нечитаемых сохраняются после перезапуска сервера
+      Дано агент прислал StepResult failed с BackupOutput, unreadable_count 2 и путями "/srv/a", "/srv/b"
+      Когда сервер перезапускается и администратор запрашивает карточку запуска
+      Тогда backup шага содержит unreadableCount 2, unreadablePaths ["/srv/a","/srv/b"] и incompleteReason unreadable_files
+
+    # PL7-2 К20
+    @http @grpc
+    Структура сценария: Причина неполноты снимка совпадает с причиной вывода его шага
+      Дано агент прислал StepResult failed с BackupOutput snapshot "a1b2c3" и <поля>
+      Когда администратор запрашивает снимки источника
+      Тогда снимок "a1b2c3" содержит partial true и incompleteReason <причина>
+
+      Примеры:
+        | поля                                   | причина                 |
+        | unreadable_count 2 и путями "/a", "/b" | unreadable_files        |
+        | unreadable_count 0 без путей           | snapshot_set_incomplete |
+        | без поля unreadable_count              | unknown                 |
+
+    # PL7-2 К22, R2 ВВ8 — не меняется
+    @http @grpc
+    Структура сценария: Неполный снимок любой причины не восстанавливается из консоли
+      Дано агент прислал StepResult failed с BackupOutput snapshot "a1b2c3" и <поля>
+      Когда администратор запрашивает снимки источника
+      Тогда у снимка "a1b2c3" restorable false и restoreBlockedReason partial
+
+      Примеры:
+        | поля                                   |
+        | unreadable_count 2 и путями "/a", "/b" |
+        | unreadable_count 0 без путей           |
+        | без поля unreadable_count              |
+
+    # PL7-2 К20
+    @http @grpc
+    Сценарий: У полного снимка причины неполноты нет
+      Дано агент прислал StepResult succeeded с BackupOutput snapshot "a1b2c3" и unreadable_count 0
+      Когда администратор запрашивает снимки источника
+      Тогда снимок "a1b2c3" содержит partial false и incompleteReason null
+
+  # ===========================================================================
+  # PL7-2
+  Правило: Список и карточка запуска говорят, неполный ли бэкап
+
+    # PL7-2 К21
+    @http @grpc
+    Структура сценария: Признак неполноты запуска следует за выводом его шага
+      Дано единственный запуск тенанта — <как>
+      Когда администратор запрашивает список запусков и карточку запуска
+      Тогда в обоих partial <признак>
+
+      Примеры:
+        | как                                                         | признак |
+        | succeeded                                                   | false   |
+        | failed со снимком и unreadable_count 2                      | true    |
+        | failed со снимком и unreadable_count 0                      | true    |
+        | failed со снимком от агента без поля unreadable_count       | true    |
+        | failed без вывода                                           | false   |
+        | шаг rejected                                                | false   |
+        | шаг lost без вывода                                         | false   |
+        | шаг lost с поздним выводом failed                           | true    |
+        | шаг lost с поздним выводом succeeded                        | false   |
+        | ещё в статусе running                                       | false   |
+        | запуск восстановления failed                                | false   |
+
+    # PL7-2 К21
+    @http @grpc
+    Сценарий: Неполный запуск остаётся в статусе failed
+      Дано агент прислал StepResult failed с BackupOutput и unreadable_count 2
+      Когда администратор запрашивает список запусков
+      Тогда запуск в статусе failed и partial true
+
+    # PL7-2 К21
+    @http @grpc
+    Сценарий: Фильтр по статусу failed возвращает и неполные, и провалы без снимка
+      Дано запуск A failed со снимком и запуск B failed без вывода
+      Когда администратор запрашивает список запусков со status failed
+      Тогда в ответе A с partial true и B с partial false
+
+  # ===========================================================================
   Правило: Источник принимается, только если его плагин умеет backup
 
     @http
@@ -313,3 +481,13 @@
       И Overview и FirstSteps содержат поля К14 как обязательные
       И RunSummary и Run содержат обязательные sourceName и sourceDeleted
       И BackupOutput содержит обязательное partial
+
+    # PL7-2 К18–К21
+    @http @contract
+    Сценарий: Экспорт OpenAPI содержит нечитаемые файлы, причину неполноты и признак неполного запуска
+      Когда сервер экспортирует OpenAPI
+      Тогда BackupOutput содержит обязательные unreadableCount (int64, nullable), unreadablePaths (массив строк) и incompleteReason (nullable)
+      И схема IncompleteReason — перечисление ровно из unreadable_files, snapshot_set_incomplete и unknown
+      И Snapshot содержит обязательное nullable incompleteReason
+      И RunSummary и Run содержат обязательное partial типа boolean
+      И перечисление RunStatus не изменилось
