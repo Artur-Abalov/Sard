@@ -113,32 +113,17 @@ interface LostDeadlines {
 class StepDeadlines(
     private val sessions: TenantSessions,
 ) : LostDeadlines {
-    override fun overdue(now: Instant) = read(OVERDUE, mapOf("now" to now))
+    override fun overdue(now: Instant) = system(OVERDUE, mapOf("now" to now), ::inTenant)
 
     /** Queued steps of runs whose wait for an agent has ended at [now], across tenants (J1c, ids and times only). */
-    fun waitsOver(now: Instant): List<WaitOver> =
-        sessions.system { session ->
-            session
-                .createNativeQuery(WAITS_OVER, Array<Any?>::class.java)
-                .setParameter("now", now)
-                .list()
-                .map(::waitOver)
-        }
+    fun waitsOver(now: Instant): List<WaitOver> = system(WAITS_OVER, mapOf("now" to now), ::waitOver)
 
-    override fun holders() = read(HOLDERS, emptyMap())
+    override fun holders() = system(HOLDERS, emptyMap(), ::inTenant)
 
     override fun silent(
         now: Instant,
         window: Duration,
-    ): List<SilentStep> =
-        sessions.system { session ->
-            session
-                .createNativeQuery(SILENT, Array<Any>::class.java)
-                .setParameter("now", now)
-                .setParameter("window", window.seconds)
-                .list()
-                .map { SilentStep(it[0] as UUID, it[1] as UUID, it[2] as UUID) }
-        }
+    ): List<SilentStep> = system(SILENT, mapOf("now" to now, "window" to window.seconds), ::silentStep)
 
     override fun expectAll(
         tenantId: UUID,
@@ -165,14 +150,15 @@ class StepDeadlines(
         deadline: Instant,
     ) = write(tenantId, agentId, RESTART, mapOf("deadline" to deadline))
 
-    private fun read(
+    private fun <T> system(
         sql: String,
         values: Map<String, Any>,
-    ): List<InTenant> =
+        row: (Array<Any?>) -> T,
+    ): List<T> =
         sessions.system { session ->
-            val query = session.createNativeQuery(sql, Array<Any>::class.java)
+            val query = session.createNativeQuery(sql, Array<Any?>::class.java)
             values.forEach { (name, value) -> query.setParameter(name, value) }
-            query.list().map { InTenant(it[0] as UUID, it[1] as UUID) }
+            query.list().map(row)
         }
 
     private fun write(
@@ -200,5 +186,13 @@ private fun listed(
     update: (Collection<UUID>) -> Int,
 ) = if (stepIds.isEmpty()) 0 else update(stepIds)
 
-private fun waitOver(row: Array<Any?>) =
-    WaitOver(row[COL_TENANT] as UUID, row[COL_STEP] as UUID, row[COL_AGENT] as UUID, row[COL_SEEN] as Instant?)
+private fun Array<Any?>.uuid(column: Int) = this[column] as UUID
+
+private fun inTenant(row: Array<Any?>) = InTenant(row.uuid(COL_TENANT), row.uuid(COL_STEP))
+
+private fun silentStep(row: Array<Any?>) = SilentStep(row.uuid(COL_TENANT), row.uuid(COL_STEP), row.uuid(COL_AGENT))
+
+private fun waitOver(row: Array<Any?>): WaitOver {
+    val seen = row[COL_SEEN] as Instant?
+    return WaitOver(row.uuid(COL_TENANT), row.uuid(COL_STEP), row.uuid(COL_AGENT), seen)
+}

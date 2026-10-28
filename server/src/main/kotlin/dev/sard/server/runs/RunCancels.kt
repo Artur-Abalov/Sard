@@ -100,12 +100,12 @@ class RunCancels(
         runId: UUID,
     ): Done {
         if (session.execute(MARK, values) == 1) return Done.MARKED
-        requireActive(active(session, values), runId)
+        if (!isActive(session, values)) throw RunAlreadyFinished(runId)
         return Done.NOTHING
     }
 
     /** Neither update moved the run: it is in flight with a mark already (true) or it is final. */
-    private fun active(
+    private fun isActive(
         session: Session,
         values: Map<String, Any?>,
     ): Boolean {
@@ -113,12 +113,5 @@ class RunCancels(
         query.setParameter("tenant", values["tenant"])
         query.setParameter("run", values["run"])
         return RunState.of(query.singleResult[0] as String).active
-    }
-
-    private fun requireActive(
-        active: Boolean,
-        runId: UUID,
-    ) {
-        if (!active) throw RunAlreadyFinished(runId)
     }
 }

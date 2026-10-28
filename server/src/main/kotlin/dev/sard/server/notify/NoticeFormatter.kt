@@ -7,6 +7,7 @@ import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.Trigger
+import dev.sard.server.runs.timeoutText
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -307,14 +308,7 @@ internal class NoticeFigures(
     }
 
     /** A step timeout in the biggest unit that holds it whole, as the server's own messages tell it. */
-    fun timeout(seconds: Long): String {
-        val (s, min, h) = words.durationUnits
-        return when {
-            seconds % SECONDS_PER_HOUR == 0L -> "${seconds / SECONDS_PER_HOUR} $h"
-            seconds % SECONDS_PER_MINUTE == 0L -> "${seconds / SECONDS_PER_MINUTE} $min"
-            else -> "$seconds $s"
-        }
-    }
+    fun timeout(seconds: Long): String = timeoutText(seconds, words.durationUnits)
 
     /** Binary units, at most one decimal, half up, no trailing ",0" — as the console shows it. */
     fun size(bytes: Long): String {
