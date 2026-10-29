@@ -10,6 +10,7 @@ import { changePassword } from '../onboarding/api'
 import { canChangePassword, confirmationMismatch } from '../onboarding/forms'
 import { passwordChangeResult, type Notice } from '../onboarding/outcomes'
 import { tones } from '../theme'
+import { RunDefaultsSection } from './settings/RunDefaultsSection'
 import { SelfBackupSection } from './settings/SelfBackupSection'
 import { VerificationSection } from './settings/VerificationSection'
 
@@ -89,6 +90,7 @@ export function Settings() {
           </Button>
         </Stack>
       </form>
+      <RunDefaultsSection />
       <SelfBackupSection />
       <VerificationSection />
     </Stack>

@@ -95,7 +95,10 @@ enum class EnrollmentTokenStatus {
     REVOKED,
 }
 
-/** Run state; queued, dispatched and running are active (D6: one active run per source). */
+/**
+ * Run state; queued, dispatched and running are active (D6: one active run per source). agent_unavailable: not run,
+ * its agent was offline until the wait deadline (J1c); not a failure.
+ */
 @Schema(enumAsRef = true)
 enum class RunStatus {
     @JsonProperty("queued")
@@ -115,6 +118,71 @@ enum class RunStatus {
 
     @JsonProperty("cancelled")
     CANCELLED,
+
+    @JsonProperty("agent_unavailable")
+    AGENT_UNAVAILABLE,
+}
+
+/**
+ * What a run came to, for a person to read; the server derives it from the run, its step and its cancel (J1a). A
+ * failed run has only the status failed (ADR 0038): the outcome says timed_out, rejected or lost.
+ */
+@Schema(enumAsRef = true)
+enum class RunOutcome {
+    @JsonProperty("queued")
+    QUEUED,
+
+    @JsonProperty("waiting_for_agent")
+    WAITING_FOR_AGENT,
+
+    @JsonProperty("dispatched")
+    DISPATCHED,
+
+    @JsonProperty("running")
+    RUNNING,
+
+    @JsonProperty("cancelling")
+    CANCELLING,
+
+    @JsonProperty("succeeded")
+    SUCCEEDED,
+
+    @JsonProperty("failed")
+    FAILED,
+
+    @JsonProperty("timed_out")
+    TIMED_OUT,
+
+    @JsonProperty("rejected")
+    REJECTED,
+
+    @JsonProperty("lost")
+    LOST,
+
+    @JsonProperty("cancelled")
+    CANCELLED,
+
+    @JsonProperty("cancel_unconfirmed")
+    CANCEL_UNCONFIRMED,
+
+    @JsonProperty("agent_unavailable")
+    AGENT_UNAVAILABLE,
+}
+
+/** How a cancel of a run ended: pending until the run is final. */
+@Schema(enumAsRef = true)
+enum class CancelResult {
+    @JsonProperty("pending")
+    PENDING,
+
+    @JsonProperty("cancelled")
+    CANCELLED,
+
+    @JsonProperty("unconfirmed")
+    UNCONFIRMED,
+
+    @JsonProperty("finished_first")
+    FINISHED_FIRST,
 }
 
 /** What started a run (ADR 0013, runs.trigger); catch_up is the one run after a server downtime (D16). */
@@ -219,6 +287,16 @@ enum class RestoreOutcome {
     LATE,
 }
 
+/** Who closed a step as timed out (J1b). */
+@Schema(enumAsRef = true)
+enum class StepTimedOutBy {
+    @JsonProperty("agent")
+    AGENT,
+
+    @JsonProperty("server")
+    SERVER,
+}
+
 /** Step state (ADR 0013, run_steps.status): the server's own states around the agent's final ones. */
 @Schema(enumAsRef = true)
 enum class StepStatus {
@@ -248,6 +326,9 @@ enum class StepStatus {
 
     @JsonProperty("lost")
     LOST,
+
+    @JsonProperty("agent_unavailable")
+    AGENT_UNAVAILABLE,
 }
 
 /** Progress of a running step (proto StepPhase). */

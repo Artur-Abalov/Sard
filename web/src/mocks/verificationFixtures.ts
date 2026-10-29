@@ -113,6 +113,8 @@ const BLANK = {
   stages: [],
   unsuitable: null,
   fingerprint: [],
+  cancelledBy: null,
+  cancelledAt: null,
 }
 
 const stagesOf = (own: Partial<Spec>) => own.stages?.length ?? 0
@@ -123,9 +125,14 @@ function record(now: number, spec: Spec): Schemas['Verification'] {
     `0192f7a0-0000-7000-8000-${String(base + counter).padStart(12, '0')}`
   const judged = spec.status !== 'no_verifier'
   const { hoursAgo, source, ...own } = spec
+  const verifiedAt = new Date(now - hoursAgo * HOUR).toISOString()
+  // A cancelled job names who cancelled it and when; the record is made when the job closes.
+  const cancelled =
+    spec.status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: verifiedAt } : {}
   return {
     ...BLANK,
     ...own,
+    ...cancelled,
     id: uuid(600),
     jobId: uuid(700),
     sourceId: source,
@@ -137,7 +144,7 @@ function record(now: number, spec: Spec): Schemas['Verification'] {
     // The mocks' stages are 15 seconds each, one after another, as the pipeline above lays them.
     durationMs: stagesOf(own) === 0 ? null : stagesOf(own) * 15_000,
     recovered: false,
-    verifiedAt: new Date(now - hoursAgo * HOUR).toISOString(),
+    verifiedAt,
     hiddenFacts: own.fingerprint === undefined ? 0 : 100,
   }
 }
@@ -227,6 +234,13 @@ export function verificationRecords(
     },
     {
       source: ids.homeSource,
+      status: 'cancelled',
+      level: 0,
+      hoursAgo: 12,
+      reason: 'cancelled by the server',
+    },
+    {
+      source: ids.homeSource,
       status: 'passed',
       level: 4,
       hoursAgo: 30,
@@ -278,7 +292,8 @@ export function withVerification(
   return {
     ...source,
     verificationEnabled: !verificationOff.has(source.id),
-    verificationStatus: own[0]?.status ?? null,
+    // A cancelled verification proves nothing, so the metric looks through it, as the server does (J1f).
+    verificationStatus: own.find((r) => r.status !== 'cancelled')?.status ?? null,
     lastVerifiedAt: lastPass?.verifiedAt ?? null,
     lastVerifiedLevel: lastPass?.level ?? null,
   }

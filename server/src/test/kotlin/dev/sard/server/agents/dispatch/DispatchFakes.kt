@@ -12,6 +12,7 @@ import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.InTenant
 import dev.sard.server.runs.LostDeadlines
 import dev.sard.server.runs.RoleLedger
+import dev.sard.server.runs.SilentStep
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -21,6 +22,7 @@ import java.util.UUID
 
 internal val DISPATCH_NOW: Instant = Instant.parse("2026-09-30T12:00:00Z")
 internal val LOST_AFTER: Duration = Duration.ofSeconds(60)
+internal val START_GRACE: Duration = Duration.ofMinutes(2)
 internal val TENANT: UUID = UUID(1, 1)
 internal val AGENT = ConnectedAgent(UUID(2, 2), TENANT, "serial")
 
@@ -30,6 +32,7 @@ internal fun step(
     dispatchedAt: Instant? = null,
     agent: UUID = AGENT.agentId,
     action: Action = Action.BACKUP,
+    cancelRequested: Boolean = false,
 ) = StepView(
     id = UUID(0, n),
     ordinal = 0,
@@ -43,6 +46,7 @@ internal fun step(
     queuedAt = DISPATCH_NOW,
     dispatchedAt = dispatchedAt,
     runId = UUID(8, n),
+    cancelRequested = cancelRequested,
 )
 
 /**
@@ -58,6 +62,10 @@ internal class FakeLedger(
     val steps = steps.toMutableList()
     val calls = mutableListOf<String>()
     val deadlines = mutableMapOf<UUID, Instant>()
+
+    /** Steps the system read reports as silent past their timeout (J1b); the windows [timedOutBySilence] got. */
+    val silent = mutableSetOf<UUID>()
+    val windows = mutableListOf<Duration>()
 
     /** The roles of the agents; an agent not listed is a source. */
     val roles = mutableMapOf<UUID, AgentRole>()
@@ -123,6 +131,21 @@ internal class FakeLedger(
         return moved
     }
 
+    override fun timedOutBySilence(
+        tenantId: UUID,
+        stepId: UUID,
+        window: Duration,
+    ): Boolean {
+        windows += window
+        return move(stepId, setOf(StepState.RUNNING)) { it.copy(status = StepState.TIMED_OUT) }
+            .also { calls += "timedOut ${stepId.leastSignificantBits} $it" }
+    }
+
+    override fun silent(
+        now: Instant,
+        window: Duration,
+    ) = steps.filter { it.id in silent }.map { SilentStep(TENANT, it.id, it.agentId) }
+
     override fun lost(
         tenantId: UUID,
         stepId: UUID,
@@ -181,6 +204,10 @@ internal class FakeLinks : AgentLinks {
     val sent = mutableListOf<RunStep>()
     val answers = ArrayDeque<SendResult>()
 
+    /** The command ids of the CancelSteps the sessions queued; [cancelAnswers] says what each send returns. */
+    val cancelled = mutableListOf<String>()
+    val cancelAnswers = ArrayDeque<SendResult>()
+
     override fun connected() = sessions.toList()
 
     override fun online(agentId: UUID) = agentId in online
@@ -194,21 +221,34 @@ internal class FakeLinks : AgentLinks {
         return answer
     }
 
+    override fun cancel(
+        agentId: UUID,
+        commandId: String,
+    ): SendResult {
+        val answer = cancelAnswers.removeFirstOrNull() ?: SendResult.Queued
+        if (answer == SendResult.Queued) cancelled += commandId
+        return answer
+    }
+
+    fun cancelledIds() = cancelled.map { UUID.fromString(it).leastSignificantBits }
+
     fun sentIds() = sent.map { UUID.fromString(it.commandId).leastSignificantBits }
 }
 
-/** What the dispatcher logs while [block] runs, as formatted messages. */
+/** What the dispatcher and its silent-step timeouts log while [block] runs, as formatted messages. */
 internal fun dispatchLog(block: () -> Unit): List<String> {
-    val logger = org.slf4j.LoggerFactory.getLogger(StepDispatcher::class.java) as ch.qos.logback.classic.Logger
+    val loggers =
+        listOf(StepDispatcher::class.java, SilentSteps::class.java)
+            .map { org.slf4j.LoggerFactory.getLogger(it) as ch.qos.logback.classic.Logger }
     val appender =
         ch.qos.logback.core.read
             .ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>()
     appender.start()
-    logger.addAppender(appender)
+    loggers.forEach { it.addAppender(appender) }
     try {
         block()
     } finally {
-        logger.detachAppender(appender)
+        loggers.forEach { it.detachAppender(appender) }
         appender.stop()
     }
     return appender.list.map { it.formattedMessage }
@@ -230,4 +270,16 @@ internal class RecordingDispatchMetrics : DispatchMetrics {
     override fun waiting(steps: WaitingSteps) {
         waiting = steps
     }
+}
+
+/** A dispatcher without start grace or wait expiry (the production defaults are not under test through these). */
+internal fun dispatcherOf(
+    ledger: DispatchLedger,
+    deadlines: LostDeadlines,
+    links: AgentLinks,
+    clock: java.time.Clock,
+    metrics: DispatchMetrics,
+    roles: RoleLedger,
+) = StepDispatcher(ledger, deadlines, links, clock, LOST_AFTER, metrics, roles, Duration.ZERO, {}) {
+    WaitingSteps(0, 0)
 }

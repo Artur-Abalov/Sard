@@ -20,7 +20,7 @@ private const val MARKS = """
     where tenant_id = :tenant and source_id = :source order by verified_at, id"""
 private const val IN_PERIOD = """
     select rv.id, rv.verified_at, sn.snapshot_id, a.hostname, rv.status, rv.level, rv.restore_duration_ms,
-        cast(rv.stages as text)
+        cast(rv.stages as text), rv.cancelled_by
     from restore_verifications rv
     join snapshots sn on sn.tenant_id = rv.tenant_id and sn.id = rv.snapshot_id
     left join agents a on a.tenant_id = rv.tenant_id and a.id = rv.verifier_agent_id
@@ -38,6 +38,8 @@ data class ReportEntry(
     val level: Int,
     val durationMillis: Long?,
     val restoreMillis: Long?,
+    /** Who cancelled the job; null unless the record is cancelled (J1f). */
+    val cancelledBy: String? = null,
 )
 
 /** The report of a source's verifications for a period (V6, rule 20). */
@@ -53,7 +55,8 @@ data class VerificationReport(
 ) {
     val passed: Int get() = items.count { it.status == VerificationStatus.PASSED }
     val failed: Int get() = items.count { it.status == VerificationStatus.FAILED }
-    val notHeld: Int get() = items.size - passed - failed
+    val cancelled: Int get() = items.count { it.status == VerificationStatus.CANCELLED }
+    val notHeld: Int get() = items.size - passed - failed - cancelled
 }
 
 /** Reads the report of a source in a tenant; one transaction. */
@@ -134,6 +137,7 @@ class VerificationReports(
                     level = (row[ReportColumn.LEVEL] as Number).toInt(),
                     durationMillis = ReportDuration.millis(stagesOf(row)),
                     restoreMillis = (row[ReportColumn.RESTORE] as Number?)?.toLong(),
+                    cancelledBy = row[ReportColumn.CANCELLED_BY] as String?,
                 )
             }
 }
@@ -148,6 +152,7 @@ private enum class ReportColumn {
     LEVEL,
     RESTORE,
     STAGES,
+    CANCELLED_BY,
 }
 
 private operator fun Array<Any?>.get(column: ReportColumn): Any? = this[column.ordinal]

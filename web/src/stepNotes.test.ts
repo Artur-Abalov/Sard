@@ -8,7 +8,6 @@ import {
   snapshotNoteKey,
   unreadableRemainder,
   stepNoteShown,
-  waitsForAgent,
 } from './stepNotes'
 
 describe('the mark that a run is incomplete', () => {
@@ -68,17 +67,5 @@ describe('the sentence before the reason of a step', () => {
     ['succeeded', false],
   ] as const)('a %s step: %s', (status, shown) => {
     expect(stepNoteShown(status)).toBe(shown)
-  })
-})
-
-describe('the note that a run waits for its agent', () => {
-  test.each([
-    ['queued', 'offline', true],
-    ['queued', 'online', false],
-    ['queued', undefined, false],
-    ['running', 'offline', false],
-    ['failed', 'offline', false],
-  ] as const)('a %s run, the agent %s: %s', (run, agent, shown) => {
-    expect(waitsForAgent(run, agent)).toBe(shown)
   })
 })

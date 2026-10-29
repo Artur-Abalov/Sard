@@ -12,6 +12,9 @@ import {
   offeredSourceAgents,
   offeredPlugins,
   withAgent,
+  hoursFieldOf,
+  minutesOfHoursField,
+  oddTimeout,
   withPlugin,
 } from './sourceDraft'
 
@@ -116,6 +119,8 @@ describe('the draft of a source', () => {
         plugin: 'files',
         repositoryName: 'local',
         config: { paths: ['/etc'] },
+        backupTimeoutMinutes: 480,
+        restoreTimeoutMinutes: null,
       },
       files as never,
     )
@@ -126,12 +131,22 @@ describe('the draft of a source', () => {
       plugin: 'files',
       repository: 'local',
       values: { paths: ['/etc'], exclude: [], one_file_system: false },
+      backupTimeout: 480,
+      restoreTimeout: null,
     })
   })
 
   test('a source whose plugin the agent no longer offers has no plugin chosen', () => {
     const draft = draftOf(
-      { name: 'etc', agentId: 'x', plugin: 'gone', repositoryName: 'local', config: { a: 1 } },
+      {
+        name: 'etc',
+        agentId: 'x',
+        plugin: 'gone',
+        repositoryName: 'local',
+        config: { a: 1 },
+        backupTimeoutMinutes: null,
+        restoreTimeoutMinutes: null,
+      },
       undefined,
     )
 
@@ -158,7 +173,18 @@ describe('the request that saves a source', () => {
         plugin: 'files',
         repositoryName: 'local',
         config: { paths: ['/etc'], one_file_system: false },
+        backupTimeoutMinutes: null,
+        restoreTimeoutMinutes: null,
       },
+    })
+  })
+
+  test('an empty timeout field is sent as null, a filled one as its minutes', () => {
+    const draft = { ...emptyDraft('x'), plugin: 'nested', backupTimeout: null, restoreTimeout: 90 }
+
+    expect(buildSourceInput(draft, nested as never)).toMatchObject({
+      ok: true,
+      input: { backupTimeoutMinutes: null, restoreTimeoutMinutes: 90 },
     })
   })
 
@@ -190,5 +216,34 @@ describe('the create-source button on the card of an agent', () => {
     ['verifier', false],
   ] as const)('an agent with role %s: %s', (role, shown) => {
     expect(canCreateSourceOn(role)).toBe(shown)
+  })
+})
+
+describe('a timeout field is entered in whole hours, the API holds minutes', () => {
+  test.each([
+    [6, 360],
+    [24, 1440],
+    ['', null],
+  ] as const)('%s in the field is %s minutes', (field, minutes) => {
+    expect(minutesOfHoursField(field)).toBe(minutes)
+  })
+
+  test.each([
+    [480, 8],
+    [60, 1],
+    [90, ''],
+    [100, ''],
+    [null, ''],
+  ] as const)('%s minutes show %s in the field', (minutes, field) => {
+    expect(hoursFieldOf(minutes)).toBe(field)
+  })
+
+  test.each([
+    [90, 90],
+    [100, 100],
+    [480, null],
+    [null, null],
+  ] as const)('%s minutes stored are odd: %s', (minutes, odd) => {
+    expect(oddTimeout(minutes)).toBe(odd)
   })
 })

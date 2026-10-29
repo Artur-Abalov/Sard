@@ -146,9 +146,11 @@ func TestAMissingDirectoryOfThePasswordFileIsFoundBeforeRestic(t *testing.T) {
 	h.assertNoResticCalls()
 }
 
+// Not parallel: it changes the working directory, so that a regression that
+// accepts the relative path writes into a temporary directory, not the package's.
 func TestARelativePasswordFilePathIsRefused(t *testing.T) {
-	t.Parallel()
 	h := newIssueHost(t)
+	t.Chdir(t.TempDir())
 	code, _, stderr := h.keyCmd("add", "base", "--for", "verifier", "--to-file", "vk")
 	assertCode(t, code, exitUsage)
 	assertReason(t, stderr, "--to-file")

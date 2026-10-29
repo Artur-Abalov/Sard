@@ -57,6 +57,7 @@ class RoleRefusals(
                 "status" to StepState.FAILED.stored,
                 "run" to RunState.FAILED.stored,
                 "message" to message,
+                "cancelResult" to cancelResultOf(StepState.FAILED),
             )
         val moved =
             sessions.inTenant(tenantId) { session ->

@@ -43,12 +43,14 @@ internal object Backups {
         configJson: String,
         plugin: String = "files",
         repository: String = "main",
+        backupTimeoutMinutes: Int? = null,
     ): Started {
         val api = SardApi(env)
+        val timeout = backupTimeoutMinutes?.let { ""","backupTimeoutMinutes":$it""" }.orEmpty()
         val source =
             api.created(
                 "/api/v1/sources",
-                """{"name":"$name","agentId":"$agentId","plugin":"$plugin","repositoryName":"$repository","config":$configJson}""",
+                """{"name":"$name","agentId":"$agentId","plugin":"$plugin","repositoryName":"$repository","config":$configJson$timeout}""",
             )
         return run(env, UUID.fromString(source.require("id")), api)
     }

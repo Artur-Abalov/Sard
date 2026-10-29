@@ -378,9 +378,13 @@ export type IconName =
   | 'clock'
   | 'clock-dashed'
   | 'hourglass'
+  | 'hourglass-dashed'
   | 'arrow'
   | 'play'
   | 'stop'
+  | 'stop-dashed'
+  | 'stop-dash'
+  | 'pause'
   | 'dot'
   | 'circle'
   | 'minus'
@@ -405,6 +409,13 @@ export const statusVisuals: Record<string, StatusVisual> = {
   timed_out: { color: 'stale', icon: 'clock' },
   rejected: { color: 'failed', icon: 'x-square' },
   lost: { color: 'stale', icon: 'clock-dashed' },
+  // Not run, not a failure (J1c): the agent was offline until the wait deadline.
+  agent_unavailable: { color: 'paused', icon: 'pause' },
+  // Words of a run's outcome that its status does not have (J1e): a wait, a cancel under way, a cancel
+  // nobody confirmed. None of them is an error.
+  waiting_for_agent: { color: 'paused', icon: 'hourglass-dashed' },
+  cancelling: { color: 'paused', icon: 'stop-dashed' },
+  cancel_unconfirmed: { color: 'paused', icon: 'stop-dash' },
   active: { color: 'ok', icon: 'dot' },
   used: { color: 'paused', icon: 'check' },
   expired: { color: 'stale', icon: 'clock' },
@@ -445,6 +456,8 @@ const OUTCOME_ICONS: Record<components['schemas']['VerificationOutcome'], IconNa
   cannot_verify: 'hourglass',
   infrastructure_failure: 'clock-dashed',
   no_verifier: 'minus',
+  // Stopped by a person: neither a pass nor bad news, so it has the drawing of a cancelled run.
+  cancelled: 'stop',
 }
 
 export function outcomeIcon(status: components['schemas']['VerificationOutcome']): IconName {

@@ -35,6 +35,8 @@ private fun notice(
     previous: RunState? = null,
     failuresBefore: Int = if (previous == RunState.FAILED) 1 else 0,
     notifyOnSuccess: Boolean = false,
+    timeoutSeconds: Long? = null,
+    agentUnavailableSince: Instant? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -53,7 +55,11 @@ private fun notice(
     previousStatus = previous,
     failuresBefore = failuresBefore,
     notifyOnSuccess = notifyOnSuccess,
+    timeoutSeconds = timeoutSeconds,
+    agentUnavailableSince = agentUnavailableSince,
 )
+
+private val SINCE: Instant = Instant.parse("2026-10-01T09:00:00Z")
 
 private fun Message.text() = parts.joinToString("") { it.text }
 
@@ -287,6 +293,17 @@ class RunNoticeFormatterTest {
         for (finished in quiet) assertNull(MutFlow.underTest { formatter.format(finished) }, "$finished")
     }
 
+    @Test
+    fun `Запуск по расписанию, ещё не законченный, не уведомляется, что бы ни было перед ним`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        for (trigger in listOf(Trigger.SCHEDULE, Trigger.CATCH_UP)) {
+            for (step in StepState.entries.filter { it.active }) {
+                val active = notice(step, trigger = trigger, previous = RunState.FAILED)
+                assertNull(MutFlow.underTest { formatter.format(active) }, "$trigger $step")
+            }
+        }
+    }
+
     // --- sizes
 
     private fun sizeLine(
@@ -332,6 +349,51 @@ class RunNoticeFormatterTest {
         for ((millis, language, expected) in cases) {
             val message = format(notice(startedAt = T0, finishedAt = T0.plusMillis(millis)), language)
             assertEquals(expected, message.lines()[2])
+        }
+    }
+
+    // Сценарий: Уведомление о превышенном сроке называет срок и обе подсказки (бэкап)
+    @Test
+    fun `Уведомление о превышенном сроке бэкапа называет срок и обе подсказки`() {
+        val ru = format(notice(StepState.TIMED_OUT, "deadline exceeded", timeoutSeconds = 21_600)).lines()
+        val timedOut = notice(StepState.TIMED_OUT, "deadline exceeded", timeoutSeconds = 21_600)
+        val en = format(timedOut, NoticeLanguage.EN).lines()
+
+        assertEquals("❌ Бэкап прерван по таймауту: db-main", ru.first())
+        assertTrue("Срок выполнения: 6 ч" in ru, ru.toString())
+        val hintRu = "Хранилище недоступно — проверьте связь с ним. Бэкап долгий — увеличьте срок у источника."
+        assertTrue(hintRu in ru, ru.toString())
+        assertEquals("❌ Backup timed out: db-main", en.first())
+        assertTrue("Step timeout: 6 h" in en, en.toString())
+        val hint =
+            "If the storage is unreachable, check the connection to it. " +
+                "If the backup is long, raise the source's timeout."
+        assertTrue(hint in en, en.toString())
+    }
+
+    @Test
+    fun `Срок в уведомлении называется целыми часами, минутами или секундами`() {
+        val cases =
+            mapOf(
+                5_400L to "Срок выполнения: 90 мин",
+                86_400L to "Срок выполнения: 24 ч",
+                59L to "Срок выполнения: 59 с",
+                61L to "Срок выполнения: 61 с",
+            )
+        for ((seconds, line) in cases) {
+            assertTrue(line in format(notice(StepState.TIMED_OUT, timeoutSeconds = seconds)).lines(), "$seconds")
+        }
+    }
+
+    @Test
+    fun `Запись без срока говорит только подсказки, а другие итоги срока и подсказок не несут`() {
+        val old = format(notice(StepState.TIMED_OUT, timeoutSeconds = null)).lines()
+        assertTrue(old.none { it.startsWith("Срок выполнения") }, old.toString())
+        assertTrue(old.any { it.startsWith("Хранилище недоступно") }, old.toString())
+        for (step in listOf(StepState.FAILED, StepState.LOST, StepState.REJECTED)) {
+            val lines = format(notice(step, timeoutSeconds = 21_600)).lines()
+            val told = lines.filter { it.startsWith("Срок выполнения") || it.startsWith("Хранилище недоступно") }
+            assertTrue(told.isEmpty(), "$step")
         }
     }
 
@@ -564,5 +626,57 @@ class RunNoticeFormatterTest {
     fun `Строка о консоли есть и без ссылки на консоль`() {
         val message = format(notice(StepState.FAILED, "x".repeat(501)), console = "")
         assertTrue("Полный текст — в консоли." in message.lines())
+    }
+
+    // --- J1c: the agent was unavailable
+
+    // J1c: Уведомление о недоступном агенте называет последнюю связь
+    @Test
+    fun `Уведомление о недоступном агенте называет итог и последнюю связь на обоих языках`() {
+        val ru = format(notice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = SINCE))
+        assertEquals("⏸ Бэкап не выполнен — агент был недоступен: db-main", ru.lines().first())
+        assertTrue("Агент не на связи с 2026-10-01 09:00 UTC" in ru.lines())
+        val en = format(notice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = SINCE), NoticeLanguage.EN)
+        assertEquals("⏸ Backup not run — the agent was unavailable: db-main", en.lines().first())
+        assertTrue("Agent offline since 2026-10-01 09:00 UTC" in en.lines())
+    }
+
+    // J1c: Уведомление об агенте, который ни разу не подключался, так и говорит
+    @Test
+    fun `Агент, который ни разу не подключался, назван так и без строки о связи`() {
+        val ru = format(notice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = null))
+        assertTrue("Агент ещё ни разу не подключался" in ru.lines())
+        assertTrue(ru.lines().none { it.startsWith("Агент не на связи") })
+        val en = format(notice(StepState.AGENT_UNAVAILABLE), NoticeLanguage.EN)
+        assertTrue("The agent has never connected" in en.lines())
+    }
+
+    @Test
+    fun `Недоступный агент не называет причины длительности и размеров`() {
+        val never = notice(StepState.AGENT_UNAVAILABLE, message = "x", startedAt = null, agentUnavailableSince = SINCE)
+        val lines = format(never).lines()
+        assertTrue(lines.none { it.startsWith("Причина") || it.startsWith("Длительность") || it.startsWith("Всего") })
+    }
+
+    // J1c: Второй подряд недоступный агент по расписанию не уведомляет
+    @Test
+    fun `Недоступный агент по расписанию уведомляет только первым в серии, ручной запуск всегда`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        val first = notice(StepState.AGENT_UNAVAILABLE, trigger = Trigger.SCHEDULE, previous = RunState.SUCCEEDED)
+        val afterFailure = notice(StepState.AGENT_UNAVAILABLE, trigger = Trigger.CATCH_UP, previous = RunState.FAILED)
+        val second =
+            notice(StepState.AGENT_UNAVAILABLE, trigger = Trigger.SCHEDULE, previous = RunState.AGENT_UNAVAILABLE)
+        val manual = notice(StepState.AGENT_UNAVAILABLE, previous = RunState.AGENT_UNAVAILABLE)
+        assertNotNull(MutFlow.underTest { formatter.format(first) })
+        assertNotNull(MutFlow.underTest { formatter.format(afterFailure) })
+        assertNull(MutFlow.underTest { formatter.format(second) })
+        assertNotNull(MutFlow.underTest { formatter.format(manual) })
+    }
+
+    @Test
+    fun `Успех после недоступного агента по расписанию не называет восстановлением`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        val succeeded = notice(trigger = Trigger.SCHEDULE, previous = RunState.AGENT_UNAVAILABLE)
+        assertNull(MutFlow.underTest { formatter.format(succeeded) })
     }
 }

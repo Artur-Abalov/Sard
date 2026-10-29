@@ -39,6 +39,18 @@ internal class ScheduleTables(
     private val jdbc: JdbcTemplate,
     private val tenant: RunsTenant,
 ) {
+    fun nextRunAt(scheduleId: UUID): Instant? = instant("select next_run_at from schedules where id = ?", scheduleId)
+
+    fun nextCatchUp(scheduleId: UUID): Instant? = instant("select catch_up_at from schedules where id = ?", scheduleId)
+
+    /** Until when a queued run waits for its agent (J1c). */
+    fun waitUntil(runId: UUID): Instant = instant("select agent_wait_until from runs where id = ?", runId)!!
+
+    private fun instant(
+        sql: String,
+        id: UUID,
+    ): Instant? = jdbc.queryForObject(sql, Timestamp::class.java, id)?.toInstant()
+
     fun runs(): List<RunRow> =
         jdbc.query(
             "select id, source_id, trigger, schedule_id from runs where tenant_id = ? order by queued_at, id",
@@ -75,6 +87,23 @@ internal class ScheduleTables(
             tenant.id,
             scheduleId,
         )
+
+    /** Stands in for an agent that took the queued runs: they run, so they no longer wait for it (J1c). */
+    fun startAll(at: Instant) {
+        val time = Timestamp.from(at)
+        jdbc.update(
+            "update run_steps set status = 'running', dispatched_at = ?, started_at = ? " +
+                "where tenant_id = ? and status = 'queued'",
+            time,
+            time,
+            tenant.id,
+        )
+        jdbc.update(
+            "update runs set status = 'running', started_at = ? where tenant_id = ? and status = 'queued'",
+            time,
+            tenant.id,
+        )
+    }
 
     /** Stands in for the agent: every active run of the tenant succeeds. */
     fun finishAll(at: Instant) {

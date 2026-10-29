@@ -52,6 +52,15 @@ class FakeAgent(
         }
     }
 
+    /** The command id of the next CancelStep the server sends. */
+    fun nextCancel(): String {
+        while (true) {
+            val message =
+                checkNotNull(connection.received.poll(WAIT.toSeconds(), TimeUnit.SECONDS)) { "no CancelStep in $WAIT" }
+            if (message.hasCancelStep()) return message.cancelStep.commandId
+        }
+    }
+
     /** The command id of the next RunStep the server sends. */
     fun nextStep(): String = nextRunStep().commandId
 

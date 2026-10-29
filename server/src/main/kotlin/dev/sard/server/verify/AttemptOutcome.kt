@@ -28,6 +28,9 @@ enum class VerificationStatus(
 
     /** No verifier fitted until the job's deadline: the configuration. */
     NO_VERIFIER("no_verifier"),
+
+    /** A person cancelled the job (J1f): the check neither held nor failed, and nothing is told of it. */
+    CANCELLED("cancelled"),
     ;
 
     companion object {
@@ -91,9 +94,34 @@ sealed interface AttemptOutcome {
 
         /**
          * The attempt's step ended with [status] and [message]; [verify] is its output, [failedBefore] how many
-         * attempts before it ended without a verdict. Only the verifier's verdict says the backup is bad.
+         * attempts before it ended without a verdict. Only the verifier's verdict says the backup is bad. With
+         * [cancelRequested] (a person cancelled the job) a verdict that came first still wins; an attempt without
+         * one ends the job as cancelled: no retry, and it is not the third strike (J1f, ВJf2, ВJf6).
          */
         fun of(
+            status: StepState,
+            message: String?,
+            verify: StepOutput.Verify?,
+            failedBefore: Int,
+            cancelRequested: Boolean,
+        ): AttemptOutcome =
+            if (cancelRequested && !gaveVerdict(status, verify)) {
+                Settled(VerificationStatus.CANCELLED, 0, message)
+            } else {
+                ended(status, message, verify, failedBefore)
+            }
+
+        /** The steps a verdict comes with, and the verdicts that say something about the backup. */
+        private val WITH_VERDICT = setOf(StepState.SUCCEEDED, StepState.FAILED)
+        private val ABOUT_BACKUP = setOf(VerifierVerdict.PASSED, VerifierVerdict.FAILED, VerifierVerdict.CANNOT_VERIFY)
+
+        /** The verifier's verdict: passed, failed or cannot verify; its own infrastructure failure is none. */
+        private fun gaveVerdict(
+            status: StepState,
+            verify: StepOutput.Verify?,
+        ): Boolean = status in WITH_VERDICT && verify?.verdict in ABOUT_BACKUP
+
+        private fun ended(
             status: StepState,
             message: String?,
             verify: StepOutput.Verify?,
@@ -104,7 +132,12 @@ sealed interface AttemptOutcome {
                     verdict(status, message, verify, failedBefore)
                 }
 
-                StepState.LOST, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
+                StepState.LOST,
+                StepState.REJECTED,
+                StepState.TIMED_OUT,
+                StepState.CANCELLED,
+                StepState.AGENT_UNAVAILABLE,
+                -> {
                     noVerdict(status.stored, message, failedBefore + 1)
                 }
 

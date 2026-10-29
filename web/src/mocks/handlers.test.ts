@@ -296,6 +296,55 @@ describe('with a session', () => {
     expect(run.steps[0].message).toContain('permission denied')
   })
 
+  test('cancelling a run: in flight it is marked, a queued one is closed, a finished one is 409', async () => {
+    await signIn()
+    const cancel = (runId: string) =>
+      api.POST('/api/v1/runs/{runId}/cancel', { params: { path: { runId } } })
+    const marked = must(await cancel(ids.runningRun))
+    expect(marked.outcome).toBe('cancelling')
+    expect(marked.cancellation).toMatchObject({ requestedBy: 'admin', result: 'pending' })
+    const again = must(await cancel(ids.runningRun))
+    expect(again.cancellation?.requestedAt).toBe(marked.cancellation?.requestedAt)
+    const queued = must(await cancel(ids.queuedRun))
+    expect([queued.status, queued.outcome, queued.cancellation?.result]).toEqual([
+      'cancelled',
+      'cancelled',
+      'cancelled',
+    ])
+    expect(queued.steps[0].status).toBe('cancelled')
+    const finished = await cancel(ids.failedRun)
+    expect([finished.response.status, finished.error?.code]).toEqual([409, 'run_finished'])
+    expect((await cancel(unknownId)).response.status).toBe(404)
+  })
+
+  test('a run that settles shows its end as its outcome, so that no cancel is offered for it', async () => {
+    await signIn()
+    state.runOutcomes[ids.queuedRun] = { at: 0, status: 'succeeded', message: null }
+    const run = must(
+      await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.queuedRun } } }),
+    )
+    expect([run.status, run.outcome]).toEqual(['succeeded', 'succeeded'])
+  })
+
+  test('run defaults: 6 and 12 hours until saved, a value out of range is 422 at its field', async () => {
+    await signIn()
+    expect(must(await api.GET('/api/v1/run-defaults'))).toEqual({
+      backupTimeoutMinutes: 360,
+      restoreTimeoutMinutes: 720,
+    })
+    const saved = must(
+      await api.PUT('/api/v1/run-defaults', {
+        body: { backupTimeoutMinutes: 480, restoreTimeoutMinutes: 600 },
+      }),
+    )
+    expect(saved.backupTimeoutMinutes).toBe(480)
+    const refused = await api.PUT('/api/v1/run-defaults', {
+      body: { backupTimeoutMinutes: 480, restoreTimeoutMinutes: 1441 },
+    })
+    expect(refused.response.status).toBe(422)
+    expect(must(await api.GET('/api/v1/run-defaults')).restoreTimeoutMinutes).toBe(600)
+  })
+
   test('a second run of a source with an active run is 409 with the active run', async () => {
     const path = { params: { path: { sourceId: ids.etcSource } } }
     const { response, error } = await api.POST('/api/v1/sources/{sourceId}/runs', path)
@@ -338,6 +387,26 @@ describe('sources', () => {
     config: {},
   }
 
+  test('a replace keeps an omitted timeout, null resets it, a number stores it (ДJ13)', async () => {
+    const timed = { ...input, backupTimeoutMinutes: 120, restoreTimeoutMinutes: 240 }
+    const created = await api.POST('/api/v1/sources', { body: timed })
+    const path = { params: { path: { sourceId: created.data?.id ?? '' } } }
+    const put = async (body: typeof input & { backupTimeoutMinutes?: number | null }) =>
+      (await api.PUT('/api/v1/sources/{sourceId}', { ...path, body })).data
+    expect(await put(input)).toMatchObject({
+      backupTimeoutMinutes: 120,
+      restoreTimeoutMinutes: 240,
+    })
+    expect(await put({ ...input, backupTimeoutMinutes: null })).toMatchObject({
+      backupTimeoutMinutes: null,
+      restoreTimeoutMinutes: 240,
+    })
+    expect(await put({ ...input, backupTimeoutMinutes: 30 })).toMatchObject({
+      backupTimeoutMinutes: 30,
+      restoreTimeoutMinutes: 240,
+    })
+  })
+
   test('create, read, replace and delete', async () => {
     const created = await api.POST('/api/v1/sources', { body: input })
     expect(created.response.status).toBe(201)
@@ -355,6 +424,19 @@ describe('sources', () => {
     ).toHaveLength(3) // the sources of the agent: /etc, the database app and the new one
     expect((await api.DELETE('/api/v1/sources/{sourceId}', path)).response.status).toBe(204)
     expect((await api.GET('/api/v1/sources/{sourceId}', path)).response.status).toBe(404)
+  })
+
+  test.each([
+    ['backupTimeoutMinutes', 1441],
+    ['restoreTimeoutMinutes', 1441],
+    ['backupTimeoutMinutes', 1.5],
+    ['restoreTimeoutMinutes', 1.5],
+  ] as const)('a %s of %s is 422 at its field, as on the server', async (field, minutes) => {
+    const { response, error } = await api.POST('/api/v1/sources', {
+      body: { ...input, [field]: minutes },
+    })
+    expect(response.status).toBe(422)
+    expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field }] })
   })
 
   test('a repository the agent did not report is 422 unknown_repository', async () => {
@@ -842,6 +924,19 @@ describe('W2 mocks', () => {
       backupSucceeded: false,
       complete: false,
     })
+  })
+
+  test('a run in the list has the wait deadline and the step timeout, like the server', async () => {
+    const items = must(await api.GET('/api/v1/runs')).items
+    const waiting = items.find((r) => r.id === ids.queuedRun)
+    const timedOut = items.find((r) => r.id === ids.timedOutRun)
+
+    expect(waiting).toMatchObject({
+      outcome: 'waiting_for_agent',
+      agentWaitUntil: expect.any(String),
+    })
+    expect(timedOut).toMatchObject({ outcome: 'timed_out', timeoutSeconds: 21_600 })
+    expect(items.find((r) => r.id === ids.runningRun)?.timeoutSeconds).toBeNull()
   })
 
   test('a deleted source keeps its name in its runs, which are marked deleted', async () => {

@@ -18,38 +18,38 @@ enum class RunState(
     SUCCEEDED("succeeded", false),
     FAILED("failed", false),
     CANCELLED("cancelled", false),
+
+    /** Not run: the agent was offline until the wait deadline (J1c); not a failure. */
+    AGENT_UNAVAILABLE("agent_unavailable", false),
     ;
 
     companion object {
         fun of(stored: String): RunState = entries.single { it.stored == stored }
 
         /** A stage 1 run has one step: it follows it; any failure of the step fails the run (S8a, answer 2). */
-        fun following(step: StepState): RunState =
-            when (step) {
-                StepState.QUEUED -> QUEUED
-                StepState.DISPATCHED -> DISPATCHED
-                StepState.RUNNING -> RUNNING
-                StepState.SUCCEEDED -> SUCCEEDED
-                StepState.CANCELLED -> CANCELLED
-                StepState.FAILED, StepState.TIMED_OUT, StepState.REJECTED, StepState.LOST -> FAILED
-            }
+        fun following(step: StepState): RunState = step.run
     }
 }
 
 /** A step's status as stored; the proto's final states plus the server's own (ADR 0013, S8a). */
 enum class StepState(
     val stored: String,
+    /** The status of a stage 1 run whose only step this is: any failure of the step fails the run (S8a). */
+    val run: RunState,
     val active: Boolean = false,
 ) {
-    QUEUED("queued", true),
-    DISPATCHED("dispatched", true),
-    RUNNING("running", true),
-    SUCCEEDED("succeeded"),
-    FAILED("failed"),
-    CANCELLED("cancelled"),
-    TIMED_OUT("timed_out"),
-    REJECTED("rejected"),
-    LOST("lost"),
+    QUEUED("queued", RunState.QUEUED, true),
+    DISPATCHED("dispatched", RunState.DISPATCHED, true),
+    RUNNING("running", RunState.RUNNING, true),
+    SUCCEEDED("succeeded", RunState.SUCCEEDED),
+    FAILED("failed", RunState.FAILED),
+    CANCELLED("cancelled", RunState.CANCELLED),
+    TIMED_OUT("timed_out", RunState.FAILED),
+    REJECTED("rejected", RunState.FAILED),
+    LOST("lost", RunState.FAILED),
+
+    /** Never sent: the agent was offline until the run's wait deadline (J1c). */
+    AGENT_UNAVAILABLE("agent_unavailable", RunState.AGENT_UNAVAILABLE),
     ;
 
     companion object {
@@ -141,6 +141,12 @@ data class SourceDraft(
     val plugin: String,
     val repositoryName: String,
     val config: String,
+    /** The backup and restore timeouts of the source in minutes; null: the tenant's default (J1b). */
+    val backupTimeoutMinutes: Int? = null,
+    val restoreTimeoutMinutes: Int? = null,
+    /** A replace leaves the stored timeout as it is (the caller omitted it, ДJ13); a create ignores these. */
+    val keepBackupTimeout: Boolean = false,
+    val keepRestoreTimeout: Boolean = false,
 ) {
     override fun toString(): String {
         val names = "plugin=$plugin, repositoryName=$repositoryName"
@@ -159,6 +165,8 @@ data class SourceView(
     val createdAt: Instant,
     val updatedAt: Instant,
     val systemRole: SystemRole? = null,
+    val backupTimeoutMinutes: Int? = null,
+    val restoreTimeoutMinutes: Int? = null,
 ) {
     override fun toString() = "SourceView(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }
@@ -214,6 +222,115 @@ data class RestoreResult(
     val leftover: String?,
 )
 
+/** Who closed a step as timed out. */
+enum class TimedOutBy(
+    val stored: String,
+) {
+    /** The agent's own deadline: its StepResult was TIMED_OUT. */
+    AGENT("agent"),
+
+    /** The agent stayed silent past the timeout and the lost window (Р-J7). */
+    SERVER("server"),
+    ;
+
+    companion object {
+        fun of(stored: String): TimedOutBy = entries.single { it.stored == stored }
+    }
+}
+
+/** How a cancel of a run ended; pending until the run is final (J1a). */
+enum class CancelResult(
+    val stored: String,
+) {
+    PENDING("pending"),
+
+    /** The agent confirmed, or the run was cancelled before it was sent. */
+    CANCELLED("cancelled"),
+
+    /** The agent did not confirm within the lost window. */
+    UNCONFIRMED("unconfirmed"),
+
+    /** The agent's result came first and is the run's result. */
+    FINISHED_FIRST("finished_first"),
+    ;
+
+    companion object {
+        fun of(stored: String): CancelResult = entries.single { it.stored == stored }
+    }
+}
+
+/** A cancel somebody asked for: when, who (the open core has one administrator) and how it ended. */
+data class Cancellation(
+    val requestedAt: Instant,
+    val requestedBy: String,
+    val result: CancelResult,
+)
+
+/** What a run came to, for a person to read: the server derives it from the run, its step and its cancel. */
+enum class RunOutcome {
+    QUEUED,
+
+    /** Queued, and the agent is offline: the run starts when it connects, or expires at its wait deadline (J1c). */
+    WAITING_FOR_AGENT,
+    DISPATCHED,
+    RUNNING,
+    CANCELLING,
+    SUCCEEDED,
+    FAILED,
+    TIMED_OUT,
+    REJECTED,
+    LOST,
+    CANCELLED,
+    CANCEL_UNCONFIRMED,
+    AGENT_UNAVAILABLE,
+    ;
+
+    companion object {
+        /**
+         * A failed run is told by its step (ADR 0038: the run has only failed); a cancel in flight is cancelling; a
+         * queued run is waiting for its agent when [agentOnline] is false (J1c).
+         */
+        fun of(
+            status: RunState,
+            step: StepState?,
+            cancellation: Cancellation?,
+            agentOnline: Boolean = true,
+        ): RunOutcome =
+            when (status) {
+                RunState.QUEUED -> queued(agentOnline)
+                RunState.DISPATCHED, RunState.RUNNING -> inFlight(status, cancellation)
+                RunState.SUCCEEDED -> SUCCEEDED
+                RunState.FAILED -> failed(step)
+                RunState.CANCELLED -> cancelled(cancellation)
+                RunState.AGENT_UNAVAILABLE -> AGENT_UNAVAILABLE
+            }
+
+        private fun queued(agentOnline: Boolean) = if (agentOnline) QUEUED else WAITING_FOR_AGENT
+
+        private fun inFlight(
+            status: RunState,
+            cancellation: Cancellation?,
+        ) = if (cancellation != null) {
+            CANCELLING
+        } else if (status == RunState.DISPATCHED) {
+            DISPATCHED
+        } else {
+            RUNNING
+        }
+
+        private fun cancelled(cancellation: Cancellation?) =
+            if (cancellation?.result == CancelResult.UNCONFIRMED) CANCEL_UNCONFIRMED else CANCELLED
+
+        private fun failed(step: StepState?): RunOutcome =
+            when (step) {
+                StepState.TIMED_OUT -> TIMED_OUT
+                StepState.REJECTED -> REJECTED
+                StepState.LOST -> LOST
+                else -> FAILED
+            }
+    }
+}
+
 /** A run with its steps; stage 1 runs have exactly one. */
 data class RunView(
     val id: UUID,
@@ -234,9 +351,24 @@ data class RunView(
     val requestedBy: String? = null,
     /** What a restore run restores; null for a backup. */
     val restore: RestoreInfo? = null,
+    /** The cancel somebody asked for; null when none was. */
+    val cancellation: Cancellation? = null,
+    /** The status of the run's step when [steps] is left out (a list), so that [outcome] can still tell failures. */
+    val stepStatus: StepState? = null,
+    /** Until when a queued run waits for an offline agent (J1c); null once there is nothing to wait for. */
+    val agentWaitUntil: Instant? = null,
+    /** The agent's last contact when the wait expired; null: it never connected, or the run did not expire (J1c). */
+    val agentUnavailableSince: Instant? = null,
+    /** The run's agent has a session; read only for a queued run, for the others it is true (J1c). */
+    val agentOnline: Boolean = true,
+    /** The timeout of the run's step when [steps] is left out (a list); null: none, or the steps are there (J1e). */
+    val stepTimeoutSeconds: Long? = null,
     /** The backup step of the run has an output of a failed result: a snapshot exists, but is incomplete (PL7-2). */
     val partial: Boolean = false,
-)
+) {
+    val outcome: RunOutcome
+        get() = RunOutcome.of(status, steps.firstOrNull()?.status ?: stepStatus, cancellation, agentOnline)
+}
 
 /** One step; [id] is the command_id the agent sees. Progress fields stay null until S7 fills them. */
 data class StepView(
@@ -269,6 +401,14 @@ data class StepView(
     val runId: UUID,
     /** What a VERIFY step carries besides its snapshot (V4); null for any other step. */
     val verifyTask: VerifyTask? = null,
+    /** The run's cancel was asked for and is not over: the agent gets a CancelStep, never the step again (J1a). */
+    val cancelRequested: Boolean = false,
+    /** What the agent reported after the server closed the step as cancelled; null if nothing came (J1a). */
+    val lateStatus: StepState? = null,
+    /** The timeout the step was created with, in seconds; null for a step without one (J1b). */
+    val timeoutSeconds: Long? = null,
+    /** Who closed a timed out step: the agent's own deadline, or the server (J1b). */
+    val timedOutBy: TimedOutBy? = null,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

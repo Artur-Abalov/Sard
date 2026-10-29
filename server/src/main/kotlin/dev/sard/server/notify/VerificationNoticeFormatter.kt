@@ -28,6 +28,7 @@ private class Outcomes(
     val infrastructureFailure: String,
     val noVerifier: String,
     val passed: String,
+    val cancelled: String,
 ) {
     fun of(status: VerificationStatus): String =
         when (status) {
@@ -36,6 +37,7 @@ private class Outcomes(
             VerificationStatus.INFRASTRUCTURE_FAILURE -> infrastructureFailure
             VerificationStatus.NO_VERIFIER -> noVerifier
             VerificationStatus.PASSED -> passed
+            VerificationStatus.CANCELLED -> cancelled
         }
 }
 
@@ -103,6 +105,7 @@ private val EN =
                 infrastructureFailure = "infrastructure failure",
                 noVerifier = "no fitting verifier",
                 passed = "passed",
+                cancelled = "cancelled",
             ),
         levels = listOf("integrity", "extraction", "application start", "data matches", "restore time measured"),
         stages =
@@ -156,6 +159,7 @@ private val RU =
                 infrastructureFailure = "сбой инфраструктуры",
                 noVerifier = "нет подходящего верификатора",
                 passed = "пройдено",
+                cancelled = "отменена",
             ),
         levels = listOf("целостность", "извлечение", "запуск", "данные совпали", "время восстановления измерено"),
         stages =

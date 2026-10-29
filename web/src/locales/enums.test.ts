@@ -21,7 +21,10 @@ function lookup(dictionary: unknown, path: string): unknown {
 
 const enums = [
   'RunStatus',
+  'RunOutcome',
+  'CancelResult',
   'StepStatus',
+  'StepTimedOutBy',
   'StepPhase',
   'EnrollmentTokenStatus',
   'AgentStatus',

@@ -91,7 +91,8 @@
     "sourceDeleted": "deleted",
     "status": "Status",
     "startedBy": "Started",
-    "kind": "Kind"
+    "kind": "Kind",
+    "waitingUntil": "waiting for the agent until {{time}}"
   },
   "notFound": {
     "title": "Page not found",
@@ -127,6 +128,7 @@
     "unknown_repository": "The agent does not report this repository",
     "invalid_config": "The source config is not valid",
     "run_active": "The source already has a run in progress",
+    "run_finished": "The run is already finished",
     "token_used": "The token is already used",
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
@@ -262,7 +264,11 @@
     "pluginGone": "The agent no longer offers the plugin {{plugin}}. Choose a plugin again.",
     "remove": "Remove",
     "save": "Save",
-    "schema": "Schema of the config"
+    "schema": "Schema of the config",
+    "backupTimeout": "Backup timeout (hours)",
+    "restoreTimeout": "Restore timeout (hours)",
+    "timeoutDefault": "Empty: the installation default, {{value}}",
+    "timeoutStored": "Stored: {{value}} (not whole hours). Type whole hours to change it"
   },
   "run": {
     "added": "Added: <m>{{size}}</m>",
@@ -279,7 +285,24 @@
     },
     "total": "Total: <m>{{size}}</m>",
     "trigger": "Started by",
-    "waitingForAgent": "The run starts when the agent connects:"
+    "cancel": {
+      "button": "Cancel",
+      "title": "Cancel the run?",
+      "backupText": "The agent is asked to stop the backup. Nothing already saved is deleted.",
+      "restoreWarning": "The restore will stop and the data restored so far will be deleted.",
+      "confirm": "Cancel the run"
+    },
+    "cancelledBy": "Cancelled by {{who}}, {{time}}",
+    "waitingUntil": "It starts when the agent connects; waiting until",
+    "timedOut": {
+      "storage": "Check the connection to the storage.",
+      "increase": "Raise the timeout in the source.",
+      "openSource": "Open the source"
+    },
+    "agentUnavailableSince": "The agent has been out of contact since {{time}}.",
+    "agentNeverConnected": "The agent has never connected.",
+    "lateStatus": "The agent reported later",
+    "cancellation": "Cancellation"
   },
   "enum": {
     "RunStatus": {
@@ -288,7 +311,29 @@
       "running": "running",
       "succeeded": "succeeded",
       "failed": "error",
-      "cancelled": "cancelled"
+      "cancelled": "cancelled",
+      "agent_unavailable": "not run: the agent was unavailable"
+    },
+    "RunOutcome": {
+      "queued": "queued",
+      "waiting_for_agent": "waiting for the agent",
+      "dispatched": "sent to the agent",
+      "running": "running",
+      "cancelling": "cancelling",
+      "succeeded": "succeeded",
+      "failed": "error",
+      "timed_out": "failed: timed out",
+      "rejected": "rejected",
+      "lost": "lost",
+      "cancelled": "cancelled",
+      "cancel_unconfirmed": "cancelled (not confirmed by the agent)",
+      "agent_unavailable": "not run: the agent was unavailable"
+    },
+    "CancelResult": {
+      "pending": "waiting for the agent",
+      "cancelled": "cancelled",
+      "unconfirmed": "the agent did not confirm",
+      "finished_first": "the agent finished first"
     },
     "StepStatus": {
       "queued": "queued",
@@ -299,7 +344,12 @@
       "cancelled": "cancelled",
       "timed_out": "timed out",
       "rejected": "rejected",
-      "lost": "lost"
+      "lost": "lost",
+      "agent_unavailable": "not sent: the agent was unavailable"
+    },
+    "StepTimedOutBy": {
+      "agent": "the agent (its own deadline)",
+      "server": "the server (the agent sent no result)"
     },
     "StepPhase": {
       "accepted": "accepted",
@@ -619,6 +669,14 @@
       "keysConfirmedAt": "The key copy is confirmed: {{time}}",
       "done": "The storage is changed."
     },
+    "runDefaults": {
+      "title": "Default step timeouts",
+      "backup": "Backup timeout (hours)",
+      "restore": "Restore timeout (hours)",
+      "submit": "Save the timeouts",
+      "saved": "The timeouts are saved.",
+      "hint": "A source that sets none of its own takes these. 1 to 24 hours."
+    },
     "verification": {
       "title": "Restore verification",
       "next": "Next cycle",
@@ -842,7 +900,8 @@
       "failed": "failed",
       "cannot_verify": "cannot verify",
       "infrastructure_failure": "infrastructure failure",
-      "no_verifier": "no fitting verifier"
+      "no_verifier": "no fitting verifier",
+      "cancelled": "cancelled"
     },
     "reason": {
       "offline": "offline",
@@ -967,7 +1026,8 @@
       "job": {
         "queued": "The verification is queued.",
         "running": "The verification is running.",
-        "deadline": "Deadline: {{time}}."
+        "deadline": "Deadline: {{time}}.",
+        "cancelling": "The verification is being cancelled."
       },
       "columns": {
         "time": "Time",
@@ -977,7 +1037,15 @@
         "level": "Level",
         "duration": "Duration",
         "restoreTime": "Time to restore"
-      }
+      },
+      "cancel": {
+        "button": "Cancel the verification",
+        "title": "Cancel the verification?",
+        "text": "The verifier is told to stop and its sandbox is removed. There will be no result and no new attempt.",
+        "confirm": "Cancel the verification",
+        "finished": "The verification has already finished."
+      },
+      "cancelledBy": "Cancelled by {{who}}, {{time}}"
     },
     "record": {
       "title": "Restore verification",
@@ -1041,7 +1109,7 @@
     "print": "Print",
     "back": "Back to the verifications of the source",
     "period": "{{from}} — {{to}} ({{zone}})",
-    "summary": "Verifications in the period: {{total}}; passed: {{passed}}; failed: {{failed}}; did not take place: {{notHeld}}.",
+    "summary": "Verifications in the period: {{total}}; passed: {{passed}}; failed: {{failed}}; did not take place: {{notHeld}}; cancelled: {{cancelled}}.",
     "empty": "There were no verifications in this period.",
     "failures": "Failures and their fix",
     "noFailures": "There were no failures in the period.",

@@ -5,6 +5,7 @@ package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RestoreScene.Companion.DESTINATION
@@ -23,7 +24,9 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import tools.jackson.databind.json.JsonMapper
+import java.security.SecureRandom
 import java.sql.Timestamp
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.AfterTest
@@ -54,6 +57,8 @@ class RestoresMutationTest(
     @Autowired private val restores: Restores,
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
+    @Autowired private val timeouts: TimeoutSettings,
+    @Autowired private val sessions: TenantSessions,
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
@@ -435,6 +440,64 @@ class RestoresMutationTest(
         assertEquals(1, restoreRuns())
     }
 
+    // J1c: Ожидание не дольше потолка (восстановление), закрывает OQ-233
+    @Test
+    fun `a restore waits for an offline agent for a day, and keeps the deadline`() {
+        val s = source()
+        snapshot(s)
+
+        val run = start(s, draft(a))
+
+        assertEquals(RUNS_NOW.plusSeconds(24 * 3600), run.agentWaitUntil)
+        assertEquals(RUNS_NOW.plusSeconds(24 * 3600), runs.get(tenant.id, run.id)!!.agentWaitUntil)
+    }
+
+    // J1c: the answer to the start of a restore says the same as a later read
+    @Test
+    fun `a restore started for an offline agent is waiting for the agent at once`() {
+        val s = source()
+        snapshot(s)
+        val offline =
+            Restores(
+                sessions,
+                clock,
+                UuidV7(clock, SecureRandom()),
+                queued,
+                Duration.ofHours(24),
+                { false },
+            )
+
+        val run = MutFlow.underTest { offline.start(tenant.id, s, SF, draft(a)) }
+
+        assertEquals(RunOutcome.WAITING_FOR_AGENT, run.outcome)
+    }
+
+    // J1b: the step of a restore gets the source's restore timeout, or the tenant's default
+    @Test
+    fun `a restore step takes the restore timeout of its source, else the tenant's default, and keeps it`() {
+        val s = source()
+        snapshot(s)
+        assertEquals(720 * 60L, start(s, draft(a)).steps.single().timeoutSeconds)
+
+        jdbc.update("update sources set restore_timeout_minutes = 45 where id = ?", s)
+        val own = start(s, draft(a))
+        assertEquals(45 * 60L, own.steps.single().timeoutSeconds)
+
+        jdbc.update("update sources set restore_timeout_minutes = 30 where id = ?", s)
+        timeouts.set(tenant.id, TimeoutDefaults(60, 90))
+        assertEquals(
+            45 * 60L,
+            runs
+                .get(tenant.id, own.id)!!
+                .steps
+                .single()
+                .timeoutSeconds,
+        )
+        assertEquals(30 * 60L, start(s, draft(a)).steps.single().timeoutSeconds)
+        jdbc.update("update sources set restore_timeout_minutes = null where id = ?", s)
+        assertEquals(90 * 60L, start(s, draft(a)).steps.single().timeoutSeconds)
+    }
+
     @Test
     fun `a restore neither blocks a backup of its source nor waits for one, and several may be queued`() {
         val s = source()
@@ -467,5 +530,14 @@ class RestoresMutationTest(
         assertEquals(RestoreResult("$DIR/x", 2, 10, null, null, null, false, null), got.steps.single().restore)
         assertEquals(false, got.partial)
         assertNull(got.steps.single().backup)
+    }
+
+    // J1c: a queued run knows whether its agent is online, a run in flight does not ask
+    @Test
+    fun `a run view of a queued run says its agent is offline and when its wait ends, one in flight does not`() {
+        val waiting = source("waiting")
+        val active = source("active")
+
+        assertWaitingAndActiveViews(runs, jdbc, tenant.id, waiting, active)
     }
 }

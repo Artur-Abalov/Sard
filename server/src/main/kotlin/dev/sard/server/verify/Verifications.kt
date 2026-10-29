@@ -4,6 +4,8 @@
 package dev.sard.server.verify
 
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.runs.CancelResult
+import dev.sard.server.runs.Cancellation
 import dev.sard.server.runs.SourceNotFound
 import org.hibernate.Session
 import java.time.Clock
@@ -17,10 +19,12 @@ private const val SOURCE =
 private const val ENABLE =
     "update sources set verification_enabled = :enabled where tenant_id = :tenant and id = :id and deleted_at is null"
 
-// The last record of each source, and its last pass: the state the console shows (V4, for V6).
+// The last record of each source, and its last pass: the state the console shows (V4, for V6). A cancelled record
+// proves nothing and is looked through (J1f, ВJf2): the status is the last one that was not cancelled.
 private const val SUMMARY_COLUMNS = """
     select s.id, s.verification_enabled,
-        (select rv.status from restore_verifications rv where rv.tenant_id = s.tenant_id and rv.source_id = s.id
+        (select rv.status from restore_verifications rv
+            where rv.tenant_id = s.tenant_id and rv.source_id = s.id and rv.status <> 'cancelled'
             order by rv.verified_at desc, rv.id desc limit 1),
         (select rv.verified_at from restore_verifications rv
             where rv.tenant_id = s.tenant_id and rv.source_id = s.id and rv.status = 'passed'
@@ -35,7 +39,9 @@ private const val SUMMARY_COLUMNS = """
 private const val SUMMARIES = "$SUMMARY_COLUMNS where s.tenant_id = :tenant and s.id in (:ids)"
 private const val LIVE_SUMMARIES = "$SUMMARY_COLUMNS where s.tenant_id = :tenant and s.deleted_at is null"
 private const val OPEN_JOB = """
-    select id, status, reason, created_at, deadline, failed_attempts, cast(unsuitable as text) from verification_jobs
+    select id, status, reason, created_at, deadline, failed_attempts, cast(unsuitable as text),
+        cancel_requested_at, cancel_requested_by, cancel_result
+    from verification_jobs
     where tenant_id = :tenant and source_id = :source and status <> 'closed'"""
 
 // The snapshot «verify now» takes: the given one of the source, or its latest whole one.
@@ -59,6 +65,11 @@ private const val PASSED_AT = 3
 private const val STALE_SINCE = 5
 private const val NAME = 6
 
+/** The columns of OPEN_JOB after the job's own: the cancel mark. */
+private const val CANCEL_AT = 7
+private const val CANCEL_BY = 8
+private const val CANCEL_RESULT = 9
+
 /** The verification state of a source as the console shows it. */
 data class VerificationSummary(
     val enabled: Boolean,
@@ -70,6 +81,12 @@ data class VerificationSummary(
     val staleSince: Instant?,
 )
 
+/** The cancel mark in the last three columns of OPEN_JOB. */
+private fun cancellationOf(row: Array<Any?>): Cancellation? =
+    (row[CANCEL_AT] as Instant?)?.let {
+        Cancellation(it, row[CANCEL_BY] as String, CancelResult.of(row[CANCEL_RESULT] as String))
+    }
+
 /** A job that is queued or running. */
 data class OpenJob(
     val id: UUID,
@@ -80,6 +97,8 @@ data class OpenJob(
     val failedAttempts: Int,
     /** Why each verifier did not fit at the last try, as stored JSON; null while none was tried. */
     val unsuitable: String?,
+    /** The cancel an administrator asked for; null when none was (J1f). */
+    val cancellation: Cancellation? = null,
 )
 
 /** A source's verification: its summary and its open job. */
@@ -259,6 +278,7 @@ class Verifications(
                     deadline = row[4] as Instant,
                     failedAttempts = (row[5] as Number).toInt(),
                     unsuitable = row[6] as String?,
+                    cancellation = cancellationOf(row),
                 )
             }
 

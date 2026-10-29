@@ -34,7 +34,8 @@ class AttemptOutcomeTest {
         status: StepState,
         output: StepOutput.Verify?,
         failedBefore: Int = 0,
-    ) = MutFlow.underTest { AttemptOutcome.of(status, "agent message", output, failedBefore) }
+        cancelRequested: Boolean = false,
+    ) = MutFlow.underTest { AttemptOutcome.of(status, "agent message", output, failedBefore, cancelRequested) }
 
     @Test
     fun `every level passed and the restore time reported reach level 5`() {
@@ -179,5 +180,62 @@ class AttemptOutcomeTest {
         assertEquals(0, settled.level)
         val reason = "3 attempts without a verdict; the last: stage stage-1 ran out of time: agent message"
         assertEquals(reason, settled.reason)
+    }
+
+    // J1f, ВJf2 and ВJf6: a person's cancel ends the job without another attempt and without the third strike.
+    @Test
+    fun `an attempt without a verdict after a cancel ends the job as cancelled, never tried again`() {
+        val statuses = listOf(StepState.CANCELLED, StepState.LOST, StepState.TIMED_OUT, StepState.REJECTED)
+        for (status in statuses) {
+            val ended = outcome(status, null, failedBefore = 1, cancelRequested = true)
+            val settled = assertIs<AttemptOutcome.Settled>(ended)
+
+            assertEquals(VerificationStatus.CANCELLED, settled.status)
+            assertEquals(0, settled.level)
+            assertEquals("agent message", settled.reason)
+        }
+    }
+
+    @Test
+    fun `a cancel after two attempts without a verdict is not the third one`() {
+        val settled = assertIs<AttemptOutcome.Settled>(outcome(StepState.CANCELLED, null, 2, cancelRequested = true))
+
+        assertEquals(VerificationStatus.CANCELLED, settled.status)
+    }
+
+    @Test
+    fun `a verifier failure without a verdict after a cancel is the cancel, not a retry`() {
+        val timedOut = output(VerifierVerdict.INFRASTRUCTURE_FAILURE, listOf(stage(0), stage(1, StageState.CANNOT_RUN)))
+
+        for (verify in listOf(timedOut, output(verdict = null), null)) {
+            val settled = assertIs<AttemptOutcome.Settled>(outcome(StepState.FAILED, verify, 2, cancelRequested = true))
+            assertEquals(VerificationStatus.CANCELLED, settled.status)
+        }
+    }
+
+    @Test
+    fun `a verdict that came before the cancel stays the result of the job`() {
+        val failedStages = listOf(stage(1), stage(2, StageState.FAILED))
+        val cases =
+            listOf(
+                StepState.SUCCEEDED to output(VerifierVerdict.PASSED),
+                StepState.FAILED to output(VerifierVerdict.FAILED, failedStages),
+                StepState.FAILED to output(VerifierVerdict.CANNOT_VERIFY),
+            )
+        val expected = listOf(VerificationStatus.PASSED, VerificationStatus.FAILED, VerificationStatus.CANNOT_VERIFY)
+
+        val statuses =
+            cases.map { (status, verify) ->
+                assertIs<AttemptOutcome.Settled>(
+                    outcome(status, verify, cancelRequested = true),
+                ).status
+            }
+
+        assertEquals(expected, statuses)
+    }
+
+    @Test
+    fun `a cancelled attempt without a cancel of the job is tried again as before`() {
+        assertEquals(AttemptOutcome.Retry(failedAttempts = 1), outcome(StepState.CANCELLED, null))
     }
 }

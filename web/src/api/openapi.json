@@ -858,6 +858,207 @@
         }
       }
     },
+    "/api/v1/run-defaults" : {
+      "get" : {
+        "tags" : [ "run-defaults" ],
+        "summary" : "The default step timeouts",
+        "description" : "6 h for a backup and 12 h for a restore until set. A source's own timeout overrides them.",
+        "operationId" : "getRunDefaults",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunDefaults"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "run-defaults" ],
+        "summary" : "Set the default step timeouts",
+        "description" : "Both are required. They count for runs created after the change; runs in flight keep theirs.",
+        "operationId" : "setRunDefaults",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RunDefaults"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunDefaults"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/verification-jobs/{jobId}/cancel" : {
+      "post" : {
+        "tags" : [ "verifications" ],
+        "summary" : "Cancel a verification job",
+        "description" : "A job nobody took is closed at once. A job whose attempt is queued is closed with the attempt, and one whose attempt runs is marked: the verifier is told to stop and the answer is the source's verification as it is, the open job with its cancellation pending, until the verifier confirms or does not come back within the lost window. The job closes with a record cancelled, which is never told and never retried. Asking again changes nothing. A job that is closed, or whose verdict came first, answers 409 run_finished.",
+        "operationId" : "cancelJob",
+        "parameters" : [ {
+          "name" : "jobId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SourceVerificationState"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -1782,6 +1983,89 @@
           },
           "204" : {
             "description" : "No Content"
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{runId}/cancel" : {
+      "post" : {
+        "tags" : [ "runs" ],
+        "summary" : "Cancel a run",
+        "description" : "A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished. An attempt of a restore verification cancels its job, as POST /verification-jobs/{jobId}/cancel does.",
+        "operationId" : "cancelRun",
+        "parameters" : [ {
+          "name" : "runId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Run"
+                }
+              }
+            }
           },
           "401" : {
             "description" : "No session or it expired",
@@ -4005,7 +4289,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable", "run_finished" ]
       },
       "FieldError" : {
         "type" : "object",
@@ -4102,6 +4386,20 @@
             "type" : "object",
             "additionalProperties" : { },
             "description" : "Plugin config, valid against the plugin's configSchema; secrets by name only"
+          },
+          "backupTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults); omitted: kept on a replace, the default on a create (ДJ13)",
+            "maximum" : 1440,
+            "minimum" : 1
+          },
+          "restoreTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default; omitted: kept on a replace, the default on a create (ДJ13)",
+            "maximum" : 1440,
+            "minimum" : 1
           }
         },
         "required" : [ "agentId", "config", "name", "plugin", "repositoryName" ]
@@ -4198,6 +4496,16 @@
             "format" : "int32",
             "description" : "The level the last successful verification reached"
           },
+          "backupTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)"
+          },
+          "restoreTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default"
+          },
           "secretWarnings" : {
             "type" : "array",
             "description" : "What the agent will refuse of this source by the bindings of its secrets on the agent host, as its last Register reported them (S11), with the command that allows it; empty when nothing",
@@ -4206,7 +4514,7 @@
             }
           }
         },
-        "required" : [ "agentId", "config", "createdAt", "id", "lastVerifiedAt", "lastVerifiedLevel", "name", "plugin", "repositoryName", "secretWarnings", "systemRole", "updatedAt", "verificationEnabled", "verificationStatus" ]
+        "required" : [ "agentId", "backupTimeoutMinutes", "config", "createdAt", "id", "lastVerifiedAt", "lastVerifiedLevel", "name", "plugin", "repositoryName", "restoreTimeoutMinutes", "secretWarnings", "systemRole", "updatedAt", "verificationEnabled", "verificationStatus" ]
       },
       "SystemSourceRole" : {
         "type" : "string",
@@ -4214,8 +4522,8 @@
       },
       "VerificationOutcome" : {
         "type" : "string",
-        "description" : "passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted)",
-        "enum" : [ "passed", "failed", "cannot_verify", "infrastructure_failure", "no_verifier" ]
+        "description" : "passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted); cancelled (an administrator cancelled the job: neither held nor failed, never told)",
+        "enum" : [ "passed", "failed", "cannot_verify", "infrastructure_failure", "no_verifier", "cancelled" ]
       },
       "SourceVerificationInput" : {
         "type" : "object",
@@ -4226,6 +4534,29 @@
           }
         },
         "required" : [ "enabled" ]
+      },
+      "CancelResult" : {
+        "type" : "string",
+        "enum" : [ "pending", "cancelled", "unconfirmed", "finished_first" ]
+      },
+      "Cancellation" : {
+        "type" : "object",
+        "description" : "A cancel somebody asked for",
+        "properties" : {
+          "requestedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "requestedBy" : {
+            "type" : "string",
+            "description" : "\"admin\" for any session of the open core, which has one administrator"
+          },
+          "result" : {
+            "$ref" : "#/components/schemas/CancelResult",
+            "description" : "pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result"
+          }
+        },
+        "required" : [ "requestedAt", "requestedBy", "result" ]
       },
       "SourceVerificationState" : {
         "type" : "object",
@@ -4314,9 +4645,17 @@
             "items" : {
               "$ref" : "#/components/schemas/VerifierMisfit"
             }
+          },
+          "cancellation" : {
+            "description" : "Set once an administrator asked to cancel the job; null otherwise",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/Cancellation"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "createdAt", "deadline", "failedAttempts", "id", "reason", "status", "unsuitable" ]
+        "required" : [ "cancellation", "createdAt", "deadline", "failedAttempts", "id", "reason", "status", "unsuitable" ]
       },
       "VerificationJobReason" : {
         "type" : "string",
@@ -4377,7 +4716,7 @@
       },
       "RunStatus" : {
         "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "agent_unavailable" ]
       },
       "RunTrigger" : {
         "type" : "string",
@@ -4704,6 +5043,27 @@
         "type" : "string",
         "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage", "keys_unconfirmed" ]
       },
+      "RunDefaults" : {
+        "type" : "object",
+        "description" : "The default step timeouts of the installation (J1b); a run takes them when it is created",
+        "properties" : {
+          "backupTimeoutMinutes" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The step timeout of a backup in minutes, 1 to 1440, for a source that names none",
+            "maximum" : 1440,
+            "minimum" : 1
+          },
+          "restoreTimeoutMinutes" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The step timeout of a restore in minutes, 1 to 1440, for a source that names none",
+            "maximum" : 1440,
+            "minimum" : 1
+          }
+        },
+        "required" : [ "backupTimeoutMinutes", "restoreTimeoutMinutes" ]
+      },
       "VerifyNowInput" : {
         "type" : "object",
         "description" : "What to verify now",
@@ -5000,16 +5360,42 @@
               "type" : "null"
             } ]
           },
+          "outcome" : {
+            "$ref" : "#/components/schemas/RunOutcome",
+            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline)"
+          },
+          "cancellation" : {
+            "description" : "Set once somebody asked to cancel the run; null otherwise",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/Cancellation"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "agentWaitUntil" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Until when the queued run waits for an offline agent: the console shows \"starts when the agent connects, waiting until <time>\". null once the run left the queue, and for a run that never waited"
+          },
+          "agentUnavailableSince" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never connected, or the run did not expire"
+          },
           "partial" : {
             "type" : "boolean",
             "description" : "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "partial", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
+        "required" : [ "agentId", "agentUnavailableSince", "agentWaitUntil", "cancellation", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "partial", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
       },
       "RunKind" : {
         "type" : "string",
         "enum" : [ "backup", "restore" ]
+      },
+      "RunOutcome" : {
+        "type" : "string",
+        "enum" : [ "queued", "waiting_for_agent", "dispatched", "running", "cancelling", "succeeded", "failed", "timed_out", "rejected", "lost", "cancelled", "cancel_unconfirmed", "agent_unavailable" ]
       },
       "RunRestore" : {
         "type" : "object",
@@ -5144,9 +5530,30 @@
           "finishedAt" : {
             "type" : [ "string", "null" ],
             "format" : "date-time"
+          },
+          "lateStatus" : {
+            "description" : "What the agent reported after the server closed the step as cancelled (its agent did not confirm the cancel); null when nothing came. The step's and the run's status do not change",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/StepStatus"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "timeoutSeconds" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "The timeout the step was created with, in seconds: the source's, or the installation's default at the time. null for a step without one (a verification's is its attempt's; records before J1b)"
+          },
+          "timedOutBy" : {
+            "description" : "Who closed a timed out step: the agent (its own deadline) or the server (the agent stayed silent past the timeout and the lost window); null for any other step",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/StepTimedOutBy"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status" ]
+        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "lateStatus", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status", "timedOutBy", "timeoutSeconds" ]
       },
       "StepAction" : {
         "type" : "string",
@@ -5158,7 +5565,11 @@
       },
       "StepStatus" : {
         "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost" ]
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost", "agent_unavailable" ]
+      },
+      "StepTimedOutBy" : {
+        "type" : "string",
+        "enum" : [ "agent", "server" ]
       },
       "RestorePreview" : {
         "type" : "object",
@@ -5931,9 +6342,18 @@
             "type" : "integer",
             "format" : "int32",
             "description" : "Facts of the hashed sample of files: counted, never listed"
+          },
+          "cancelledBy" : {
+            "type" : [ "string", "null" ],
+            "description" : "Who cancelled the job (admin); null unless the status is cancelled"
+          },
+          "cancelledAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the cancel was asked; null unless the status is cancelled"
           }
         },
-        "required" : [ "durationMs", "fingerprint", "hiddenFacts", "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
+        "required" : [ "cancelledAt", "cancelledBy", "durationMs", "fingerprint", "hiddenFacts", "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
       },
       "VerificationStage" : {
         "type" : "object",
@@ -6137,9 +6557,13 @@
             "type" : [ "integer", "null" ],
             "format" : "int64",
             "description" : "The actual time to restore (level 5)"
+          },
+          "cancelledBy" : {
+            "type" : [ "string", "null" ],
+            "description" : "Who cancelled the job (admin); null unless the status is cancelled"
           }
         },
-        "required" : [ "durationMs", "id", "level", "resticSnapshotId", "restoreDurationMs", "status", "verifiedAt", "verifierHostname" ]
+        "required" : [ "cancelledBy", "durationMs", "id", "level", "resticSnapshotId", "restoreDurationMs", "status", "verifiedAt", "verifierHostname" ]
       },
       "ReportSummary" : {
         "type" : "object",
@@ -6161,9 +6585,14 @@
             "type" : "integer",
             "format" : "int32",
             "description" : "Cannot verify, infrastructure failure or no fitting verifier: no check took place"
+          },
+          "cancelled" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Cancelled by an administrator: neither held nor failed"
           }
         },
-        "required" : [ "failed", "notHeld", "passed", "total" ]
+        "required" : [ "cancelled", "failed", "notHeld", "passed", "total" ]
       },
       "VerificationReportResponse" : {
         "type" : "object",
@@ -6727,12 +7156,26 @@
             "type" : [ "string", "null" ],
             "description" : "Who started a manual run: \"admin\" in the open core, which has one administrator; null for a schedule"
           },
+          "outcome" : {
+            "$ref" : "#/components/schemas/RunOutcome",
+            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline)"
+          },
+          "agentWaitUntil" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Until when the queued run waits for an offline agent: the console shows \"starts when the agent connects, waiting until <time>\". null once the run left the queue, and for a run that never waited"
+          },
+          "timeoutSeconds" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "The timeout the run's step was created with, in seconds, as RunStep.timeoutSeconds: the list says \"timed out (6 h)\" with it. null for records before J1b"
+          },
           "partial" : {
             "type" : "boolean",
             "description" : "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "partial", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
+        "required" : [ "agentId", "agentWaitUntil", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "partial", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "timeoutSeconds", "trigger" ]
       },
       "LogLevel" : {
         "type" : "string",

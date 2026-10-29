@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 
 // Documentation shared by the endpoints of /api/v1. Pages are cursor-based: the
 // client passes back nextCursor until it is null.
@@ -80,3 +81,15 @@ annotation class SystemSourceConflict
     content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
 )
 annotation class VerificationActiveConflict
+
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+@ApiResponses(
+    ApiResponse(
+        responseCode = "409",
+        description =
+            "run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed",
+        content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
+    ),
+)
+annotation class CancelRefused

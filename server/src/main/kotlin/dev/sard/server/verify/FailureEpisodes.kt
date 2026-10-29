@@ -26,7 +26,8 @@ data class FailureEpisode(
 
 /**
  * The episodes of failure in a source's history, oldest first (V6, rule 20). A pass ends a series; a verification that
- * did not take place proves neither the backup nor its failure, so it neither ends a series nor starts one.
+ * did not take place, or that a person cancelled, proves neither the backup nor its failure: it neither ends a
+ * series nor starts one.
  */
 object FailureEpisodes {
     fun of(history: List<HistoryMark>): List<FailureEpisode> {
@@ -46,6 +47,7 @@ object FailureEpisodes {
                 VerificationStatus.CANNOT_VERIFY,
                 VerificationStatus.INFRASTRUCTURE_FAILURE,
                 VerificationStatus.NO_VERIFIER,
+                VerificationStatus.CANCELLED,
                 -> {
                     Unit
                 }

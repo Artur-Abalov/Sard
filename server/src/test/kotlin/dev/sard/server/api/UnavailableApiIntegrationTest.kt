@@ -100,6 +100,42 @@ class UnavailableApiIntegrationTest(
     }
 
     @Test
+    fun `Сохранение настроек установки при недоступной базе отвечает 503`() {
+        databaseDown()
+
+        val response =
+            world.api.send(
+                "PUT",
+                "/api/v1/run-defaults",
+                admin,
+                """{"backupTimeoutMinutes":60,"restoreTimeoutMinutes":90}""",
+            )
+
+        assertEquals(503, response.status)
+        assertEquals("unavailable", response.code)
+        databaseUp()
+        assertEquals(
+            360,
+            world.api
+                .get("/api/v1/run-defaults", admin)
+                .json
+                .path("backupTimeoutMinutes")
+                .asInt(),
+        )
+    }
+
+    @Test
+    fun `Отмена задания проверки при недоступной базе отвечает 503`() {
+        databaseDown()
+
+        val response = world.api.post("/api/v1/verification-jobs/${UUID.randomUUID()}/cancel", admin, null)
+
+        assertEquals(503, response.status)
+        assertEquals("unavailable", response.code)
+        assertFalse(FAILURE in response.body)
+    }
+
+    @Test
     fun `Обзор при недоступной базе отвечает 503 без подробностей`() {
         databaseDown()
 

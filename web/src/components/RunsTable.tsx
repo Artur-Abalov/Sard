@@ -5,8 +5,9 @@ import { Badge, Group, Table, Text } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
 import { AppLink } from './links'
+import { CancelRunButton } from './CancelRunButton'
 import { IncompleteMark } from './IncompleteMark'
-import { StatusBadge } from './StatusBadge'
+import { RunOutcomeBadge } from './RunOutcomeBadge'
 import { tones } from '../theme'
 import { Mono } from './Mono'
 import { Time } from './Time'
@@ -83,7 +84,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
               </Table.Td>
               <Table.Td>
                 <Group gap="xs" wrap="nowrap">
-                  <StatusBadge group="RunStatus" value={run.status} />
+                  <RunOutcomeBadge run={run} timeoutSeconds={run.timeoutSeconds} />
                   <IncompleteMark run={run} />
                 </Group>
               </Table.Td>
@@ -94,9 +95,12 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
                 <Time value={run.queuedAt} />
               </Table.Td>
               <Table.Td>
-                <AppLink to="/runs/$runId" params={{ runId: run.id }}>
-                  {t('runs.open')}
-                </AppLink>
+                <Group gap="xs">
+                  <AppLink to="/runs/$runId" params={{ runId: run.id }}>
+                    {t('runs.open')}
+                  </AppLink>
+                  <CancelRunButton run={run} />
+                </Group>
               </Table.Td>
             </Table.Tr>
           ))}

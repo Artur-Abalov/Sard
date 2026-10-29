@@ -124,9 +124,9 @@ class VerificationSeed(
         jdbc.update(
             "insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id, " +
                 "verifier_agent_id, key_holders, status, level, reason, stages, mismatches, restore_duration_ms, " +
-                "recovered, verified_at) values (?, ?, ?, ?, ?, " +
+                "recovered, verified_at, cancelled_by, cancelled_at) values (?, ?, ?, ?, ?, " +
                 "(select id from run_steps where tenant_id = ? and source_id = ? limit 1), ?, 2, ?, ?, ?, " +
-                "cast(? as jsonb), cast(? as jsonb), ?, ?, ?)",
+                "cast(? as jsonb), cast(? as jsonb), ?, ?, ?, ?, ?)",
             record,
             tenant,
             job,
@@ -143,6 +143,8 @@ class VerificationSeed(
             spec.restoreMillis,
             spec.recovered,
             time,
+            "admin".takeIf { spec.status == "cancelled" },
+            time.takeIf { spec.status == "cancelled" },
         )
         return record
     }

@@ -36,6 +36,12 @@ internal class Wording(
     val onSchedule: String,
     val catchUpRun: String,
     val failuresBefore: String,
+    /** Before the timeout of a step that timed out (J1b), and the two causes a person should look at (КJ-7, Р-J9). */
+    val timeoutLine: String,
+    val timedOutHint: String,
+    /** Before the moment the agent was last in touch, and when it never was (J1c). */
+    val agentOfflineSince: String,
+    val agentNeverConnected: String,
     /** The words of a restore (R2). */
     val restore: RestoreWording,
 ) {
@@ -58,6 +64,10 @@ internal class Wording(
 
             StepState.CANCELLED -> {
                 Headline("⏹", of.cancelled)
+            }
+
+            StepState.AGENT_UNAVAILABLE -> {
+                Headline("⏸", of.agentUnavailable)
             }
 
             StepState.FAILED, StepState.REJECTED, StepState.LOST, StepState.TIMED_OUT -> {
@@ -86,6 +96,7 @@ internal class RestoreWording(
     val rollbackFailed: String,
     val removeByHand: String,
     val lost: String,
+    val timedOutHint: String,
 )
 
 /** What each finished step is called in a headline. */
@@ -96,6 +107,8 @@ internal class Verdicts(
     val lost: String,
     val timedOut: String,
     val cancelled: String,
+    /** The run did not start: its agent was offline until the wait deadline (J1c); not a failure. */
+    val agentUnavailable: String,
     /** A scheduled run that succeeded after failed ones (ADR 0024). */
     val recovered: String,
 ) {
@@ -117,7 +130,13 @@ internal class Verdicts(
                 timedOut
             }
 
-            StepState.SUCCEEDED, StepState.CANCELLED, StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+            StepState.SUCCEEDED,
+            StepState.CANCELLED,
+            StepState.QUEUED,
+            StepState.DISPATCHED,
+            StepState.RUNNING,
+            StepState.AGENT_UNAVAILABLE,
+            -> {
                 error("not a failure: $step")
             }
         }
@@ -165,11 +184,18 @@ private val EN =
                 lost = "Backup lost",
                 timedOut = "Backup timed out",
                 cancelled = "Backup cancelled",
+                agentUnavailable = "Backup not run — the agent was unavailable",
                 recovered = "Backup is working again",
             ),
         onSchedule = "On schedule",
         catchUpRun = "Catch-up run after server downtime",
         failuresBefore = "Failures in a row before this: ",
+        timeoutLine = "Step timeout: ",
+        timedOutHint =
+            "If the storage is unreachable, check the connection to it. " +
+                "If the backup is long, raise the source's timeout.",
+        agentOfflineSince = "Agent offline since ",
+        agentNeverConnected = "The agent has never connected",
         restore =
             RestoreWording(
                 verdicts =
@@ -180,6 +206,7 @@ private val EN =
                         lost = "Restore lost",
                         timedOut = "Restore timed out",
                         cancelled = "Restore cancelled",
+                        agentUnavailable = "Restore not run — the agent was unavailable",
                         recovered = "Restore succeeded",
                     ),
                 snapshot = "Snapshot: ",
@@ -195,6 +222,9 @@ private val EN =
                 lost =
                     "The connection to the agent was interrupted while the step was running. " +
                         "The restore can be started again.",
+                timedOutHint =
+                    "If the storage is unreachable, check the connection to it. " +
+                        "If the restore is long, raise the source's timeout.",
             ),
     )
 
@@ -234,11 +264,17 @@ private val RU =
                 lost = "Бэкап потерян",
                 timedOut = "Бэкап прерван по таймауту",
                 cancelled = "Бэкап отменён",
+                agentUnavailable = "Бэкап не выполнен — агент был недоступен",
                 recovered = "Бэкап снова работает",
             ),
         onSchedule = "По расписанию",
         catchUpRun = "Догоняющий запуск после простоя сервера",
         failuresBefore = "Ошибок подряд перед этим: ",
+        timeoutLine = "Срок выполнения: ",
+        timedOutHint =
+            "Хранилище недоступно — проверьте связь с ним. Бэкап долгий — увеличьте срок у источника.",
+        agentOfflineSince = "Агент не на связи с ",
+        agentNeverConnected = "Агент ещё ни разу не подключался",
         restore =
             RestoreWording(
                 verdicts =
@@ -249,6 +285,7 @@ private val RU =
                         lost = "Восстановление потеряно",
                         timedOut = "Восстановление прервано по таймауту",
                         cancelled = "Восстановление отменено",
+                        agentUnavailable = "Восстановление не выполнено — агент был недоступен",
                         recovered = "Восстановление выполнено",
                     ),
                 snapshot = "Снимок: ",
@@ -262,6 +299,9 @@ private val RU =
                 rollbackFailed = "Откат не удался, осталось: ",
                 removeByHand = " Удалите вручную.",
                 lost = "Связь с агентом прервалась, пока шаг выполнялся. Можно повторить восстановление.",
+                timedOutHint =
+                    "Хранилище недоступно — проверьте связь с ним. " +
+                        "Восстановление долгое — увеличьте срок у источника.",
             ),
     )
 

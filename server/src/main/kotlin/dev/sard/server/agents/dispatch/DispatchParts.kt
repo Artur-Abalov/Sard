@@ -29,6 +29,12 @@ interface AgentLinks {
         agentId: UUID,
         step: RunStep,
     ): SendResult
+
+    /** Queues a CancelStep for the step [commandId] on the agent's session (J1a); the same meaning of Queued. */
+    fun cancel(
+        agentId: UUID,
+        commandId: String,
+    ): SendResult
 }
 
 /** `sard.run.steps.*` (S6a). */
@@ -66,8 +72,17 @@ object RunSteps {
                 .putTags(STEP_TAG, step.id.toString())
                 .putTags(RUN_TAG, step.runId.toString())
                 .putTags(SOURCE_TAG, step.sourceId?.toString().orEmpty())
-        step.verifyTask?.let { verify(command, it) }
+        withTimeout(command, step)
         return command.build()
+    }
+
+    /** The timeout the step was created with (J1b); a VERIFY step's own then replaces it. */
+    private fun withTimeout(
+        command: RunStep.Builder,
+        step: StepView,
+    ) {
+        step.timeoutSeconds?.let { command.setTimeout(Duration.newBuilder().setSeconds(it)) }
+        step.verifyTask?.let { verify(command, it) }
     }
 
     /**

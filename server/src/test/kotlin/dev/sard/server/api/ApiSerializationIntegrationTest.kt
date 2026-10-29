@@ -101,6 +101,9 @@ class ApiSerializationIntegrationTest(
             at,
             at,
             at,
+            lateStatus = StepStatus.SUCCEEDED,
+            timeoutSeconds = 21_600,
+            timedOutBy = StepTimedOutBy.SERVER,
         )
     private val queuedStep =
         RunStep(
@@ -125,6 +128,9 @@ class ApiSerializationIntegrationTest(
             dispatchedAt = null,
             startedAt = null,
             finishedAt = null,
+            lateStatus = null,
+            timeoutSeconds = null,
+            timedOutBy = null,
         )
     private val source =
         Source(
@@ -140,6 +146,8 @@ class ApiSerializationIntegrationTest(
             true,
             null,
             null,
+            null,
+            120,
             null,
             emptyList(),
         )
@@ -158,6 +166,8 @@ class ApiSerializationIntegrationTest(
             verificationStatus = VerificationOutcome.PASSED,
             lastVerifiedAt = at,
             lastVerifiedLevel = 5,
+            backupTimeoutMinutes = null,
+            restoreTimeoutMinutes = 240,
             secretWarnings = listOf("secret \"sard-db\" is not allowed for postgresql at postgres:5432/sard"),
         )
     private val token =
@@ -238,6 +248,9 @@ class ApiSerializationIntegrationTest(
             catchUp = null,
             kind = RunKind.BACKUP,
             requestedBy = "admin",
+            outcome = RunOutcome.TIMED_OUT,
+            agentWaitUntil = null,
+            timeoutSeconds = 21_600,
             partial = true,
         )
 
@@ -266,6 +279,7 @@ class ApiSerializationIntegrationTest(
     private val samples: List<Any> =
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
+            RunDefaults(480, 600),
             CaInfo(CA_FINGERPRINT, CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
             SessionRequest("secret"),
             Session(id, at),
@@ -448,6 +462,10 @@ class ApiSerializationIntegrationTest(
                 kind = RunKind.RESTORE,
                 requestedBy = "admin",
                 restore = RunRestore("4f1c", at, "main", mapOf("destination" to "etc/x"), "/r/etc/x"),
+                outcome = RunOutcome.CANCELLING,
+                cancellation = Cancellation(at, "admin", CancelResult.PENDING),
+                agentWaitUntil = at,
+                agentUnavailableSince = at,
                 partial = false,
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
@@ -578,6 +596,7 @@ class ApiSerializationIntegrationTest(
                 "ReleaseKey",
                 "FirstSteps",
                 "AgentCertificate",
+                "Cancellation",
                 "AgentPlugin",
                 "AgentRepository",
                 "VerifierSetupEntry",

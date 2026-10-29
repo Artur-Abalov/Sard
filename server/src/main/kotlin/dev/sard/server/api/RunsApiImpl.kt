@@ -5,6 +5,7 @@ package dev.sard.server.api
 
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
+import dev.sard.server.runs.RunCancels
 import dev.sard.server.runs.RunFilter
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepLogs
@@ -22,6 +23,7 @@ class RunsApiImpl(
     private val logs: StepLogs,
     private val catchUps: CatchUpPeriods,
     private val tenants: TenantResolver,
+    private val cancels: RunCancels,
 ) : RunsApi {
     override fun listRuns(
         sourceId: UUID?,
@@ -54,6 +56,11 @@ class RunsApiImpl(
 
     override fun getRun(runId: UUID): Run {
         val run = runs.get(tenants.currentTenantId(), runId) ?: throw ResourceNotFound()
+        return RunMapping.run(run, catchUps.periods(tenants.currentTenantId(), listOf(runId))[runId])
+    }
+
+    override fun cancelRun(runId: UUID): Run {
+        val run = cancels.cancel(tenants.currentTenantId(), runId)
         return RunMapping.run(run, catchUps.periods(tenants.currentTenantId(), listOf(runId))[runId])
     }
 

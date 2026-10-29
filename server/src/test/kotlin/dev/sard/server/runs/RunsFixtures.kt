@@ -99,6 +99,7 @@ internal class RunsTenant(
             listOf(
                 "notification_deliveries",
                 "overdue_episodes",
+                "run_defaults",
                 "run_steps",
                 "runs",
                 "sources",
@@ -126,6 +127,18 @@ class RecordingStepsQueued : StepsQueued {
     }
 }
 
+/** Records every [StepsCancelled.onCancelled] call instead of telling a dispatcher. */
+class RecordingStepsCancelled : StepsCancelled {
+    val calls = CopyOnWriteArrayList<Pair<UUID, UUID>>()
+
+    override fun onCancelled(
+        tenantId: UUID,
+        agentId: UUID,
+    ) {
+        calls += tenantId to agentId
+    }
+}
+
 @TestConfiguration(proxyBeanMethods = false)
 class RunsTestConfiguration {
     @Bean
@@ -134,4 +147,8 @@ class RunsTestConfiguration {
     @Bean
     @Primary
     fun recordingStepsQueued() = RecordingStepsQueued()
+
+    @Bean
+    @Primary
+    fun recordingStepsCancelled() = RecordingStepsCancelled()
 }

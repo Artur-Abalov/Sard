@@ -26,7 +26,7 @@ internal fun reportOf(
     timezone = report.timezone,
     generatedAt = report.generatedAt,
     serverVersion = serverVersion,
-    summary = ReportSummary(report.items.size, report.passed, report.failed, report.notHeld),
+    summary = ReportSummary(report.items.size, report.passed, report.failed, report.notHeld, report.cancelled),
     items = report.items.map(::reportItemOf),
     failures = report.failures.map { ReportFailure(it.startedAt, it.records, it.fixedAt) },
 )
@@ -41,6 +41,7 @@ internal fun reportItemOf(entry: ReportEntry) =
         entry.level,
         entry.durationMillis,
         entry.restoreMillis,
+        entry.cancelledBy,
     )
 
 /** A threshold in days that came as a number: whole, or 422 at its field. */

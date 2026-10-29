@@ -14,10 +14,19 @@ import java.util.UUID
 private val log = LoggerFactory.getLogger(StepResults::class.java)
 
 private const val OWN_STEP = "from RunStepRecord where id = :step and agentId = :agent"
-private const val STATUS = "select status from run_steps where tenant_id = :tenant and id = :step"
+private const val STATUS =
+    "select s.status, r.cancel_result, s.timed_out_by from run_steps s " +
+        "join runs r on r.tenant_id = s.tenant_id and r.id = s.run_id where s.tenant_id = :tenant and s.id = :step"
+
+// What the agent sent after the server closed the step (R2 ВВ11, J1a, J1b): the step was lost, timed out by the
+// server, or cancelled without its agent's confirmation. Its status is kept once, with the output when there is one;
+// the step's and the run's status stay.
 private const val KEEP_LATE =
-    "update run_steps set output = cast(:output as jsonb) " +
-        "where tenant_id = :tenant and id = :step and status = 'lost' and output is null"
+    "update run_steps set late_status = :late, output = cast(:output as jsonb) " +
+        "where tenant_id = :tenant and id = :step and late_status is null and output is null and " +
+        "(status = 'lost' or (status = 'timed_out' and timed_out_by = 'server') or (status = 'cancelled' and " +
+        "exists (select 1 from runs r where r.tenant_id = run_steps.tenant_id and r.id = run_steps.run_id " +
+        "and r.cancel_result = 'unconfirmed')))"
 private const val SNAPSHOT =
     "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
         "snapshot_id, total_bytes, added_bytes, created_at, partial, fingerprint, fingerprint_sha256, total_files, " +
@@ -42,7 +51,10 @@ sealed interface Recorded {
     /** The step was already closed by an earlier copy of the result: nothing written. */
     data object Repeated : Recorded
 
-    /** The step was lost before its result came; it stays lost, [kept] says whether its output was stored now. */
+    /**
+     * The server had closed the step (lost, timed out by the server or cancelled unconfirmed) before its result came;
+     * it keeps its status, [kept] says whether the output was stored now.
+     */
     data class Late(
         val kept: Boolean,
     ) : Recorded
@@ -130,43 +142,63 @@ class StepResults(
         tenantId: UUID,
         step: RunStepRecord,
         verdict: Verdict,
-    ): Recorded =
-        when (status(session, tenantId, step.id)) {
-            StepState.LOST -> Recorded.Late(keepLate(session, step, verdict))
-            StepState.QUEUED -> Recorded.NotDispatched
+    ): Recorded {
+        val closed = closed(session, tenantId, step.id)
+        return when {
+            closed.status == StepState.QUEUED -> Recorded.NotDispatched
+            closed.byServer -> keepLate(session, step, verdict)
             else -> Recorded.Repeated
         }
+    }
 
-    private fun status(
+    /** How the server found the step: its status, how the cancel of its run ended and who timed it out. */
+    private data class Closed(
+        val status: StepState,
+        val cancelResult: String?,
+        val timedOutBy: String?,
+    ) {
+        /** The server closed it, so a result of its agent can still come (J1a, J1b, R2 ВВ11). */
+        val byServer
+            get() =
+                when (status) {
+                    StepState.LOST -> true
+                    StepState.CANCELLED -> cancelResult == CancelResult.UNCONFIRMED.stored
+                    StepState.TIMED_OUT -> timedOutBy == TimedOutBy.SERVER.stored
+                    else -> false
+                }
+    }
+
+    private fun closed(
         session: Session,
         tenantId: UUID,
         stepId: UUID,
-    ): StepState {
-        val stored =
+    ): Closed {
+        val row =
             session
-                .createNativeQuery(STATUS, String::class.java)
+                .createNativeQuery(STATUS, Array<Any?>::class.java)
                 .setParameter("tenant", tenantId)
                 .setParameter("step", stepId)
                 .singleResult
-        return StepState.of(stored)
+        return Closed(StepState.of(row[0] as String), row[1] as String?, row[2] as String?)
     }
 
-    /** A lost step keeps its status; the output of its late result is stored once (S7a, answer 1). */
+    /** The late result of a step the server closed: its status and output are kept once, and a backup's snapshot. */
     private fun keepLate(
         session: Session,
         step: RunStepRecord,
         verdict: Verdict,
-    ): Boolean {
-        val output = verdict.output ?: return false
-        val kept =
+    ): Recorded {
+        val output = verdict.output
+        val moved =
             session
                 .createNativeMutationQuery(KEEP_LATE)
-                .setParameter("output", output.json(), String::class.java)
+                .setParameter("late", verdict.outcome.status.stored)
+                .setParameter("output", output?.json(), String::class.java)
                 .setParameter("tenant", step.tenantId)
                 .setParameter("step", step.id)
                 .executeUpdate() == 1
-        if (kept) snapshot(session, step, verdict)
-        return kept
+        if (moved) snapshot(session, step, verdict)
+        return Recorded.Late(moved && output != null)
     }
 
     private fun snapshot(

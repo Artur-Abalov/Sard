@@ -22,7 +22,7 @@ private const val COLUMNS = """
     select rv.id, rv.job_id, rv.source_id, rv.snapshot_id, sn.snapshot_id, rv.step_id, rv.verifier_agent_id,
         rv.key_holders, rv.status, rv.level, rv.reason, cast(rv.stages as text), cast(rv.mismatches as text),
         cast(rv.unsuitable as text), rv.restore_duration_ms, rv.recovered, rv.verified_at, sn.fingerprint,
-        sn.fingerprint_sha256
+        sn.fingerprint_sha256, rv.cancelled_by, rv.cancelled_at
     from restore_verifications rv join snapshots sn on sn.tenant_id = rv.tenant_id and sn.id = rv.snapshot_id"""
 private const val ONE = "$COLUMNS where rv.tenant_id = :tenant and rv.id = :id"
 private const val OF_SOURCE = "$COLUMNS where rv.tenant_id = :tenant and rv.source_id = :source"
@@ -79,6 +79,9 @@ data class VerificationView(
     val verifiedAt: Instant,
     /** The source's fingerprint beside the copy's; empty when the snapshot kept none. */
     val fingerprint: FingerprintView = FingerprintView.NONE,
+    /** Who cancelled the job and when it was asked; set for a cancelled record only (J1f). */
+    val cancelledBy: String? = null,
+    val cancelledAt: Instant? = null,
 )
 
 /** A live verifier of the tenant, what it reported, and why it does not fit a source's job (when asked). */
@@ -254,6 +257,8 @@ private enum class Column {
     VERIFIED_AT,
     FINGERPRINT,
     FINGERPRINT_SHA256,
+    CANCELLED_BY,
+    CANCELLED_AT,
 }
 
 private operator fun Array<Any?>.get(column: Column): Any? = this[column.ordinal]
@@ -290,6 +295,8 @@ private fun viewOf(row: Array<Any?>): VerificationView {
         recovered = row[Column.RECOVERED] as Boolean,
         verifiedAt = row[Column.VERIFIED_AT] as Instant,
         fingerprint = fingerprint,
+        cancelledBy = row[Column.CANCELLED_BY] as String?,
+        cancelledAt = row[Column.CANCELLED_AT] as Instant?,
     )
 }
 

@@ -46,6 +46,12 @@ class SourceRecord(
     @Column(name = "system_role", updatable = false)
     var systemRole: String? = null
 
+    @Column(name = "backup_timeout_minutes")
+    var backupTimeoutMinutes: Int? = null
+
+    @Column(name = "restore_timeout_minutes")
+    var restoreTimeoutMinutes: Int? = null
+
     override fun toString() = "SourceRecord(id=$id, agentId=$agentId, plugin=$plugin)"
 }
 
@@ -78,6 +84,9 @@ class RunRecord(
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(updatable = false)
     val restore: String? = null,
+    /** Until when the run waits in the queue for an offline agent (J1c); null: it does not wait. */
+    @Column(name = "agent_wait_until", updatable = false)
+    val agentWaitUntil: Instant? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
@@ -90,6 +99,20 @@ class RunRecord(
 
     @Column(name = "finished_at")
     val finishedAt: Instant? = null
+
+    /** The cancel somebody asked for (J1a); set by guarded updates only. */
+    @Column(name = "cancel_requested_at", insertable = false, updatable = false)
+    val cancelRequestedAt: Instant? = null
+
+    @Column(name = "cancel_requested_by", insertable = false, updatable = false)
+    val cancelRequestedBy: String? = null
+
+    @Column(name = "cancel_result", insertable = false, updatable = false)
+    val cancelResult: String? = null
+
+    /** The agent's last contact when the wait expired (J1c); set by the guarded update that expires the run. */
+    @Column(name = "agent_unavailable_since", insertable = false, updatable = false)
+    val agentUnavailableSince: Instant? = null
 }
 
 /**
@@ -133,6 +156,9 @@ class RunStepRecord(
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "verify_task", updatable = false)
     val verifyTask: String? = null,
+    /** The timeout the step was created with, in seconds (J1b); null for a verification and old records. */
+    @Column(name = "timeout_seconds", updatable = false)
+    val timeoutSeconds: Long? = null,
 ) {
     @Column(insertable = false, updatable = false)
     val phase: String? = null
@@ -165,6 +191,14 @@ class RunStepRecord(
 
     @Column(name = "finished_at", insertable = false, updatable = false)
     val finishedAt: Instant? = null
+
+    /** What the agent reported after the server closed the step as cancelled (J1a); null if nothing came. */
+    @Column(name = "late_status", insertable = false, updatable = false)
+    val lateStatus: String? = null
+
+    /** agent or server, once the step is closed as timed out (J1b). */
+    @Column(name = "timed_out_by", insertable = false, updatable = false)
+    val timedOutBy: String? = null
 
     override fun toString() = "RunStepRecord(id=$id, runId=$runId, status=$status)"
 }

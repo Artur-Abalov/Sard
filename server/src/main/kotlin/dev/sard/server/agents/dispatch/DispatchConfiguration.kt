@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents.dispatch
 
+import dev.sard.proto.agent.v1.CancelStep
 import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.proto.agent.v1.RunStep
 import dev.sard.server.agents.stream.AgentConnections
@@ -13,12 +14,14 @@ import dev.sard.server.agents.stream.CommandReconciliation
 import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.RoleRefusals
 import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepCounts
 import dev.sard.server.runs.StepDeadlines
 import dev.sard.server.runs.StepTransitions
+import dev.sard.server.runs.StepsCancelled
 import dev.sard.server.runs.StepsQueued
 import dev.sard.server.runs.WaitingSteps
 import io.micrometer.core.instrument.Counter
@@ -34,13 +37,19 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 private const val LOST_AFTER_HEARTBEATS = 2
+private val START_GRACE = Duration.ofMinutes(2)
 
 data class DispatchSettings(
     /** How long a step in flight waits for its agent after its session ended or a Hello missed it (FXs). */
     val lostAfter: Duration,
     /** How often the window is checked and queued steps of online agents are retried. */
     val checkInterval: Duration,
-)
+    /** After a server start no step in flight is lost sooner than this (OQ-138); at least [lostAfter] counts. */
+    val startGrace: Duration,
+) {
+    /** How long after a server start an agent not seen since is given to reconnect: the longer of grace and window. */
+    val reconnectGrace: Duration get() = maxOf(lostAfter, startGrace)
+}
 
 /** `sard.run.dispatch.*`; the window is counted in heartbeat intervals, like the stream's (ADR 0026). */
 @ConfigurationProperties("sard.run.dispatch")
@@ -48,6 +57,7 @@ data class DispatchProperties(
     val lostAfterHeartbeats: Int = LOST_AFTER_HEARTBEATS,
     /** Unset: `sard.agent.stream.check-interval`. */
     val checkInterval: Duration? = null,
+    val startGrace: Duration = START_GRACE,
 ) {
     fun settings(
         heartbeatInterval: Duration,
@@ -56,7 +66,8 @@ data class DispatchProperties(
         require(lostAfterHeartbeats >= 1) { "sard.run.dispatch.lost-after-heartbeats must be at least 1" }
         val interval = checkInterval ?: streamCheckInterval
         require(interval.isPositive) { "sard.run.dispatch.check-interval must be positive" }
-        return DispatchSettings(heartbeatInterval.multipliedBy(lostAfterHeartbeats.toLong()), interval)
+        require(startGrace.isPositive) { "sard.run.dispatch.start-grace must be positive" }
+        return DispatchSettings(heartbeatInterval.multipliedBy(lostAfterHeartbeats.toLong()), interval, startGrace)
     }
 }
 
@@ -73,6 +84,14 @@ class ConnectionLinks(
         agentId: UUID,
         step: RunStep,
     ): SendResult = connections.send(agentId, ConnectResponse.newBuilder().setRunStep(step).build())
+
+    override fun cancel(
+        agentId: UUID,
+        commandId: String,
+    ): SendResult {
+        val cancel = CancelStep.newBuilder().setCommandId(commandId)
+        return connections.send(agentId, ConnectResponse.newBuilder().setCancelStep(cancel).build())
+    }
 }
 
 /** Micrometer meters; the gauges read the counts of the last check. */
@@ -129,6 +148,7 @@ class DispatchConfiguration {
         meters: MeterRegistry,
         counts: StepCounts,
         roles: RoleLedger,
+        waits: AgentWaits,
     ) = StepDispatcher(
         transitions,
         deadlines,
@@ -137,6 +157,8 @@ class DispatchConfiguration {
         settings.lostAfter,
         MicrometerDispatchMetrics(meters),
         roles,
+        settings.startGrace,
+        waits::expire,
         counts::waiting,
     )
 
@@ -152,6 +174,9 @@ class DispatchConfiguration {
 
     @Bean
     fun stepsQueued(dispatcher: StepDispatcher) = StepsQueued(dispatcher::onQueued)
+
+    @Bean
+    fun stepsCancelled(dispatcher: StepDispatcher) = StepsCancelled(dispatcher::onCancelled)
 
     @Bean
     fun dispatchSweeper(

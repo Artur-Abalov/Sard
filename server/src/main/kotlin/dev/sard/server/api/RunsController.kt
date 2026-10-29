@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -35,6 +36,28 @@ data class CatchUp(
     val timezone: String,
 )
 
+private const val OUTCOME =
+    "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), " +
+        "the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the " +
+        "agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline)"
+
+@Schema(description = "A cancel somebody asked for")
+data class Cancellation(
+    val requestedAt: Instant,
+    @field:Schema(description = "\"admin\" for any session of the open core, which has one administrator")
+    val requestedBy: String,
+    @field:Schema(
+        description =
+            "pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); " +
+                "unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result " +
+                "came first and is the run's result",
+    )
+    val result: CancelResult,
+)
+
+private const val AGENT_WAIT_UNTIL =
+    "Until when the queued run waits for an offline agent: the console shows \"starts when the agent " +
+        "connects, waiting until <time>\". null once the run left the queue, and for a run that never waited"
 private const val PARTIAL =
     "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
 
@@ -79,6 +102,16 @@ data class RunSummary(
     val kind: RunKind,
     @field:Schema(description = REQUESTED_BY)
     val requestedBy: String?,
+    @field:Schema(description = OUTCOME)
+    val outcome: RunOutcome,
+    @field:Schema(description = AGENT_WAIT_UNTIL)
+    val agentWaitUntil: Instant?,
+    @field:Schema(
+        description =
+            "The timeout the run's step was created with, in seconds, as RunStep.timeoutSeconds: the list says " +
+                "\"timed out (6 h)\" with it. null for records before J1b",
+    )
+    val timeoutSeconds: Long?,
     @field:Schema(description = PARTIAL)
     val partial: Boolean,
 )
@@ -221,6 +254,24 @@ data class RunStep(
     val dispatchedAt: Instant?,
     val startedAt: Instant?,
     val finishedAt: Instant?,
+    @field:Schema(
+        description =
+            "What the agent reported after the server closed the step as cancelled (its agent did not confirm the " +
+                "cancel); null when nothing came. The step's and the run's status do not change",
+    )
+    val lateStatus: StepStatus?,
+    @field:Schema(
+        description =
+            "The timeout the step was created with, in seconds: the source's, or the installation's default at the " +
+                "time. null for a step without one (a verification's is its attempt's; records before J1b)",
+    )
+    val timeoutSeconds: Long?,
+    @field:Schema(
+        description =
+            "Who closed a timed out step: the agent (its own deadline) or the server (the agent stayed silent " +
+                "past the timeout and the lost window); null for any other step",
+    )
+    val timedOutBy: StepTimedOutBy?,
 )
 
 @Schema(description = "A run with its steps")
@@ -247,6 +298,18 @@ data class Run(
     val requestedBy: String?,
     @field:Schema(description = "Set for a restore run; null for a backup")
     val restore: RunRestore?,
+    @field:Schema(description = OUTCOME)
+    val outcome: RunOutcome,
+    @field:Schema(description = "Set once somebody asked to cancel the run; null otherwise")
+    val cancellation: Cancellation?,
+    @field:Schema(description = AGENT_WAIT_UNTIL)
+    val agentWaitUntil: Instant?,
+    @field:Schema(
+        description =
+            "The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never " +
+                "connected, or the run did not expire",
+    )
+    val agentUnavailableSince: Instant?,
     @field:Schema(description = PARTIAL)
     val partial: Boolean,
 )
@@ -295,6 +358,8 @@ interface RunsApi {
 
     fun getRun(runId: UUID): Run
 
+    fun cancelRun(runId: UUID): Run
+
     fun listStepLogs(
         runId: UUID,
         stepId: UUID,
@@ -342,6 +407,23 @@ class RunsController(
     fun getRun(
         @PathVariable runId: UUID,
     ): Run = api.getRun(runId)
+
+    @PostMapping("/{runId}/cancel")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "Cancel a run",
+        description =
+            "A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its " +
+                "agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent " +
+                "confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking " +
+                "again changes nothing. A run that is final answers 409 run_finished. An attempt of a restore " +
+                "verification cancels its job, as POST /verification-jobs/{jobId}/cancel does.",
+    )
+    @NotFound
+    @CancelRefused
+    fun cancelRun(
+        @PathVariable runId: UUID,
+    ): Run = api.cancelRun(runId)
 
     @GetMapping("/{runId}/steps/{stepId}/logs")
     @ResponseStatus(HttpStatus.OK)

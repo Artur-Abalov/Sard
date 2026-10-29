@@ -85,3 +85,13 @@ class RestoreAgentInvalid : RunsException("the restore names no agent of this te
 class RestoreConfigInvalid(
     val violations: List<ConfigViolation>,
 ) : RunsException("the restore config has ${violations.size} violations")
+
+/** No run with this id in the caller's tenant (404). */
+class RunNotFound(
+    val runId: UUID,
+) : RunsException("no run $runId")
+
+/** The run is final: nothing to cancel (409 run_finished). */
+class RunAlreadyFinished(
+    val runId: UUID,
+) : RunsException("run $runId is finished")

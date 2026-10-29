@@ -605,4 +605,19 @@ class ArchitectureTest {
             }
         assertTrue(stale.isEmpty(), "exceptions that match no query:\n${stale.joinToString("\n")}")
     }
+
+    @Test
+    fun `every cross-tenant read of StepDeadlines is listed in ADR 0013`() {
+        val text = withoutComments(File(mainRoot, "runs/StepDeadlines.kt").readText())
+        val readers =
+            Regex("""fun\s+(\w+)\([^)]*\)[^={}]*=\s*system\(""")
+                .findAll(text)
+                .map { it.groupValues[1] }
+                .toSet()
+        val adr = File("../docs/adr/0013-multitenancy-and-schema.md").readText()
+
+        assertEquals(setOf("overdue", "holders", "waitsOver", "silent"), readers, "the scan lost a known reader")
+        val missing = readers.filterNot { "StepDeadlines.$it(" in adr }
+        assertTrue(missing.isEmpty(), "StepDeadlines reads across tenants in $missing, not listed in ADR 0013")
+    }
 }

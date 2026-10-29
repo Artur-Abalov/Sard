@@ -52,6 +52,17 @@ data class ProgressProperties(
     }
 }
 
+/** `sard.run.agent-wait.*`: how long a run waits for an offline agent (J1c, ВJ1). */
+@ConfigurationProperties("sard.run.agent-wait")
+data class AgentWaitProperties(
+    val max: Duration = DEFAULT_AGENT_WAIT_MAX,
+) {
+    fun limit(): Duration {
+        require(max.isPositive) { "sard.run.agent-wait.max must be positive" }
+        return max
+    }
+}
+
 private const val MAX_LINE_BYTES = 8192
 private const val MAX_STEP_BYTES = 16L * 1024 * 1024
 private const val PARTITIONS_AHEAD = 2
@@ -61,7 +72,7 @@ private const val PROGRESS_SECONDS = 5L
 private const val THROTTLE_CAPACITY = 10_000
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(LogProperties::class, ProgressProperties::class)
+@EnableConfigurationProperties(LogProperties::class, ProgressProperties::class, AgentWaitProperties::class)
 class RunsConfiguration {
     @Bean
     fun sources(
@@ -128,7 +139,45 @@ class RunsConfiguration {
         sessions: TenantSessions,
         clock: Clock,
         queued: ObjectProvider<StepsQueued>,
-    ) = Runs(sessions, clock, UuidV7(clock, SecureRandom()), queued.getIfUnique { StepsQueued.NONE })
+        waiting: AgentWaitProperties,
+        presence: ObjectProvider<AgentOnline>,
+    ) = Runs(
+        sessions,
+        clock,
+        UuidV7(clock, SecureRandom()),
+        queued.getIfUnique { StepsQueued.NONE },
+        waiting.limit(),
+        presence.getIfUnique { AgentOnline.ALWAYS },
+    )
+}
+
+/** The installation's default step timeouts (J1b, ДJ8). */
+@Configuration(proxyBeanMethods = false)
+class TimeoutSettingsConfiguration {
+    @Bean
+    fun timeoutSettings(
+        sessions: TenantSessions,
+        clock: Clock,
+    ) = TimeoutSettings(sessions, clock)
+}
+
+/** Cancel of a run (J1a): the endpoint's service; the dispatcher, if there is one, sends the agent its CancelStep. */
+@Configuration(proxyBeanMethods = false)
+class RunCancelsConfiguration {
+    @Bean
+    fun cancelMarks(
+        clock: Clock,
+        cancelled: ObjectProvider<StepsCancelled>,
+        announcer: RunAnnouncer,
+    ) = CancelMarks(clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer)
+
+    @Bean
+    fun runCancels(
+        sessions: TenantSessions,
+        runs: Runs,
+        marks: CancelMarks,
+        attempts: ObjectProvider<AttemptCancels>,
+    ) = RunCancels(sessions, runs, marks, attempts.getIfUnique { AttemptCancels.NONE })
 }
 
 /** Restore from the console (R2a): the service behind the restore endpoints. */
@@ -139,5 +188,14 @@ class RestoresConfiguration {
         sessions: TenantSessions,
         clock: Clock,
         queued: ObjectProvider<StepsQueued>,
-    ) = Restores(sessions, clock, UuidV7(clock, SecureRandom()), queued.getIfUnique { StepsQueued.NONE })
+        waiting: AgentWaitProperties,
+        presence: ObjectProvider<AgentOnline>,
+    ) = Restores(
+        sessions,
+        clock,
+        UuidV7(clock, SecureRandom()),
+        queued.getIfUnique { StepsQueued.NONE },
+        waiting.limit(),
+        presence.getIfUnique { AgentOnline.ALWAYS },
+    )
 }

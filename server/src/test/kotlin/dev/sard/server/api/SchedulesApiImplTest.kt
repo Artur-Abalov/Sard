@@ -111,6 +111,7 @@ class SchedulesApiImplTest(
         assertNull(created.lastFiredAt)
 
         tickAt(at("2026-09-30T11:00:00Z"))
+        tables.startAll(at("2026-09-30T11:00:05Z"))
         tickAt(at("2026-09-30T12:00:00Z"))
 
         val read = get(source)
@@ -119,7 +120,7 @@ class SchedulesApiImplTest(
         assertEquals(1, read.skippedInRow)
         val last = assertNotNull(read.lastRun)
         val run = tables.runs().first()
-        assertEquals(listOf(run.id, RunTrigger.SCHEDULE, RunStatus.QUEUED), listOf(last.id, last.trigger, last.status))
+        assertEquals(listOf(run.id, RunTrigger.SCHEDULE, RunStatus.RUNNING), listOf(last.id, last.trigger, last.status))
         assertEquals(listOf(at("2026-09-30T11:00:00Z"), null), listOf(last.queuedAt, last.finishedAt))
         assertEquals(created.createdAt, read.createdAt)
     }
@@ -144,6 +145,7 @@ class SchedulesApiImplTest(
         set(source, cron = "* * * * *")
         tickAt(RUNS_NOW.plus(Duration.ofDays(8)))
         tickAt(RUNS_NOW.plus(Duration.ofDays(8)).plusSeconds(2))
+        tables.startAll(RUNS_NOW.plus(Duration.ofDays(8)).plusSeconds(3))
         tickAt(RUNS_NOW.plus(Duration.ofDays(8)).plusSeconds(62))
 
         val all = fires(source)

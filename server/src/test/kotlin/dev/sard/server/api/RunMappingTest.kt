@@ -12,6 +12,7 @@ import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
+import dev.sard.server.runs.TimedOutBy
 import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.CatchUpPeriod
 import io.github.anschnapp.mutflow.MutFlow
@@ -261,6 +262,122 @@ class RunMappingTest {
         assertNull(MutFlow.underTest { RunMapping.step(step()) }.restore)
     }
 
+    // --- J1a: the outcome, the cancel and the late status of a step
+
+    @Test
+    fun `every outcome of the domain has its name in the contract, for a run and its summary`() {
+        for (outcome in dev.sard.server.runs.RunOutcome.entries) {
+            assertEquals(outcome.name, MutFlow.underTest { CancelMapping.outcome(outcome) }.name)
+        }
+        val failed = run(RunState.FAILED).copy(steps = emptyList(), stepStatus = StepState.TIMED_OUT)
+        assertEquals(RunOutcome.TIMED_OUT, MutFlow.underTest { RunMapping.run(failed, null) }.outcome)
+        assertEquals(RunOutcome.TIMED_OUT, MutFlow.underTest { RunMapping.summary(failed, null) }.outcome)
+    }
+
+    @Test
+    fun `a run is told by its status and its step, as the contract names them`() {
+        val told =
+            listOf(
+                Triple(RunState.DISPATCHED, StepState.DISPATCHED, RunOutcome.DISPATCHED),
+                Triple(RunState.RUNNING, StepState.RUNNING, RunOutcome.RUNNING),
+                Triple(RunState.FAILED, StepState.REJECTED, RunOutcome.REJECTED),
+                Triple(RunState.FAILED, StepState.LOST, RunOutcome.LOST),
+                Triple(RunState.FAILED, StepState.FAILED, RunOutcome.FAILED),
+            )
+        for ((status, step, outcome) in told) {
+            val view = run(status).copy(steps = emptyList(), stepStatus = step)
+            assertEquals(outcome, MutFlow.underTest { RunMapping.run(view, null) }.outcome, "$status $step")
+        }
+    }
+
+    @Test
+    fun `a run names its cancel, a run without one names none`() {
+        val cancellation =
+            dev.sard.server.runs
+                .Cancellation(AT, "admin", dev.sard.server.runs.CancelResult.UNCONFIRMED)
+        val view = run(RunState.CANCELLED).copy(cancellation = cancellation)
+
+        val mapped = MutFlow.underTest { RunMapping.run(view, null) }
+
+        assertEquals(Cancellation(AT, "admin", CancelResult.UNCONFIRMED), mapped.cancellation)
+        assertEquals(RunOutcome.CANCEL_UNCONFIRMED, mapped.outcome)
+        assertNull(MutFlow.underTest { RunMapping.run(run(), null) }.cancellation)
+    }
+
+    @Test
+    fun `every result of a cancel of the domain has its name in the contract`() {
+        for (result in dev.sard.server.runs.CancelResult.entries) {
+            val view =
+                run().copy(
+                    cancellation =
+                        dev.sard.server.runs
+                            .Cancellation(AT, "admin", result),
+                )
+            assertEquals(
+                result.name,
+                MutFlow
+                    .underTest { RunMapping.run(view, null) }
+                    .cancellation
+                    ?.result
+                    ?.name,
+            )
+        }
+    }
+
+    @Test
+    fun `a step names what its agent reported late, if anything`() {
+        val late = step(StepState.CANCELLED).copy(lateStatus = StepState.SUCCEEDED)
+
+        assertEquals(StepStatus.SUCCEEDED, MutFlow.underTest { RunMapping.step(late) }.lateStatus)
+        assertNull(MutFlow.underTest { RunMapping.step(step(StepState.CANCELLED)) }.lateStatus)
+    }
+
+    // J1b: КВJ5 timeoutSeconds, timedOutBy
+    @Test
+    fun `a step names its timeout and who closed it as timed out`() {
+        val agent = step(StepState.TIMED_OUT).copy(timeoutSeconds = 21_600, timedOutBy = TimedOutBy.AGENT)
+        val server = step(StepState.TIMED_OUT).copy(timedOutBy = TimedOutBy.SERVER)
+
+        val mapped = MutFlow.underTest { RunMapping.step(agent) }
+        assertEquals(listOf(21_600L, StepTimedOutBy.AGENT), listOf(mapped.timeoutSeconds, mapped.timedOutBy))
+        assertEquals(StepTimedOutBy.SERVER, MutFlow.underTest { RunMapping.step(server) }.timedOutBy)
+        val none = MutFlow.underTest { RunMapping.step(step()) }
+        assertEquals(listOf(null, null), listOf(none.timeoutSeconds, none.timedOutBy))
+    }
+
+    // J1e follow-up: a list says "waiting until" and the timeout too (rule 24)
+    @Test
+    fun `a summary names the wait deadline and the timeout of the step, a run without them names none`() {
+        val view = run().copy(agentWaitUntil = AT, stepTimeoutSeconds = 21_600)
+
+        val mapped = MutFlow.underTest { RunMapping.summary(view, null) }
+
+        assertEquals(listOf(AT, 21_600L), listOf(mapped.agentWaitUntil, mapped.timeoutSeconds))
+        val none = MutFlow.underTest { RunMapping.summary(run(), null) }
+        assertEquals(listOf(null, null), listOf(none.agentWaitUntil, none.timeoutSeconds))
+    }
+
+    // Сценарий: Поздний итог шага, закрытого сервером по сроку, сохраняется, статус не меняется
+    @Test
+    fun `a restore step the server timed out says where its late data is, or what its rollback left`() {
+        val left = RestoreResult(null, null, null, null, null, null, null, "/r/etc")
+        val late = step(StepState.TIMED_OUT, Action.RESTORE).copy(timedOutBy = TimedOutBy.SERVER)
+
+        val withData = late.copy(restore = written, lateStatus = StepState.TIMED_OUT)
+        assertEquals(RestoreOutcome.LATE, MutFlow.underTest { RunMapping.step(withData) }.restoreOutcome)
+        val withLeftover = late.copy(restore = left, lateStatus = StepState.TIMED_OUT)
+        assertEquals(RestoreOutcome.ROLLBACK_FAILED, MutFlow.underTest { RunMapping.step(withLeftover) }.restoreOutcome)
+        assertEquals(RestoreOutcome.NOTHING, MutFlow.underTest { RunMapping.step(late) }.restoreOutcome)
+    }
+
+    @Test
+    fun `a cancelled restore step whose agent reported late says where the data is`() {
+        val late = step(StepState.CANCELLED, Action.RESTORE).copy(restore = written, lateStatus = StepState.SUCCEEDED)
+
+        assertEquals(RestoreOutcome.LATE, MutFlow.underTest { RunMapping.step(late) }.restoreOutcome)
+        assertEquals(RestoreOutcome.NOTHING, outcomeOf(StepState.CANCELLED, written))
+    }
+
     // --- R2a: how a restore step ended is told by the server, not derived by the page
 
     private fun outcomeOf(
@@ -327,5 +444,24 @@ class RunMappingTest {
         for (action in Action.entries.filter { it != Action.RESTORE }) {
             assertNull(outcomeOf(StepState.FAILED, null, action), action.name)
         }
+    }
+
+    // J1c: the wait-until time is exposed in run details
+    @Test
+    fun `a run shows until when it waits for the agent and since when the agent is gone`() {
+        val later = AT.plusSeconds(3600)
+        val waiting = run(RunState.QUEUED).copy(agentWaitUntil = later, agentOnline = false)
+        val mapped = MutFlow.underTest { RunMapping.run(waiting, null) }
+        assertEquals(later, mapped.agentWaitUntil)
+        assertNull(mapped.agentUnavailableSince)
+        assertEquals(RunOutcome.WAITING_FOR_AGENT, mapped.outcome)
+
+        val expired = run(RunState.AGENT_UNAVAILABLE).copy(steps = listOf(step(StepState.AGENT_UNAVAILABLE)))
+        val closed = MutFlow.underTest { RunMapping.run(expired.copy(agentUnavailableSince = AT), null) }
+        assertEquals(AT, closed.agentUnavailableSince)
+        assertNull(closed.agentWaitUntil)
+        assertEquals(RunOutcome.AGENT_UNAVAILABLE, closed.outcome)
+        assertEquals(RunStatus.AGENT_UNAVAILABLE, closed.status)
+        assertEquals(StepStatus.AGENT_UNAVAILABLE, closed.steps.single().status)
     }
 }

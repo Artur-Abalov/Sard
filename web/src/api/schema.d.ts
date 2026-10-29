@@ -134,6 +134,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/run-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The default step timeouts
+         * @description 6 h for a backup and 12 h for a restore until set. A source's own timeout overrides them.
+         */
+        get: operations["getRunDefaults"];
+        /**
+         * Set the default step timeouts
+         * @description Both are required. They count for runs created after the change; runs in flight keep theirs.
+         */
+        put: operations["setRunDefaults"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/verification-jobs/{jobId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a verification job
+         * @description A job nobody took is closed at once. A job whose attempt is queued is closed with the attempt, and one whose attempt runs is marked: the verifier is told to stop and the answer is the source's verification as it is, the open job with its cancellation pending, until the verifier confirms or does not come back within the lost window. The job closes with a record cancelled, which is never told and never retried. Asking again changes nothing. A job that is closed, or whose verdict came first, answers 409 run_finished.
+         */
+        post: operations["cancelJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -304,6 +348,26 @@ export interface paths {
          * @description Does the step keys_confirmed; the first confirmation ends the onboarding. Repeating it changes nothing. 409 self_backup_not_configured before a repository is bound; 409 first_backup_pending before both system sources backed up after the binding; 422 validation_failed unless copiedOutsideServer is true.
          */
         post: operations["confirmKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a run
+         * @description A queued run is cancelled at once and the agent is told nothing. A run in flight is marked and its agent is asked to stop: the answer is the run as it is, outcome cancelling, until the agent confirms (cancelled) or does not come back within the lost window (cancel_unconfirmed). Asking again changes nothing. A run that is final answers 409 run_finished. An attempt of a restore verification cancels its job, as POST /verification-jobs/{jobId}/cancel does.
+         */
+        post: operations["cancelRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -919,7 +983,7 @@ export interface components {
             staleAfterDays?: number | null;
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable" | "run_finished";
         /** @description A field of the request that failed validation */
         FieldError: {
             /** @description JSON name of the field, e.g. repositoryName */
@@ -972,6 +1036,16 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: int32
+             * @description The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults); omitted: kept on a replace, the default on a create (ДJ13)
+             */
+            backupTimeoutMinutes?: number | null;
+            /**
+             * Format: int32
+             * @description The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default; omitted: kept on a replace, the default on a create (ДJ13)
+             */
+            restoreTimeoutMinutes?: number | null;
         };
         /** @description An error (RFC 9457) */
         Problem: {
@@ -1022,19 +1096,40 @@ export interface components {
              * @description The level the last successful verification reached
              */
             lastVerifiedLevel: number | null;
+            /**
+             * Format: int32
+             * @description The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)
+             */
+            backupTimeoutMinutes: number | null;
+            /**
+             * Format: int32
+             * @description The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default
+             */
+            restoreTimeoutMinutes: number | null;
             /** @description What the agent will refuse of this source by the bindings of its secrets on the agent host, as its last Register reported them (S11), with the command that allows it; empty when nothing */
             secretWarnings: string[];
         };
         /** @enum {string} */
         SystemSourceRole: "self_database" | "self_keys";
         /**
-         * @description passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted)
+         * @description passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted); cancelled (an administrator cancelled the job: neither held nor failed, never told)
          * @enum {string}
          */
-        VerificationOutcome: "passed" | "failed" | "cannot_verify" | "infrastructure_failure" | "no_verifier";
+        VerificationOutcome: "passed" | "failed" | "cannot_verify" | "infrastructure_failure" | "no_verifier" | "cancelled";
         /** @description Whether the source is verified */
         SourceVerificationInput: {
             enabled: boolean;
+        };
+        /** @enum {string} */
+        CancelResult: "pending" | "cancelled" | "unconfirmed" | "finished_first";
+        /** @description A cancel somebody asked for */
+        Cancellation: {
+            /** Format: date-time */
+            requestedAt: string;
+            /** @description "admin" for any session of the open core, which has one administrator */
+            requestedBy: string;
+            /** @description pending while the run is not final; cancelled: the agent confirmed (or the run never left the queue); unconfirmed: the agent did not confirm within the lost window; finished_first: the agent's result came first and is the run's result */
+            result: components["schemas"]["CancelResult"];
         };
         /** @description A source's restore verification */
         SourceVerificationState: {
@@ -1086,6 +1181,8 @@ export interface components {
             failedAttempts: number;
             /** @description Why each verifier did not fit at the last try; null before the first */
             unsuitable: components["schemas"]["VerifierMisfit"][] | null;
+            /** @description Set once an administrator asked to cancel the job; null otherwise */
+            cancellation: components["schemas"]["Cancellation"] | null;
         };
         /** @enum {string} */
         VerificationJobReason: "cycle" | "manual";
@@ -1118,7 +1215,7 @@ export interface components {
             notifyOnSuccess?: boolean;
         };
         /** @enum {string} */
-        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled";
+        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "agent_unavailable";
         /** @enum {string} */
         RunTrigger: "schedule" | "manual" | "verification" | "catch_up";
         /** @description A source's schedule */
@@ -1273,6 +1370,19 @@ export interface components {
         SelfBackupStatus: "not_configured" | "ok" | "agent_replaced" | "overdue" | "failing" | "schedule_disabled";
         /** @enum {string} */
         SelfBackupWarningCode: "agent_replaced" | "overdue" | "failing" | "schedule_disabled" | "local_storage" | "keys_unconfirmed";
+        /** @description The default step timeouts of the installation (J1b); a run takes them when it is created */
+        RunDefaults: {
+            /**
+             * Format: int32
+             * @description The step timeout of a backup in minutes, 1 to 1440, for a source that names none
+             */
+            backupTimeoutMinutes: number;
+            /**
+             * Format: int32
+             * @description The step timeout of a restore in minutes, 1 to 1440, for a source that names none
+             */
+            restoreTimeoutMinutes: number;
+        };
         /** @description What to verify now */
         VerifyNowInput: {
             /**
@@ -1421,11 +1531,27 @@ export interface components {
             requestedBy: string | null;
             /** @description Set for a restore run; null for a backup */
             restore: components["schemas"]["RunRestore"] | null;
+            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline) */
+            outcome: components["schemas"]["RunOutcome"];
+            /** @description Set once somebody asked to cancel the run; null otherwise */
+            cancellation: components["schemas"]["Cancellation"] | null;
+            /**
+             * Format: date-time
+             * @description Until when the queued run waits for an offline agent: the console shows "starts when the agent connects, waiting until <time>". null once the run left the queue, and for a run that never waited
+             */
+            agentWaitUntil: string | null;
+            /**
+             * Format: date-time
+             * @description The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never connected, or the run did not expire
+             */
+            agentUnavailableSince: string | null;
             /** @description The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed */
             partial: boolean;
         };
         /** @enum {string} */
         RunKind: "backup" | "restore";
+        /** @enum {string} */
+        RunOutcome: "queued" | "waiting_for_agent" | "dispatched" | "running" | "cancelling" | "succeeded" | "failed" | "timed_out" | "rejected" | "lost" | "cancelled" | "cancel_unconfirmed" | "agent_unavailable";
         /** @description What a restore run restores */
         RunRestore: {
             /** @description restic snapshot id */
@@ -1497,13 +1623,24 @@ export interface components {
             startedAt: string | null;
             /** Format: date-time */
             finishedAt: string | null;
+            /** @description What the agent reported after the server closed the step as cancelled (its agent did not confirm the cancel); null when nothing came. The step's and the run's status do not change */
+            lateStatus: components["schemas"]["StepStatus"] | null;
+            /**
+             * Format: int64
+             * @description The timeout the step was created with, in seconds: the source's, or the installation's default at the time. null for a step without one (a verification's is its attempt's; records before J1b)
+             */
+            timeoutSeconds: number | null;
+            /** @description Who closed a timed out step: the agent (its own deadline) or the server (the agent stayed silent past the timeout and the lost window); null for any other step */
+            timedOutBy: components["schemas"]["StepTimedOutBy"] | null;
         };
         /** @enum {string} */
         StepAction: "backup" | "restore" | "verify" | "run";
         /** @enum {string} */
         StepPhase: "accepted" | "preparing" | "dumping" | "uploading" | "restoring" | "verifying";
         /** @enum {string} */
-        StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost";
+        StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost" | "agent_unavailable";
+        /** @enum {string} */
+        StepTimedOutBy: "agent" | "server";
         /** @description What a restore request would do; nothing is created */
         RestorePreview: {
             sourceName: string;
@@ -1898,6 +2035,13 @@ export interface components {
              * @description Facts of the hashed sample of files: counted, never listed
              */
             hiddenFacts: number;
+            /** @description Who cancelled the job (admin); null unless the status is cancelled */
+            cancelledBy: string | null;
+            /**
+             * Format: date-time
+             * @description When the cancel was asked; null unless the status is cancelled
+             */
+            cancelledAt: string | null;
         };
         /** @description A stage of the verification pipeline and its evidence */
         VerificationStage: {
@@ -2007,6 +2151,8 @@ export interface components {
              * @description The actual time to restore (level 5)
              */
             restoreDurationMs: number | null;
+            /** @description Who cancelled the job (admin); null unless the status is cancelled */
+            cancelledBy: string | null;
         };
         /** @description Verifications of a period counted by outcome */
         ReportSummary: {
@@ -2021,6 +2167,11 @@ export interface components {
              * @description Cannot verify, infrastructure failure or no fitting verifier: no check took place
              */
             notHeld: number;
+            /**
+             * Format: int32
+             * @description Cancelled by an administrator: neither held nor failed
+             */
+            cancelled: number;
         };
         /** @description A source's restore verifications for a period, for print */
         VerificationReportResponse: {
@@ -2294,6 +2445,18 @@ export interface components {
             kind: components["schemas"]["RunKind"];
             /** @description Who started a manual run: "admin" in the open core, which has one administrator; null for a schedule */
             requestedBy: string | null;
+            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline) */
+            outcome: components["schemas"]["RunOutcome"];
+            /**
+             * Format: date-time
+             * @description Until when the queued run waits for an offline agent: the console shows "starts when the agent connects, waiting until <time>". null once the run left the queue, and for a run that never waited
+             */
+            agentWaitUntil: string | null;
+            /**
+             * Format: int64
+             * @description The timeout the run's step was created with, in seconds, as RunStep.timeoutSeconds: the list says "timed out (6 h)" with it. null for records before J1b
+             */
+            timeoutSeconds: number | null;
             /** @description The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed */
             partial: boolean;
         };
@@ -3351,6 +3514,180 @@ export interface operations {
             };
         };
     };
+    getRunDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDefaults"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setRunDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunDefaults"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDefaults"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceVerificationState"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listSources: {
         parameters: {
             query?: {
@@ -4109,6 +4446,73 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description run_finished: the run (or the verification job) is final, nothing to cancel. Nothing was changed; or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */

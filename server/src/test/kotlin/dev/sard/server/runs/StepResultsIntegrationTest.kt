@@ -75,6 +75,7 @@ class StepResultsIntegrationTest(
     @Autowired private val runs: Runs,
     @Autowired private val steps: StepTransitions,
     @Autowired private val results: StepResults,
+    @Autowired private val cancels: RunCancels,
     @Autowired private val finished: RecordingRunFinished,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
@@ -372,6 +373,176 @@ class StepResultsIntegrationTest(
         assertEquals(runBefore, row("runs", run.id))
         assertEquals(1, snapshots(step).size)
         assertEquals(1, finished.heard.size)
+    }
+
+    // Сценарий: Превышение срока агентом закрывает шаг как timed_out
+    @Test
+    fun `a timed out result closes the step as timed out by the agent, with its timeout`() {
+        val (run, step) = running()
+
+        val report = StepReport(StepState.TIMED_OUT, "deadline exceeded", null)
+        assertEquals(Recorded.Closed(StepState.TIMED_OUT, invalid = null), record(step, report))
+
+        val view = runs.get(tenant.id, run.id)!!
+        val stepView = view.steps.single()
+        assertEquals(
+            listOf(StepState.TIMED_OUT, TimedOutBy.AGENT, 6 * 3600L),
+            listOf(stepView.status, stepView.timedOutBy, stepView.timeoutSeconds),
+        )
+        assertEquals(RunOutcome.TIMED_OUT, view.outcome)
+        assertEquals("deadline exceeded", view.message)
+    }
+
+    @Test
+    fun `a step closed any other way has no timed out by`() {
+        val (_, step) = running()
+        record(step)
+
+        assertNull(row("run_steps", step)["timed_out_by"])
+    }
+
+    /** A running step whose agent sent nothing past its timeout and the lost window: the server timed it out. */
+    private fun timedOutByServer(): Pair<RunView, UUID> {
+        val (run, step) = running()
+        clock.now = RUNS_NOW + Duration.ofHours(6) + Duration.ofSeconds(61)
+        assertTrue(steps.timedOutBySilence(tenant.id, step, Duration.ofSeconds(60)))
+        return run to step
+    }
+
+    // Сценарий: Поздний итог шага, закрытого сервером по сроку, сохраняется, статус не меняется
+    @Test
+    fun `a late success after a server timeout records the output and the snapshot once, the step stays timed out`() {
+        val (run, step) = timedOutByServer()
+        val runBefore = row("runs", run.id)
+
+        assertEquals(Recorded.Late(kept = true), record(step))
+        assertEquals(Recorded.Late(kept = false), record(step))
+
+        val stepRow = row("run_steps", step)
+        assertEquals(
+            listOf<Any?>("timed_out", "server", "succeeded"),
+            listOf(stepRow["status"], stepRow["timed_out_by"], stepRow["late_status"]),
+        )
+        assertEquals(json(SUCCEEDED.output!!.json()), json(stepRow["output"]))
+        assertEquals(runBefore, row("runs", run.id))
+        assertEquals(false, snapshots(step).single()["partial"])
+        assertEquals(1, finished.heard.size)
+        assertEquals(
+            StepState.SUCCEEDED,
+            runs
+                .get(tenant.id, run.id)!!
+                .steps
+                .single()
+                .lateStatus,
+        )
+    }
+
+    @Test
+    fun `a late timed out result of a restore keeps its leftover`() {
+        val (run, step) = timedOutByServer()
+        jdbc.update("update run_steps set action = 'restore', snapshot_id = '4a3b' where id = ?", step)
+        val leftover = StepOutput.Restore(target = "", leftover = "/r/etc")
+        val report = StepReport(StepState.TIMED_OUT, "deadline exceeded", leftover)
+
+        assertEquals(Recorded.Late(kept = true), record(step, report))
+
+        val view = runs.get(tenant.id, run.id)!!.steps.single()
+        assertEquals(listOf(StepState.TIMED_OUT, StepState.TIMED_OUT), listOf(view.status, view.lateStatus))
+        assertEquals("/r/etc", view.restore?.leftover)
+    }
+
+    // КВJ5 generalises R2 ВВ11: a lost step names what its agent reported late too
+    @Test
+    fun `a late result of a lost step names its late status`() {
+        val (_, step) = running()
+        due(step)
+        steps.lost(tenant.id, step)
+
+        assertEquals(Recorded.Late(kept = true), record(step))
+
+        assertEquals("succeeded", row("run_steps", step)["late_status"])
+    }
+
+    @Test
+    fun `a result after the agent's own timeout is a repeat, nothing is stored`() {
+        val (_, step) = running()
+        record(step, StepReport(StepState.TIMED_OUT, "deadline exceeded", null))
+
+        assertEquals(Recorded.Repeated, record(step))
+
+        assertNull(row("run_steps", step)["late_status"])
+        assertEquals(emptyList(), snapshots(step))
+    }
+
+    /** A running backup that its person cancelled and whose agent never confirmed. */
+    private fun unconfirmed(): Pair<RunView, UUID> {
+        val (run, step) = running()
+        cancels.cancel(tenant.id, run.id)
+        due(step)
+        assertTrue(steps.lost(tenant.id, step))
+        return run to step
+    }
+
+    @Test
+    fun `a late success after an unconfirmed cancel records the snapshot, the run stays cancelled`() {
+        val (run, step) = unconfirmed()
+        val runBefore = row("runs", run.id)
+
+        assertEquals(Recorded.Late(kept = true), record(step))
+        assertEquals(Recorded.Late(kept = false), record(step))
+
+        val stepRow = row("run_steps", step)
+        assertEquals(listOf<Any?>("cancelled", "succeeded"), listOf(stepRow["status"], stepRow["late_status"]))
+        assertEquals(json(SUCCEEDED.output!!.json()), json(stepRow["output"]))
+        assertEquals(runBefore, row("runs", run.id))
+        val snapshot = snapshots(step).single()
+        assertEquals(false, snapshot["partial"])
+        assertEquals(1, finished.heard.size)
+        assertEquals(
+            StepState.SUCCEEDED,
+            runs
+                .get(tenant.id, run.id)!!
+                .steps
+                .single()
+                .lateStatus,
+        )
+    }
+
+    @Test
+    fun `a late cancelled result with output keeps it, its snapshot is partial`() {
+        val (run, step) = unconfirmed()
+        val report = StepReport(StepState.CANCELLED, null, SUCCEEDED.output)
+
+        assertEquals(Recorded.Late(kept = true), record(step, report))
+
+        val stepRow = row("run_steps", step)
+        assertEquals(listOf<Any?>("cancelled", "cancelled"), listOf(stepRow["status"], stepRow["late_status"]))
+        assertEquals(true, snapshots(step).single()["partial"])
+        assertEquals(RunOutcome.CANCEL_UNCONFIRMED, runs.get(tenant.id, run.id)!!.outcome)
+    }
+
+    @Test
+    fun `a late failure without output is remembered as the late status only`() {
+        val (_, step) = unconfirmed()
+
+        assertEquals(Recorded.Late(kept = false), record(step, StepReport(StepState.FAILED, "disk full", null)))
+
+        val stepRow = row("run_steps", step)
+        assertEquals(listOf<Any?>("failed", null), listOf(stepRow["late_status"], stepRow["output"]))
+        assertEquals(emptyList(), snapshots(step))
+    }
+
+    @Test
+    fun `a result after a confirmed cancel is a repeat, nothing is stored`() {
+        val (run, step) = running()
+        cancels.cancel(tenant.id, run.id)
+        val confirmed = StepReport(StepState.CANCELLED, null, null)
+        assertEquals(Recorded.Closed(StepState.CANCELLED, null), record(step, confirmed))
+
+        assertEquals(Recorded.Repeated, record(step))
+
+        assertNull(row("run_steps", step)["late_status"])
+        assertEquals(emptyList(), snapshots(step))
     }
 
     @Test

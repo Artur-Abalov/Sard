@@ -154,7 +154,9 @@ class ApiContractIntegrationTest(
                 name,
             )
         }
-        val statuses = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled")
+        // a partial run stays failed: no status of its own (agent_unavailable is J1c's)
+        val statuses =
+            listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled", "agent_unavailable")
         assertEquals(statuses, enumValues("RunStatus"))
     }
 
@@ -234,12 +236,13 @@ class ApiContractIntegrationTest(
     @Test
     fun `step status is the proto final states plus the server's own`() {
         val final = protoValues(ProtoStepStatus.entries.toTypedArray())
-        assertEquals(listOf("queued", "dispatched", "running") + final + "lost", enumValues("StepStatus"))
+        val expected = listOf("queued", "dispatched", "running") + final + listOf("lost", "agent_unavailable")
+        assertEquals(expected, enumValues("StepStatus"))
     }
 
     @Test
     fun `run, trigger, agent and token states`() {
-        val run = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled")
+        val run = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled", "agent_unavailable")
         assertEquals(run, enumValues("RunStatus"))
         assertEquals(listOf("schedule", "manual", "verification", "catch_up"), enumValues("RunTrigger"))
         assertEquals(listOf("online", "offline"), enumValues("AgentStatus"))
@@ -457,6 +460,7 @@ class ApiContractIntegrationTest(
             Triple("GET", "/api/v1/schedule-preview?cron=0%202%20*%20*%20*&timezone=UTC", null),
             Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
             Triple("GET", "/api/v1/runs/{runId}", null),
+            Triple("POST", "/api/v1/runs/{runId}/cancel", null),
             Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
             Triple("GET", "/api/v1/self-backup", null),
             Triple("PUT", "/api/v1/self-backup/repository", """{"repositoryName":"r"}"""),
@@ -469,9 +473,13 @@ class ApiContractIntegrationTest(
             Triple("GET", "/api/v1/sources/{sourceId}/verifications", null),
             Triple("POST", "/api/v1/sources/{sourceId}/verifications", "{}"),
             Triple("GET", "/api/v1/verifications/{verificationId}", null),
+            Triple("POST", "/api/v1/verification-jobs/{jobId}/cancel", null),
             Triple("GET", "/api/v1/verification-schedule", null),
             // A wrong cron: the installation's cycle stays as it was for the other tests of this database.
             Triple("PUT", "/api/v1/verification-schedule", """{"cron":"nope","timezone":"UTC"}"""),
+            Triple("GET", "/api/v1/run-defaults", null),
+            // Out of range: the defaults stay as they were for the other tests of this database.
+            Triple("PUT", "/api/v1/run-defaults", """{"backupTimeoutMinutes":0,"restoreTimeoutMinutes":720}"""),
             Triple("GET", "/api/v1/verifiers?sourceId=$id", null),
             Triple("GET", "/api/v1/verification-setup", null),
             Triple("GET", "/api/v1/sources/{sourceId}/verification-report", null),

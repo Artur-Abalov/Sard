@@ -26,7 +26,8 @@ private const val VERIFICATION = """
     left join agents a on a.tenant_id = rv.tenant_id and a.id = rv.verifier_agent_id
     where rv.tenant_id = :tenant and rv.id = :id"""
 
-// The last pass and the last record of the source up to the moment the episode opened.
+// The last pass and the last record of the source up to the moment the episode opened; a cancelled record is not an
+// outcome (J1f).
 private const val STALE = """
     select e.source_id, s.name, e.threshold_days, e.timezone,
         (select max(rv.verified_at) from restore_verifications rv
@@ -34,6 +35,7 @@ private const val STALE = """
               and rv.verified_at <= e.opened_at),
         (select rv.status from restore_verifications rv
             where rv.tenant_id = e.tenant_id and rv.source_id = e.source_id and rv.verified_at <= e.opened_at
+              and rv.status <> 'cancelled'
             order by rv.verified_at desc, rv.id desc limit 1)
     from verification_stale_episodes e
     join sources s on s.tenant_id = e.tenant_id and s.id = e.source_id

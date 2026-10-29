@@ -277,6 +277,9 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
     backup: null,
     restore: null,
     restoreOutcome: null,
+    lateStatus: null,
+    timeoutSeconds: null,
+    timedOutBy: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,
@@ -305,6 +308,10 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
       config: choice.config,
       target: choice.target,
     },
+    outcome: 'queued',
+    cancellation: null,
+    agentWaitUntil: null,
+    agentUnavailableSince: null,
     partial: false,
   }
 }

@@ -10,6 +10,7 @@ import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.LostDeadlines
 import dev.sard.server.runs.RoleLedger
+import dev.sard.server.runs.SilentStep
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -42,9 +43,15 @@ class StepDispatcher(
     private val lostAfter: Duration,
     private val metrics: DispatchMetrics,
     roles: RoleLedger,
+    private val startGrace: Duration = Duration.ZERO,
+    /** Closes the runs whose wait for an offline agent is over (J1c); never throws. */
+    private val expireWaits: () -> Unit,
     private val waiting: () -> WaitingSteps,
 ) {
     private val locks = ConcurrentHashMap<UUID, Any>()
+
+    private val cancels = CancelSteps(links)
+    private val silent = SilentSteps(ledger, links, lostAfter)
     private val guard = RoleGuard(roles)
 
     /** A run was committed (Runs.start): send its step now if the agent is online. Never throws. */
@@ -53,14 +60,28 @@ class StepDispatcher(
         agentId: UUID,
     ) {
         if (!links.online(agentId)) return
-        runCatching { deliverQueued(tenantId, agentId) }
+        runCatching { serve(tenantId, agentId) }
             .onFailure { log.warn("queued steps of agent {} wait for the next check: {}", agentId, it.toString()) }
+    }
+
+    /**
+     * A run was marked for cancel (RunCancels): its steps in flight get their CancelStep now if the agent is online;
+     * an offline agent gets it at its Hello. Never throws.
+     */
+    fun onCancelled(
+        tenantId: UUID,
+        agentId: UUID,
+    ) {
+        if (!links.online(agentId)) return
+        runCatching { locked(agentId) { cancels.send(agentId, ledger.active(tenantId, agentId)) } }
+            .onFailure { log.warn("cancel of steps of agent {} waits for the next check: {}", agentId, it.toString()) }
     }
 
     /**
      * Hello: listed steps are left alone and lose their deadline; queued ones are sent in creation
      * order; a dispatched one sent before this Hello is sent again; a running one is lost unless a
-     * result closes it within [lostAfter] of this Hello, or of an earlier deadline.
+     * result closes it within [lostAfter] of this Hello, or of an earlier deadline. A step of a cancelled run is
+     * never sent again (J1a, Р-J3): the agent gets its CancelStep, and a dispatched one it does not list has a window.
      */
     fun onHello(
         agent: ConnectedAgent,
@@ -69,9 +90,12 @@ class StepDispatcher(
         val helloAt = clock.instant()
         val (listed, absent) = ledger.active(agent.tenantId, agent.agentId).partition { it.id.toString() in running }
         val (started, waiting) = absent.partition { it.status == StepState.RUNNING }
+        val (unsent, others) = waiting.partition { it.cancelRequested }
         deadlines.confirm(agent.tenantId, agent.agentId, listed.map { it.id })
-        deadlines.expect(agent.tenantId, agent.agentId, started.map { it.id }, helloAt + lostAfter)
-        deliver(agent, waiting, helloAt)
+        deadlines.expect(agent.tenantId, agent.agentId, (started + unsent).map { it.id }, helloAt + lostAfter)
+        cancels.forget(agent.agentId)
+        cancels.send(agent.agentId, listed + unsent)
+        deliver(agent, others, helloAt)
     }
 
     /**
@@ -83,15 +107,19 @@ class StepDispatcher(
         reason: String,
     ) {
         if (reason == StreamCloseReason.SERVER_SHUTTING_DOWN.name) return
+        cancels.forget(agent.agentId)
         locked(agent.agentId) {
             runCatching { deadlines.expectAll(agent.tenantId, agent.agentId, clock.instant() + lostAfter) }
                 .onFailure { log.error("steps of agent {} have no lost deadline: {}", agent.agentId, it.toString()) }
         }
     }
 
-    /** The server starts, before any agent can connect: every step in flight gets a fresh window. */
+    /**
+     * The server starts, before any agent can connect: every step in flight gets a fresh window, at
+     * least [startGrace] long, so an agent that backs off for a full pause is not lost (OQ-138).
+     */
     fun onStart() {
-        val deadline = clock.instant() + lostAfter
+        val deadline = clock.instant() + maxOf(lostAfter, startGrace)
         for (agent in deadlines.holders()) {
             locked(agent.id) { deadlines.restart(agent.tenantId, agent.id, deadline) }
         }
@@ -99,21 +127,29 @@ class StepDispatcher(
 
     /** Marks steps whose deadline passed, retries queued steps of online agents, refreshes the metric. */
     fun tick() {
-        for (step in deadlines.overdue(clock.instant())) {
+        val now = clock.instant()
+        for (step in deadlines.overdue(now)) {
             if (ledger.lost(step.tenantId, step.id)) log.warn("step {} lost: its agent did not report it", step.id)
         }
+        for (step in deadlines.silent(now, lostAfter)) {
+            silent.timeOut(step) { agent, work -> locked(agent, work) }
+        }
+        expireWaits()
         for (agent in links.connected()) {
-            if (links.online(agent.agentId)) deliverQueued(agent.tenantId, agent.agentId)
+            if (links.online(agent.agentId)) serve(agent.tenantId, agent.agentId)
         }
         metrics.waiting(waiting())
     }
 
-    private fun deliverQueued(
+    /** Sends the agent's queued steps, then the CancelStep of its cancelled ones that have none yet. */
+    private fun serve(
         tenantId: UUID,
         agentId: UUID,
     ) = locked(agentId) {
-        val queued = ledger.active(tenantId, agentId).filter { it.status == StepState.QUEUED }
+        val active = ledger.active(tenantId, agentId)
+        val queued = active.filter { it.status == StepState.QUEUED }
         deliver(ConnectedAgent(agentId, tenantId, ""), queued, sentBefore = null)
+        cancels.send(agentId, active)
     }
 
     /**
@@ -145,18 +181,13 @@ class StepDispatcher(
     ): Boolean {
         if (!take(agent, step, sentBefore)) return true
         val result = links.send(agent.agentId, RunSteps.of(step))
-        if (result != SendResult.Queued) giveBack(agent, step, result)
-        return result == SendResult.Queued
-    }
-
-    private fun giveBack(
-        agent: ConnectedAgent,
-        step: StepView,
-        result: SendResult,
-    ) {
-        ledger.release(agent.tenantId, step.id)
-        metrics.refused()
-        log.info("step {} back in the queue of agent {}: {}", step.id, agent.agentId, result)
+        val queued = result == SendResult.Queued
+        if (!queued) {
+            ledger.release(agent.tenantId, step.id)
+            metrics.refused()
+            log.info("step {} back in the queue of agent {}: {}", step.id, agent.agentId, result)
+        }
+        return queued
     }
 
     private fun take(

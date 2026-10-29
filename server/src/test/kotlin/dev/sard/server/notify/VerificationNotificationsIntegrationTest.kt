@@ -274,6 +274,47 @@ class VerificationNotificationsIntegrationTest(
         assertEquals(0, fake.requests.size)
     }
 
+    // J1f, ВJ4 and ВJf2: a cancel by an administrator is never told and is looked through by every series.
+    @Test
+    fun `a verification an administrator cancelled is not told`() {
+        val source = seed.watched()
+        seed.record(source, "passed", 1)
+        val record = seed.record(source, "cancelled", 10)
+
+        ticks()
+
+        assertEquals("skipped", seed.statusOf(record))
+        assertEquals(0, fake.requests.size)
+    }
+
+    @Test
+    fun `a failure after a cancelled verification in the middle of a series is not told again`() {
+        val source = seed.watched()
+        val first = seed.failedAt(source, 10)
+        ticks()
+        seed.record(source, "cancelled", 15)
+        val second = seed.failedAt(source, 20)
+
+        ticks()
+
+        assertEquals(1, fake.requests.size)
+        assertEquals(listOf("delivered", "skipped"), listOf(first, second).map(seed::statusOf))
+    }
+
+    @Test
+    fun `a pass after a failure and a cancelled verification is told as a recovery`() {
+        val source = seed.watched()
+        seed.failedAt(source, 10)
+        ticks()
+        seed.record(source, "cancelled", 15)
+        val pass = seed.record(source, "passed", 20)
+
+        ticks()
+
+        assertEquals("delivered", seed.statusOf(pass))
+        assertEquals("✅ Проверка восстановления снова прошла: db-main", texts().last().lines().first())
+    }
+
     @Test
     fun `a pass without a failure or an episode before it is silent`() {
         val histories =
@@ -370,6 +411,19 @@ class VerificationNotificationsIntegrationTest(
                 episode,
             ),
         )
+    }
+
+    @Test
+    fun `a stale episode does not name a cancelled verification as the last outcome`() {
+        val source = seed.watched()
+        seed.record(source, "passed", 1)
+        seed.record(source, "no_verifier", 30)
+        seed.record(source, "cancelled", 40)
+        seed.episode(source, openedMinutes = 60)
+
+        ticks()
+
+        assertEquals("Последний итог: нет подходящего верификатора", texts().single().lines()[2])
     }
 
     @Test

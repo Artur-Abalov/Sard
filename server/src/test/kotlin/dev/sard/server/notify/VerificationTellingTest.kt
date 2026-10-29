@@ -78,4 +78,14 @@ class VerificationTellingTest {
             assertEquals(null, telling(notice(status, previous = VerificationStatus.FAILED, closedStaleEpisode = true)))
         }
     }
+
+    @Test
+    fun `a verification an administrator cancelled is never told`() {
+        val previous = listOf(null, VerificationStatus.FAILED, VerificationStatus.PASSED)
+        for (before in previous) {
+            val cancelled = notice(VerificationStatus.CANCELLED, previous = before, closedStaleEpisode = true)
+
+            assertEquals(null, telling(cancelled), "after $before")
+        }
+    }
 }

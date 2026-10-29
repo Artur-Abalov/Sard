@@ -24,6 +24,10 @@ spring:
     # Errors are application/problem+json (RFC 9457), the format of the REST contract.
     problemdetails:
       enabled: true
+  jackson:
+    deserialization:
+      # A fractional number for an integer field (a timeout of 1.5 minutes) is refused with 422, not cut to 1.
+      accept-float-as-int: false
   jpa:
     open-in-view: false
     hibernate:
@@ -102,6 +106,15 @@ sard:
       # without a result (S6a); the check runs every sard.agent.stream.check-interval unless
       # sard.run.dispatch.check-interval is set.
       lost-after-heartbeats: 2
+      # After a server start no step in flight is lost sooner than this (the longer of it and the window above
+      # counts): an agent backing off for its longest pause must find its step alive (OQ-138). A positive
+      # duration; the server does not start with anything else.
+      start-grace: ${SARD_RUN_START_GRACE:2m}
+    agent-wait:
+      # How long a run waits in the queue for an offline agent (J1c). A manual run, a restore and a self-backup
+      # wait this long; a scheduled run until the next fire of its schedule, at most this long. Then the run is
+      # "not run: the agent was unavailable". A positive duration; the server does not start with anything else.
+      max: ${SARD_RUN_AGENT_WAIT_MAX:24h}
     progress:
       # Byte counters of one step reach the database at most this often; a new phase at once (S7a).
       write-interval: 5s

@@ -70,6 +70,8 @@ export interface MockState {
   /** Recorded verifications, newest first. */
   verifications: Schemas['Verification'][]
   verificationSchedule: Schemas['VerificationSchedule']
+  /** The installation's default step timeouts (J1b): 6 h and 12 h until set. */
+  runDefaults: Schemas['RunDefaults']
 }
 
 export interface ResetOptions {
@@ -127,6 +129,7 @@ function fresh(options: ResetOptions): MockState {
     verificationJobs: {},
     verifications: records,
     verificationSchedule,
+    runDefaults: { backupTimeoutMinutes: 360, restoreTimeoutMinutes: 720 },
   })
 }
 

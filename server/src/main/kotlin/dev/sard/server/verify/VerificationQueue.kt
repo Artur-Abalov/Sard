@@ -30,7 +30,7 @@ private const val RUNNING =
 private const val WAITING =
     "update verification_jobs set unsuitable = cast(:unsuitable as jsonb) where tenant_id = :tenant and id = :id"
 private const val NO_VERIFIER_AT_ALL = "the tenant has no verifier"
-internal const val CLOSE =
+private const val CLOSE =
     "update verification_jobs set status = 'closed', closed_at = :now where tenant_id = :tenant and id = :id"
 
 /** A queued job as the queue reads it. */
@@ -87,7 +87,7 @@ class VerificationQueue(
         now: Instant,
     ): UUID? {
         if (job.sourceDeleted) {
-            close(session, tenantId, job.id, now)
+            closeJob(session, tenantId, job.id, now)
             return null
         }
         val space = settings.space.of(job.totalBytes)
@@ -156,7 +156,7 @@ class VerificationQueue(
         val entry =
             VerificationEntry(job.id, job.snapshot, VerificationStatus.NO_VERIFIER, 0, reason, misfits = misfits)
         history.record(session, tenantId, entry, now)
-        close(session, tenantId, job.id, now)
+        closeJob(session, tenantId, job.id, now)
         return null
     }
 
@@ -169,16 +169,17 @@ class VerificationQueue(
             .setParameter("tenant", tenantId)
             .list()
             .map(::QueuedJob)
-
-    private fun close(
-        session: Session,
-        tenantId: UUID,
-        jobId: UUID,
-        now: Instant,
-    ) = session
-        .createNativeMutationQuery(CLOSE)
-        .setParameter("now", now)
-        .setParameter("tenant", tenantId)
-        .setParameter("id", jobId)
-        .executeUpdate()
 }
+
+/** Closes the verification job: the one place that writes `closed` (the queue, the settlement and the cancel). */
+internal fun closeJob(
+    session: Session,
+    tenantId: UUID,
+    jobId: UUID,
+    now: Instant,
+) = session
+    .createNativeMutationQuery(CLOSE)
+    .setParameter("now", now)
+    .setParameter("tenant", tenantId)
+    .setParameter("id", jobId)
+    .executeUpdate()

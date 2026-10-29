@@ -79,6 +79,7 @@ class Sources(
                 val now = clock.instant()
                 val record =
                     with(draft) { SourceRecord(ids.next(), agentId, name, plugin, config, repositoryName, now, now) }
+                record.takeTimeouts(draft, keep = false)
                 session.persist(record)
                 session.flush()
                 viewOf(record)
@@ -109,6 +110,7 @@ class Sources(
                 record.plugin = draft.plugin
                 record.repositoryName = draft.repositoryName
                 record.config = draft.config
+                record.takeTimeouts(draft, keep = true)
                 record.updatedAt = clock.instant()
                 session.flush()
                 viewOf(record)
@@ -179,5 +181,15 @@ class Sources(
             record.createdAt,
             record.updatedAt,
             record.systemRole?.let(SystemRole::of),
+            record.backupTimeoutMinutes,
+            record.restoreTimeoutMinutes,
         )
+}
+
+private fun SourceRecord.takeTimeouts(
+    draft: SourceDraft,
+    keep: Boolean,
+) {
+    if (!(keep && draft.keepBackupTimeout)) backupTimeoutMinutes = draft.backupTimeoutMinutes
+    if (!(keep && draft.keepRestoreTimeout)) restoreTimeoutMinutes = draft.restoreTimeoutMinutes
 }

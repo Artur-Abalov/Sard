@@ -56,6 +56,20 @@ class FailureEpisodesTest {
     }
 
     @Test
+    fun `a verification an administrator cancelled neither ends an episode nor starts one`() {
+        val episodes =
+            episodes(
+                record(VerificationStatus.CANCELLED, 9),
+                record(VerificationStatus.FAILED, 10),
+                record(VerificationStatus.CANCELLED, 11),
+                record(VerificationStatus.FAILED, 12),
+                record(VerificationStatus.PASSED, 13),
+            )
+
+        assertEquals(listOf(FailureEpisode(at(10), 2, at(13))), episodes)
+    }
+
+    @Test
     fun `a second series after a pass is a second episode`() {
         val episodes =
             episodes(

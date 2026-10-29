@@ -82,7 +82,10 @@ function Items({ report }: { report: Report }) {
             <Table.Td>{format.time(item.verifiedAt)}</Table.Td>
             <Table.Td>{item.resticSnapshotId.slice(0, SHORT_ID)}</Table.Td>
             <Table.Td>{item.verifierHostname ?? '—'}</Table.Td>
-            <Table.Td>{outcomeView(item.status, i18n.language).label}</Table.Td>
+            <Table.Td>
+              {outcomeView(item.status, i18n.language).label}
+              {item.cancelledBy === null ? '' : ` (${item.cancelledBy})`}
+            </Table.Td>
             <Table.Td>{item.level === 0 ? '—' : levelWords(item.level, i18n.language)}</Table.Td>
             <Table.Td>{restoreTimeText(item.durationMs, i18n.language)}</Table.Td>
             <Table.Td>{restoreTimeText(item.restoreDurationMs, i18n.language)}</Table.Td>
@@ -138,6 +141,7 @@ function ReportBody({ report }: { report: Report }) {
           passed: summary.passed,
           failed: summary.failed,
           notHeld: summary.notHeld,
+          cancelled: summary.cancelled,
         })}
       </Text>
       {report.items.length === 0 ? <Text>{t('report.empty')}</Text> : <Items report={report} />}

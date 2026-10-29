@@ -42,6 +42,9 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     backup: null,
     restore: null,
     restoreOutcome: null,
+    lateStatus: null,
+    timeoutSeconds: null,
+    timedOutBy: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,
@@ -64,6 +67,10 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     kind: 'backup',
     requestedBy: 'admin',
     restore: null,
+    outcome: 'queued',
+    cancellation: null,
+    agentWaitUntil: null,
+    agentUnavailableSince: null,
     partial: false,
   }
   return run
@@ -93,6 +100,8 @@ export const sourceHandlers = [
       updatedAt: now,
       systemRole: null,
       ...neverVerified,
+      backupTimeoutMinutes: input.backupTimeoutMinutes ?? null,
+      restoreTimeoutMinutes: input.restoreTimeoutMinutes ?? null,
       secretWarnings: [],
     }
     state.sources.unshift(source)

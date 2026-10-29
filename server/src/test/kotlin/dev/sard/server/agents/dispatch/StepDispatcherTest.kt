@@ -31,7 +31,9 @@ class StepDispatcherTest {
     private fun dispatcher(
         ledger: FakeLedger,
         waiting: WaitingSteps = WaitingSteps(0, 0),
-    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger) { waiting }
+        startGrace: Duration = Duration.ZERO,
+        expireWaits: () -> Unit = {},
+    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger, startGrace, expireWaits) { waiting }
 
     /** Steps whose lost deadline the dispatcher's clock judges. */
     private fun ledger(vararg steps: StepView) = FakeLedger(*steps, now = { clock.now })
@@ -39,6 +41,20 @@ class StepDispatcherTest {
     private fun online() {
         links.online += AGENT.agentId
         links.sessions += AGENT
+    }
+
+    // J1c: Срок ожидания истёк - запуск не выполнен, агент был недоступен
+    @Test
+    fun `every tick closes the waits that are over, before the steps of online agents are served`() {
+        online()
+        val ledger = ledger(step(1))
+        val seen = mutableListOf<StepState>()
+        val dispatcher = dispatcher(ledger, expireWaits = { seen += ledger.steps.single().status })
+
+        MutFlow.underTest { dispatcher.tick() }
+
+        assertEquals(listOf(StepState.QUEUED), seen)
+        assertEquals(StepState.DISPATCHED, ledger.status(1))
     }
 
     @Test
@@ -291,7 +307,7 @@ class StepDispatcherTest {
             object : dev.sard.server.runs.LostDeadlines by ledger {
                 override fun overdue(now: java.time.Instant) = read
             }
-        val raced = StepDispatcher(ledger, racing, links, clock, LOST_AFTER, metrics, ledger) { WaitingSteps(0, 0) }
+        val raced = dispatcherOf(ledger, racing, links, clock, metrics, ledger)
 
         val log = dispatchLog { MutFlow.underTest { raced.tick() } }
 
@@ -301,6 +317,48 @@ class StepDispatcherTest {
     }
 
     // --- FXs: the deadline is set when the session ends, at start, by a Hello; the earliest one holds
+
+    @Test
+    fun `an agent back within the start grace keeps its step, a Hello that lists it clears the deadline`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        val dispatcher = dispatcher(ledger, startGrace = START_GRACE)
+        MutFlow.underTest { dispatcher.onStart() }
+
+        clock.now = DISPATCH_NOW + Duration.ofSeconds(110)
+        MutFlow.underTest { dispatcher.tick() }
+        MutFlow.underTest { dispatcher.onHello(AGENT, listOf(UUID(0, 1).toString())) }
+
+        assertEquals(StepState.RUNNING, ledger.status(1))
+        assertEquals(null, ledger.deadline(1))
+        clock.now = DISPATCH_NOW + Duration.ofHours(1)
+        dispatcher.tick()
+        assertEquals(StepState.RUNNING, ledger.status(1))
+    }
+
+    @Test
+    fun `an agent that is not back when the start grace ends loses its step`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        val dispatcher = dispatcher(ledger, startGrace = START_GRACE)
+        MutFlow.underTest { dispatcher.onStart() }
+
+        clock.now = DISPATCH_NOW + START_GRACE - Duration.ofMillis(1)
+        MutFlow.underTest { dispatcher.tick() }
+        assertEquals(StepState.RUNNING, ledger.status(1))
+
+        clock.now = DISPATCH_NOW + START_GRACE
+        MutFlow.underTest { dispatcher.tick() }
+        assertEquals(StepState.LOST, ledger.status(1))
+    }
+
+    @Test
+    fun `a start grace shorter than the lost window does not shorten the window`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        val dispatcher = dispatcher(ledger, startGrace = Duration.ofSeconds(10))
+
+        MutFlow.underTest { dispatcher.onStart() }
+
+        assertEquals(DISPATCH_NOW + LOST_AFTER, ledger.deadline(1))
+    }
 
     @Test
     fun `a session that ends gives its dispatched and running steps one window, then they are lost`() {
@@ -399,7 +457,7 @@ class StepDispatcherTest {
                 ) = error("database down")
             }
         val dispatcher =
-            StepDispatcher(ledger, broken, links, clock, LOST_AFTER, metrics, ledger) { WaitingSteps(0, 0) }
+            dispatcherOf(ledger, broken, links, clock, metrics, ledger)
 
         val log = dispatchLog { MutFlow.underTest { dispatcher.onDisconnected(AGENT, STREAM_ENDED) } }
 
@@ -436,11 +494,208 @@ class StepDispatcherTest {
                 ) = error("database down")
             }
         val dispatcher =
-            StepDispatcher(broken, ledger(), links, clock, LOST_AFTER, metrics, ledger()) { WaitingSteps(0, 0) }
+            dispatcherOf(broken, ledger(), links, clock, metrics, ledger())
         val log = dispatchLog { MutFlow.underTest { dispatcher.onQueued(TENANT, AGENT.agentId) } }
         assertEquals(emptyList(), links.sentIds())
         val cause = "java.lang.IllegalStateException: database down"
         val expected = "queued steps of agent ${AGENT.agentId} wait for the next check: $cause"
         assertEquals(listOf(expected), log)
+    }
+
+    // --- Cancel (J1a)
+
+    private val sentAt = DISPATCH_NOW - Duration.ofSeconds(5)
+
+    @Test
+    fun `a cancel reaches an online agent at once, for a dispatched and a running step`() {
+        online()
+        val ledger =
+            ledger(
+                step(1, StepState.RUNNING, cancelRequested = true),
+                step(2, StepState.DISPATCHED, sentAt, cancelRequested = true),
+                step(3, StepState.RUNNING),
+            )
+
+        MutFlow.underTest { dispatcher(ledger).onCancelled(TENANT, AGENT.agentId) }
+
+        assertEquals(listOf(1L, 2L), links.cancelledIds())
+        assertEquals(emptyList(), links.sentIds())
+    }
+
+    @Test
+    fun `a cancel of an offline agent sends nothing, the Hello will`() {
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true))
+
+        MutFlow.underTest { dispatcher(ledger).onCancelled(TENANT, AGENT.agentId) }
+
+        assertEquals(emptyList(), links.cancelledIds())
+    }
+
+    @Test
+    fun `a cancel the session could not queue goes out on the next tick, and only once`() {
+        online()
+        links.cancelAnswers += SendResult.QueueFull
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true))
+        val dispatcher = dispatcher(ledger)
+
+        MutFlow.underTest { dispatcher.onCancelled(TENANT, AGENT.agentId) }
+        assertEquals(emptyList(), links.cancelledIds())
+
+        MutFlow.underTest { dispatcher.tick() }
+        MutFlow.underTest { dispatcher.tick() }
+
+        assertEquals(listOf(1L), links.cancelledIds())
+    }
+
+    @Test
+    fun `a session that ends forgets what it was sent, so the next one gets the cancel again`() {
+        online()
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true))
+        val dispatcher = dispatcher(ledger)
+        dispatcher.onCancelled(TENANT, AGENT.agentId)
+
+        MutFlow.underTest { dispatcher.onDisconnected(AGENT, "STREAM_ENDED") }
+        dispatcher.tick()
+
+        assertEquals(listOf(1L, 1L), links.cancelledIds())
+    }
+
+    @Test
+    fun `a Hello that lists a cancelled step gets its CancelStep and takes the deadline off it`() {
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true))
+        ledger.deadlines[UUID(0, 1)] = DISPATCH_NOW + LOST_AFTER
+
+        MutFlow.underTest { dispatcher(ledger).onHello(AGENT, listOf(UUID(0, 1).toString())) }
+
+        assertEquals(listOf(1L), links.cancelledIds())
+        assertEquals(null, ledger.deadline(1))
+    }
+
+    @Test
+    fun `a Hello that does not list a dispatched cancelled step gets its CancelStep, not the step`() {
+        val ledger = ledger(step(1, StepState.DISPATCHED, sentAt, cancelRequested = true))
+
+        MutFlow.underTest { dispatcher(ledger).onHello(AGENT, emptyList()) }
+
+        assertEquals(listOf(1L), links.cancelledIds())
+        assertEquals(emptyList(), links.sentIds())
+        assertEquals(DISPATCH_NOW + LOST_AFTER, ledger.deadline(1))
+        assertEquals(0, metrics.redispatched)
+    }
+
+    @Test
+    fun `a Hello that does not list a running cancelled step only starts its window`() {
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true))
+
+        MutFlow.underTest { dispatcher(ledger).onHello(AGENT, emptyList()) }
+
+        assertEquals(emptyList(), links.cancelledIds())
+        assertEquals(DISPATCH_NOW + LOST_AFTER, ledger.deadline(1))
+    }
+
+    @Test
+    fun `the Hello of an agent still holding queued steps delivers them after the cancels`() {
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true), step(2))
+
+        MutFlow.underTest { dispatcher(ledger).onHello(AGENT, listOf(UUID(0, 1).toString())) }
+
+        assertEquals(listOf(1L), links.cancelledIds())
+        assertEquals(listOf(2L), links.sentIds())
+    }
+
+    @Test
+    fun `a failure while sending a cancel is logged, never thrown at the caller`() {
+        online()
+        val ledger = ledger(step(1, StepState.RUNNING, cancelRequested = true))
+        val failing =
+            object : AgentLinks by links {
+                override fun cancel(
+                    agentId: UUID,
+                    commandId: String,
+                ): SendResult = error("session gone")
+            }
+        val dispatcher =
+            dispatcherOf(ledger, ledger, failing, clock, metrics, ledger)
+
+        val logged = dispatchLog { MutFlow.underTest { dispatcher.onCancelled(TENANT, AGENT.agentId) } }
+
+        assertEquals(1, logged.count { "waits for the next check" in it && "session gone" in it })
+    }
+
+    // --- Silent steps (J1b)
+
+    // Сценарий: Агент на связи молчит после срока и окна — шаг закрывает сервер
+    @Test
+    fun `a tick times out a silent step with the lost window and sends its online agent a CancelStep`() {
+        online()
+        val ledger = ledger(step(1, StepState.RUNNING))
+        ledger.silent += UUID(0, 1)
+
+        MutFlow.underTest { dispatcher(ledger).tick() }
+
+        assertEquals(StepState.TIMED_OUT, ledger.status(1))
+        assertEquals(listOf(LOST_AFTER), ledger.windows)
+        assertEquals(listOf(1L), links.cancelledIds())
+    }
+
+    @Test
+    fun `an agent that is offline gets no CancelStep, its Hello finds the step closed`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        ledger.silent += UUID(0, 1)
+
+        MutFlow.underTest { dispatcher(ledger).tick() }
+
+        assertEquals(StepState.TIMED_OUT, ledger.status(1))
+        assertEquals(emptyList(), links.cancelledIds())
+    }
+
+    @Test
+    fun `a step that a result closed before the tick is not cancelled`() {
+        online()
+        val ledger = ledger(step(1, StepState.SUCCEEDED))
+        ledger.silent += UUID(0, 1)
+
+        MutFlow.underTest { dispatcher(ledger).tick() }
+
+        assertEquals(StepState.SUCCEEDED, ledger.status(1))
+        assertEquals(emptyList(), links.cancelledIds())
+    }
+
+    @Test
+    fun `a failure while cancelling a timed out step is logged, the tick goes on`() {
+        online()
+        val ledger = ledger(step(1, StepState.RUNNING), step(2, StepState.RUNNING))
+        ledger.silent += setOf(UUID(0, 1), UUID(0, 2))
+        val failing =
+            object : AgentLinks by links {
+                override fun cancel(
+                    agentId: UUID,
+                    commandId: String,
+                ): dev.sard.server.agents.stream.SendResult = error("session gone")
+            }
+        val dispatcher =
+            dispatcherOf(ledger, ledger, failing, clock, metrics, ledger)
+
+        val logged = dispatchLog { MutFlow.underTest { dispatcher.tick() } }
+
+        assertEquals(listOf(StepState.TIMED_OUT, StepState.TIMED_OUT), listOf(ledger.status(1), ledger.status(2)))
+        assertEquals(2, logged.count { "session gone" in it })
+    }
+
+    // Сценарий: Бэкап получает срок источника
+    @Test
+    fun `a step is sent with the timeout it was created with, and without one when it has none`() {
+        online()
+        val ledger = ledger(step(1).copy(timeoutSeconds = 21_600), step(2))
+
+        MutFlow.underTest { dispatcher(ledger).onQueued(TENANT, AGENT.agentId) }
+
+        assertEquals(listOf(true, false), links.sent.map { it.hasTimeout() })
+        assertEquals(
+            21_600L,
+            links.sent
+                .first()
+                .timeout.seconds,
+        )
     }
 }

@@ -8,6 +8,8 @@ import dev.sard.server.runs.AgentRevoked
 import dev.sard.server.runs.AgentRoleMismatch
 import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RunActive
+import dev.sard.server.runs.RunAlreadyFinished
+import dev.sard.server.runs.RunNotFound
 import dev.sard.server.runs.SourceNameTaken
 import dev.sard.server.runs.SourceNotFound
 import dev.sard.server.runs.SystemSourceProtected
@@ -25,6 +27,7 @@ import dev.sard.server.verify.InvalidReportPeriod
 import dev.sard.server.verify.InvalidStaleThreshold
 import dev.sard.server.verify.SnapshotUnusable
 import dev.sard.server.verify.VerificationActive
+import dev.sard.server.verify.VerificationJobNotFound
 import jakarta.persistence.PersistenceException
 import org.hibernate.HibernateException
 import org.slf4j.LoggerFactory
@@ -130,6 +133,9 @@ class VerificationExceptionHandler {
         return problemResponse(HttpStatus.CONFLICT, "Conflict", code)
     }
 
+    @ExceptionHandler(VerificationJobNotFound::class)
+    fun jobNotFound(): ResponseEntity<Problem> = notFoundResponse()
+
     @ExceptionHandler(InvalidStaleThreshold::class)
     fun staleThreshold(e: InvalidStaleThreshold) = invalidResponse("staleAfterDays", e.message.orEmpty())
 
@@ -194,6 +200,19 @@ class SourceExceptionHandler {
         field: String,
         message: String,
     ) = unprocessableResponse(code, listOf(FieldError(field, message)))
+}
+
+/** Cancel of a run (J1a): what the domain refuses. */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+class RunExceptionHandler {
+    @ExceptionHandler(RunNotFound::class)
+    fun notFound(): ResponseEntity<Problem> = notFoundResponse()
+
+    @ExceptionHandler(RunAlreadyFinished::class)
+    fun finished(): ResponseEntity<Problem> = conflict(ErrorCode.RUN_FINISHED)
+
+    private fun conflict(code: ErrorCode) = problemResponse(HttpStatus.CONFLICT, "Conflict", code)
 }
 
 /** The self-backup (F6): its system sources, what binding its repository and "back up now" refuse. */

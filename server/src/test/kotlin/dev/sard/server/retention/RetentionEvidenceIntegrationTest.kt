@@ -129,6 +129,19 @@ class RetentionEvidenceIntegrationTest(
     }
 
     @Test
+    fun `Отмена после старого провала не очищает улики этого провала`() {
+        val source = a.source()
+        val snapshot = a.oldSnapshot(source)
+        a.verification(source, snapshot, ago(1), "passed")
+        val failure = a.verification(source, snapshot, ago(181), "failed", evidence = EVIDENCE)
+        a.verification(source, snapshot, ago(100), "cancelled")
+
+        retention.run()
+
+        assertTrue(evidenceOf(failure).all { "restore" in it }, "a cancelled record proves nothing")
+    }
+
+    @Test
     fun `Улики последней проверки источника не очищаются никогда`() {
         for (status in listOf("passed", "infrastructure_failure")) {
             val source = a.source()

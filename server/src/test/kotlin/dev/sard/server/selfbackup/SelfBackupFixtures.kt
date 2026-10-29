@@ -123,6 +123,11 @@ internal class SelfBackupTenant(
     }
 
     fun drop() {
+        // A scheduler tick between the two deletes below would insert a fire of a still enabled schedule.
+        jdbc.update(
+            "update schedules set enabled = false, next_run_at = null, catch_up_at = null where tenant_id = ?",
+            id,
+        )
         val tables =
             listOf(
                 "notification_deliveries",

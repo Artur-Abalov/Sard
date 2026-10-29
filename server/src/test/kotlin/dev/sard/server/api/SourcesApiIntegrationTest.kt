@@ -57,9 +57,10 @@ class SourcesApiIntegrationTest(
         plugin: String = "files",
         repository: String = "qa",
         config: String = """{"paths":["/etc"]}""",
+        timeouts: String = "",
     ) = """{"name":${mapper.writeValueAsString(
         name,
-    )},"agentId":"$agentId","plugin":"$plugin","repositoryName":"$repository","config":$config}"""
+    )},"agentId":"$agentId","plugin":"$plugin","repositoryName":"$repository","config":$config$timeouts}"""
 
     private fun create(
         body: String = body(),
@@ -333,6 +334,97 @@ class SourcesApiIntegrationTest(
         body: String,
         session: ApiSession = admin,
     ) = world.api.send("PUT", "/api/v1/sources/$id", session, body)
+
+    private fun timeouts(source: ApiResponse) =
+        listOf("backupTimeoutMinutes", "restoreTimeoutMinutes").map { field ->
+            source.json
+                .path(field)
+                .takeIf { it.isInt }
+                ?.asInt()
+        }
+
+    // J1b: Источник сохраняет и отдаёт сроки бэкапа и восстановления
+    @Test
+    fun `Источник сохраняет и отдаёт сроки бэкапа и восстановления`() {
+        val created = create(body(timeouts = ""","backupTimeoutMinutes":120,"restoreTimeoutMinutes":240"""))
+
+        assertEquals(201, created.status, created.toString())
+        val id = created.json.path("id").asString()
+        assertEquals(listOf(120, 240), timeouts(world.api.get("/api/v1/sources/$id", admin)))
+    }
+
+    // J1b: Сброс срока источника в null возвращает значение установки
+    @Test
+    fun `Сброс срока источника в null отдаёт null`() {
+        val id = create(body(timeouts = ""","backupTimeoutMinutes":120""")).json.path("id").asString()
+
+        val reset = replace(id, body(timeouts = ""","backupTimeoutMinutes":null"""))
+
+        assertEquals(200, reset.status, reset.toString())
+        assertTrue(reset.json.has("backupTimeoutMinutes") && reset.json.path("backupTimeoutMinutes").isNull)
+        assertEquals(listOf(null, null), timeouts(world.api.get("/api/v1/sources/$id", admin)))
+    }
+
+    // J1b / ДJ13: a full PUT that omits the timeout fields keeps the stored ones.
+    @Test
+    fun `Полный PUT без полей сроков, как у старого клиента, сохраняет сроки источника`() {
+        val timed = ""","backupTimeoutMinutes":120,"restoreTimeoutMinutes":240"""
+        val id = create(body(timeouts = timed)).json.path("id").asString()
+
+        val old = replace(id, body(timeouts = ""))
+
+        assertEquals(200, old.status, old.toString())
+        assertEquals(listOf(120, 240), timeouts(old))
+        assertEquals(listOf(120, 240), timeouts(world.api.get("/api/v1/sources/$id", admin)))
+    }
+
+    // ДJ13: per field, omitted keeps, null resets, a number is stored.
+    @Test
+    fun `Полный PUT различает пропущенный срок, null и число`() {
+        val timed = ""","backupTimeoutMinutes":120,"restoreTimeoutMinutes":240"""
+        val id = create(body(timeouts = timed)).json.path("id").asString()
+
+        val mixed = replace(id, body(timeouts = ""","backupTimeoutMinutes":null"""))
+        assertEquals(listOf(null, 240), timeouts(mixed))
+
+        val stored = replace(id, body(timeouts = ""","backupTimeoutMinutes":30"""))
+        assertEquals(listOf(30, 240), timeouts(stored))
+        assertEquals(listOf(30, 240), timeouts(world.api.get("/api/v1/sources/$id", admin)))
+    }
+
+    // J1b: Недопустимый срок источника отвечает 422 у поля
+    @Test
+    fun `Недопустимый срок источника отвечает 422 у поля и ничего не меняет`() {
+        val id = create(body(timeouts = ""","backupTimeoutMinutes":120""")).json.path("id").asString()
+        val bad =
+            listOf(
+                "backupTimeoutMinutes" to "0",
+                "backupTimeoutMinutes" to "-1",
+                "backupTimeoutMinutes" to "1441",
+                "backupTimeoutMinutes" to "1.5",
+                "backupTimeoutMinutes" to "\"6h\"",
+                "restoreTimeoutMinutes" to "0",
+                "restoreTimeoutMinutes" to "1441",
+            )
+
+        for ((field, value) in bad) {
+            val response = replace(id, body(timeouts = ""","$field":$value"""))
+            assertRefused(response, "validation_failed", field)
+        }
+        assertEquals(listOf(120, null), timeouts(world.api.get("/api/v1/sources/$id", admin)))
+    }
+
+    // J1b: Границы срока принимаются
+    @Test
+    fun `Границы срока принимаются`() {
+        val id = create().json.path("id").asString()
+
+        for (minutes in listOf(1, 1440)) {
+            val response = replace(id, body(timeouts = ""","backupTimeoutMinutes":$minutes"""))
+            assertEquals(200, response.status, response.toString())
+            assertEquals(minutes, response.json.path("backupTimeoutMinutes").asInt())
+        }
+    }
 
     @Test
     fun `Изменение источника заменяет его целиком`() {

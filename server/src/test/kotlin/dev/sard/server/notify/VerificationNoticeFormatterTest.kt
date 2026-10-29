@@ -342,6 +342,7 @@ class VerificationNoticeFormatterTest {
                 VerificationStatus.INFRASTRUCTURE_FAILURE to "сбой инфраструктуры",
                 VerificationStatus.NO_VERIFIER to "нет подходящего верификатора",
                 VerificationStatus.PASSED to "пройдено",
+                VerificationStatus.CANCELLED to "отменена",
             )
         val enWords =
             mapOf(
@@ -350,6 +351,7 @@ class VerificationNoticeFormatterTest {
                 VerificationStatus.INFRASTRUCTURE_FAILURE to "infrastructure failure",
                 VerificationStatus.NO_VERIFIER to "no fitting verifier",
                 VerificationStatus.PASSED to "passed",
+                VerificationStatus.CANCELLED to "cancelled",
             )
         for (status in VerificationStatus.entries) {
             val notice = stale(lastOutcome = status)

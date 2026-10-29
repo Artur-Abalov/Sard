@@ -108,6 +108,9 @@ enum class ErrorCode {
 
     @JsonProperty("snapshot_unusable")
     SNAPSHOT_UNUSABLE,
+
+    @JsonProperty("run_finished")
+    RUN_FINISHED,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

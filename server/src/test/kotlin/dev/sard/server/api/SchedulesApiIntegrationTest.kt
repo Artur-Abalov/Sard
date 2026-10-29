@@ -124,6 +124,9 @@ class SchedulesApiIntegrationTest(
         put(source)
         clock.now = nextHour
         scheduler.tick()
+        // The run is under way: a run that only waits for an offline agent would expire at the next fire (J1c).
+        val query = "select id from runs where source_id = ?::uuid"
+        world.forceRun(checkNotNull(world.jdbc.queryForObject(query, UUID::class.java, source)), "running")
         clock.now = nextHour.plus(1, ChronoUnit.HOURS)
         scheduler.tick()
 

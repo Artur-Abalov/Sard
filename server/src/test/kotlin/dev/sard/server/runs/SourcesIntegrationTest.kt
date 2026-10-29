@@ -61,6 +61,23 @@ class SourcesIntegrationTest(
         assertEquals("app", stored)
     }
 
+    // Сценарий: Источник сохраняет и отдаёт сроки бэкапа и восстановления
+    @Test
+    fun `a source keeps its backup and restore timeouts, and replace sets them again`() {
+        val timed = tenant.draft().copy(backupTimeoutMinutes = 120, restoreTimeoutMinutes = 240)
+        val created = sources.create(tenant.id, timed)
+
+        assertEquals(listOf(120, 240), listOf(created.backupTimeoutMinutes, created.restoreTimeoutMinutes))
+        assertEquals(created, sources.get(tenant.id, created.id))
+
+        // Сценарий: Сброс срока источника в null возвращает значение установки
+        val resetDraft = tenant.draft().copy(backupTimeoutMinutes = null, restoreTimeoutMinutes = 30)
+        val reset = sources.replace(tenant.id, created.id, resetDraft)
+
+        assertEquals(listOf(null, 30), listOf(reset.backupTimeoutMinutes, reset.restoreTimeoutMinutes))
+        assertEquals(reset, sources.list(tenant.id, null, null, 50).single())
+    }
+
     @Test
     fun `a source names an agent, plugin and repository of the agent's last Register`() {
         val unknownAgent = UUID.randomUUID()

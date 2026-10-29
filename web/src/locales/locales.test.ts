@@ -36,7 +36,14 @@ describe('the texts of restore verification', () => {
     for (const dictionary of [ru, en]) {
       const { verification } = dictionary
       expect(Object.keys(verification.outcome).sort()).toEqual(
-        ['cannot_verify', 'failed', 'infrastructure_failure', 'no_verifier', 'passed'].sort(),
+        [
+          'cancelled',
+          'cannot_verify',
+          'failed',
+          'infrastructure_failure',
+          'no_verifier',
+          'passed',
+        ].sort(),
       )
       expect(Object.keys(verification.levels)).toEqual(['1', '2', '3', '4', '5'])
       expect(Object.keys(verification.reason)).toHaveLength(8)

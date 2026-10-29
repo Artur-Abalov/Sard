@@ -28,7 +28,8 @@ private const val LEVEL =
         "the fingerprint, 5 the restore time is known; 0 when none"
 private const val STATUS =
     "passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); " +
-        "infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted)"
+        "infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted); " +
+        "cancelled (an administrator cancelled the job: neither held nor failed, never told)"
 
 /** How a verification ended (restore_verifications.status). */
 @Schema(enumAsRef = true, description = STATUS)
@@ -47,6 +48,9 @@ enum class VerificationOutcome {
 
     @JsonProperty("no_verifier")
     NO_VERIFIER,
+
+    @JsonProperty("cancelled")
+    CANCELLED,
 }
 
 /** Why a verifier does not take a job; space_unknown only warns. */
@@ -160,6 +164,8 @@ data class VerificationJob(
     val failedAttempts: Int,
     @field:Schema(description = "Why each verifier did not fit at the last try; null before the first")
     val unsuitable: List<VerifierMisfit>?,
+    @field:Schema(description = "Set once an administrator asked to cancel the job; null otherwise")
+    val cancellation: Cancellation?,
 )
 
 @Schema(description = "A source's restore verification")
@@ -316,6 +322,10 @@ data class Verification(
     val fingerprint: List<FingerprintField>,
     @field:Schema(description = "Facts of the hashed sample of files: counted, never listed")
     val hiddenFacts: Int,
+    @field:Schema(description = "Who cancelled the job (admin); null unless the status is cancelled")
+    val cancelledBy: String?,
+    @field:Schema(description = "When the cancel was asked; null unless the status is cancelled")
+    val cancelledAt: Instant?,
 )
 
 @Schema(description = "A page of verifications")
@@ -408,6 +418,8 @@ data class ReportSummary(
     val failed: Int,
     @field:Schema(description = "Cannot verify, infrastructure failure or no fitting verifier: no check took place")
     val notHeld: Int,
+    @field:Schema(description = "Cancelled by an administrator: neither held nor failed")
+    val cancelled: Int,
 )
 
 @Schema(description = "A verification of the report: no evidence, no output")
@@ -425,6 +437,8 @@ data class ReportItem(
     val durationMs: Long?,
     @field:Schema(description = "The actual time to restore (level 5)")
     val restoreDurationMs: Long?,
+    @field:Schema(description = "Who cancelled the job (admin); null unless the status is cancelled")
+    val cancelledBy: String?,
 )
 
 @Schema(description = "A series of failed verifications and the pass that fixed it")
@@ -480,6 +494,8 @@ interface VerificationsApi {
     ): VerificationJob
 
     fun getVerification(verificationId: UUID): Verification
+
+    fun cancelJob(jobId: UUID): SourceVerificationState
 
     fun getVerificationSchedule(): VerificationSchedule
 
@@ -558,6 +574,24 @@ class VerificationsController(
     fun getVerification(
         @PathVariable verificationId: UUID,
     ) = api.getVerification(verificationId)
+
+    @PostMapping("/verification-jobs/{jobId}/cancel")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "Cancel a verification job",
+        description =
+            "A job nobody took is closed at once. A job whose attempt is queued is closed with the attempt, and one " +
+                "whose attempt runs is marked: the verifier is told to stop and the answer is the source's " +
+                "verification as it is, the open job with its cancellation pending, until the verifier confirms or " +
+                "does not come back within the lost window. The job closes with a record cancelled, which is never " +
+                "told and never retried. Asking again changes nothing. A job that is closed, or whose verdict " +
+                "came first, answers 409 run_finished.",
+    )
+    @NotFound
+    @CancelRefused
+    fun cancelJob(
+        @PathVariable jobId: UUID,
+    ) = api.cancelJob(jobId)
 
     @GetMapping("/verification-schedule")
     @ResponseStatus(HttpStatus.OK)

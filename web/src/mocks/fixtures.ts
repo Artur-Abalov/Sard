@@ -5,6 +5,7 @@ import type { Status } from '../api/client'
 import type { components } from '../api/schema'
 import { postgresqlSchema } from './postgresqlSchemas'
 import { neverVerified } from './verification'
+import { noTimeouts } from './timeouts'
 
 type Schemas = components['schemas']
 
@@ -512,6 +513,7 @@ export const sources: Schemas['Source'][] = [
     updatedAt: '2026-09-22T10:00:00Z',
     systemRole: null,
     ...neverVerified,
+    ...noTimeouts,
     secretWarnings: [],
   },
   {
@@ -525,6 +527,7 @@ export const sources: Schemas['Source'][] = [
     updatedAt: '2026-09-24T08:15:00Z',
     systemRole: null,
     ...neverVerified,
+    ...noTimeouts,
     secretWarnings: [],
   },
   {
@@ -538,6 +541,7 @@ export const sources: Schemas['Source'][] = [
     updatedAt: '2026-09-27T09:50:00Z',
     systemRole: null,
     ...neverVerified,
+    ...noTimeouts,
     secretWarnings: [],
   },
 ]
@@ -561,6 +565,7 @@ const appSource: Schemas['Source'] = {
   updatedAt: '2026-09-22T10:30:00Z',
   systemRole: null,
   ...neverVerified,
+  ...noTimeouts,
   secretWarnings: [],
 }
 sources.push(appSource)
@@ -578,6 +583,7 @@ export const deletedSources: Schemas['Source'][] = [
     updatedAt: '2026-09-18T10:00:00Z',
     systemRole: null,
     ...neverVerified,
+    ...noTimeouts,
     secretWarnings: [],
   },
 ]
@@ -611,6 +617,9 @@ function backupStep(facts: StepFacts): Schemas['RunStep'] {
     backup: null,
     restore: null,
     restoreOutcome: null,
+    lateStatus: null,
+    timeoutSeconds: null,
+    timedOutBy: null,
     queuedAt: facts.queuedAt,
     dispatchedAt: facts.startedAt === null ? null : facts.queuedAt,
     startedAt: facts.startedAt,
@@ -624,6 +633,15 @@ const NAMES: Record<string, string> = {
   [ids.srvSource]: 'web2 /srv',
   [ids.oldSource]: 'db1 old',
   [ids.appSource]: 'db1 app',
+}
+
+/** What the server calls the run: a failed one is told by its step (timed out, rejected, lost). */
+function outcomeOf(
+  status: Schemas['RunStatus'],
+  step: Schemas['StepStatus'],
+): Schemas['RunOutcome'] {
+  const failures: Schemas['StepStatus'][] = ['timed_out', 'rejected', 'lost']
+  return status === 'failed' && failures.includes(step) ? (step as Schemas['RunOutcome']) : status
 }
 
 /** A run of [sourceId] with one backup step; the run's times and message follow the step's. */
@@ -652,6 +670,10 @@ function runOf(
     kind: 'backup',
     requestedBy: (extra.trigger ?? 'manual') === 'manual' ? 'admin' : null,
     restore: null,
+    outcome: outcomeOf(status, step.status),
+    cancellation: null,
+    agentWaitUntil: null,
+    agentUnavailableSince: null,
     partial: step.backup?.partial === true,
     ...extra,
   }
@@ -690,6 +712,9 @@ export const runs: Schemas['Run'][] = [
       phase: null,
     },
     'queued',
+    false,
+    // The server's word for a queued run whose agent is offline, with the wait deadline (J1c).
+    { outcome: 'waiting_for_agent', agentWaitUntil: '2026-09-28T09:59:00Z' },
   ),
   runOf(
     ids.runningRun,
@@ -848,6 +873,7 @@ export const runs: Schemas['Run'][] = [
       }),
       phase: 'uploading',
       message: 'deadline exceeded',
+      timeoutSeconds: 21_600,
     },
     'failed',
   ),

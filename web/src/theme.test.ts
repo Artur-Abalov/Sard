@@ -26,7 +26,7 @@ function values(schema: string): string[] {
 }
 
 describe('status visuals', () => {
-  test.each(['RunStatus', 'StepStatus', 'EnrollmentTokenStatus', 'AgentStatus'])(
+  test.each(['RunStatus', 'RunOutcome', 'StepStatus', 'EnrollmentTokenStatus', 'AgentStatus'])(
     'every value of %s has a color and an icon',
     (schema) => {
       for (const value of values(schema)) {
@@ -36,12 +36,19 @@ describe('status visuals', () => {
     },
   )
 
-  test.each(['RunStatus', 'StepStatus', 'EnrollmentTokenStatus', 'AgentStatus'])(
+  test.each(['RunStatus', 'RunOutcome', 'StepStatus', 'EnrollmentTokenStatus', 'AgentStatus'])(
     'the values of %s differ by icon, not only by color',
     (schema) => {
       const icons = values(schema).map((value) => statusVisual(value).icon)
 
       expect(new Set(icons).size).toBe(icons.length)
+    },
+  )
+
+  test.each(['cancelling', 'cancelled', 'cancel_unconfirmed', 'agent_unavailable'])(
+    '%s is not shown in the color of an error',
+    (value) => {
+      expect(statusVisual(value).color).not.toBe(tones.error)
     },
   )
 

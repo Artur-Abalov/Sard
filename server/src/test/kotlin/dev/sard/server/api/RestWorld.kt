@@ -307,6 +307,7 @@ class RestWorld(
                 "schedule_fires",
                 "snapshots",
                 "step_logs",
+                "run_defaults",
                 "run_steps",
                 "runs",
                 "schedules",

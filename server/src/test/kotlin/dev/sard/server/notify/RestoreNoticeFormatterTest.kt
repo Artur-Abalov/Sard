@@ -43,6 +43,8 @@ private fun restoreNotice(
     previous: RunState? = RunState.SUCCEEDED,
     trigger: Trigger = Trigger.MANUAL,
     tookSeconds: Long = 90,
+    timeoutSeconds: Long? = null,
+    agentUnavailableSince: Instant? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -61,6 +63,8 @@ private fun restoreNotice(
     previousStatus = previous,
     kind = RunKind.RESTORE,
     restore = RestoreNotice(SNAPSHOT, Instant.parse("2026-10-10T03:00:00Z"), result),
+    timeoutSeconds = timeoutSeconds,
+    agentUnavailableSince = agentUnavailableSince,
 )
 
 private fun Message.text() = parts.joinToString("") { it.text }
@@ -127,6 +131,25 @@ class RestoreNoticeFormatterTest {
         assertTrue(at > 0, parts.toString())
         assertEquals(Message.Text("Database: "), parts[at - 1])
         assertEquals(Message.Text(", tables: 2"), parts[at + 1])
+    }
+
+    // Сценарий: Уведомление о превышенном сроке называет срок и обе подсказки (восстановление)
+    @Test
+    fun `Уведомление о превышенном сроке восстановления называет срок, обе подсказки и что ничего не восстановлено`() {
+        val notice = restoreNotice(StepState.TIMED_OUT, "deadline exceeded", timeoutSeconds = 43_200)
+        val ru = format(notice).text().lines()
+        val en = format(notice, NoticeLanguage.EN).text().lines()
+
+        assertEquals("❌ Восстановление прервано по таймауту: etc data", ru.first())
+        assertTrue("Срок выполнения: 12 ч" in ru, ru.toString())
+        val hintRu = "Хранилище недоступно — проверьте связь с ним. Восстановление долгое — увеличьте срок у источника."
+        assertTrue(hintRu in ru, ru.toString())
+        assertTrue("Ничего не восстановлено: изменения отменены." in ru, ru.toString())
+        assertTrue("Step timeout: 12 h" in en, en.toString())
+        val hintEn =
+            "If the storage is unreachable, check the connection to it. " +
+                "If the restore is long, raise the source's timeout."
+        assertTrue(hintEn in en, en.toString())
     }
 
     @Test
@@ -284,5 +307,24 @@ class RestoreNoticeFormatterTest {
         val text = format(restoreNotice(StepState.FAILED, "boom", empty), NoticeLanguage.EN).text()
         assertTrue("Nothing was restored: the changes were rolled back." in text.lines(), text)
         assertTrue("Rollback failed" !in text, text)
+    }
+
+    // J1c: Уведомление о недоступном агенте называет последнюю связь
+    @Test
+    fun `Восстановление, не выполненное из-за агента, называет связь и не говорит о откате`() {
+        val since = Instant.parse("2026-10-01T09:00:00Z")
+        val ru = format(restoreNotice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = since)).text()
+        assertEquals("⏸ Восстановление не выполнено — агент был недоступен: etc data", ru.lines().first())
+        assertTrue("Агент не на связи с 2026-10-01 09:00 UTC" in ru.lines())
+        assertTrue("Ничего не восстановлено" !in ru)
+        val en = format(restoreNotice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = since), NoticeLanguage.EN)
+        assertEquals("⏸ Restore not run — the agent was unavailable: etc data", en.text().lines().first())
+        assertTrue("Agent offline since 2026-10-01 09:00 UTC" in en.text().lines())
+    }
+
+    @Test
+    fun `Восстановление, не выполненное из-за агента, уведомляет и по расписанию не гасится серией`() {
+        val repeated = restoreNotice(StepState.AGENT_UNAVAILABLE, previous = RunState.AGENT_UNAVAILABLE)
+        assertTrue(format(repeated).text().isNotEmpty())
     }
 }

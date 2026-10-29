@@ -6,6 +6,7 @@ package dev.sard.server.scheduler
 import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
+import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepsQueued
 import io.micrometer.core.instrument.Counter
@@ -140,10 +141,12 @@ class SchedulerConfiguration {
         queued: ObjectProvider<StepsQueued>,
         settings: SchedulerSettings,
         meters: MeterRegistry,
+        waits: AgentWaits,
     ): Scheduler {
         val listener = queued.getIfUnique { StepsQueued.NONE }
         val metrics = MicrometerSchedulerMetrics(meters)
-        return Scheduler(sessions, clock, runs, UuidV7(clock, SecureRandom()), listener, settings, metrics)
+        val ids = UuidV7(clock, SecureRandom())
+        return Scheduler(sessions, clock, runs, ids, listener, settings, metrics, waits::expire)
     }
 
     @Bean

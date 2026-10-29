@@ -17,6 +17,7 @@ import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunViews
+import dev.sard.server.runs.StepView
 import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.FireOutcome
 import dev.sard.server.scheduler.FireReason
@@ -160,14 +161,20 @@ internal object Notices {
             failuresBefore = failuresBefore(session, run),
             notifyOnSuccess = notifiesOnSuccess(session, run),
             kind = RunKind.of(run.kind),
-            restore =
-                run.restore
-                    ?.let {
-                        RunViews.restoreInfo(
-                            it,
-                        )
-                    }?.let { RestoreNotice(it.snapshotId, it.snapshotCreatedAt, stepView.restore) },
+            cancelRequested = run.cancelRequestedAt != null,
+            timeoutSeconds = stepView.timeoutSeconds,
+            agentUnavailableSince = run.agentUnavailableSince,
+            restore = restoreNotice(run, stepView),
         )
+    }
+
+    /** What a restore run restored; null for a backup. */
+    private fun restoreNotice(
+        run: RunRecord,
+        step: StepView,
+    ): RestoreNotice? {
+        val info = run.restore?.let(RunViews::restoreInfo) ?: return null
+        return RestoreNotice(info.snapshotId, info.snapshotCreatedAt, step.restore)
     }
 
     private fun notifiesOnSuccess(
@@ -175,13 +182,20 @@ internal object Notices {
         run: RunRecord,
     ): Boolean = run.scheduleId?.let { session.find(ScheduleRecord::class.java, it).notifyOnSuccess } ?: false
 
-    /** How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded one ends it. */
+    /**
+     * How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded one ends it, and so
+     * does a run that was not run because its agent was unavailable (ДJ12): the failure after it starts a new series.
+     */
     private fun failuresBefore(
         session: Session,
         run: RunRecord,
     ): Int =
         previousStatuses(session, run).resultStream.use { statuses ->
-            statuses.takeWhile { RunState.of(it) == RunState.FAILED }.count().toInt()
+            statuses
+                .map(RunState::of)
+                .takeWhile { it == RunState.FAILED }
+                .count()
+                .toInt()
         }
 
     private fun previousStatus(
