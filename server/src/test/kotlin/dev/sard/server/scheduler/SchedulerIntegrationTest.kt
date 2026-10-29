@@ -709,4 +709,38 @@ class SchedulerIntegrationTest(
         assertEquals(expected, saved.lastRun)
         assertEquals(at("2026-09-30T11:10:00Z"), saved.updatedAt)
     }
+
+    // PL7-2 К8
+    @Test
+    fun `the latest run of a schedule is partial exactly when its backup output is`() {
+        val source = source()
+        schedule(source)
+        tickAt(at("2026-09-30T11:00:00Z"))
+        val run = tables.runs().single()
+        val draft = ScheduleDraft(HOURLY, "UTC", enabled = true)
+        val output = { partial: Boolean ->
+            """{"kind":"backup","snapshotId":"s","totalBytes":1,"addedBytes":1,"repositoryId":"r","partial":$partial}"""
+        }
+        val failedWith = { output: String? ->
+            val finished = Timestamp.from(RUNS_NOW)
+            jdbc.update("update runs set status = 'failed', finished_at = ? where id = ?", finished, run.id)
+            jdbc.update(
+                "update run_steps set status = 'failed', dispatched_at = ?, finished_at = ?, output = ?::jsonb " +
+                    "where run_id = ?",
+                finished,
+                finished,
+                output,
+                run.id,
+            )
+            set(source, draft).lastRun
+        }
+
+        val running = set(source, draft).lastRun
+        val incomplete = failedWith(output(true))
+        val whole = failedWith(output(false))
+        val nothing = failedWith(null)
+
+        assertEquals(listOf(false, true, false, false), listOf(running, incomplete, whole, nothing).map { it?.partial })
+        assertEquals(RunState.FAILED, incomplete?.status)
+    }
 }

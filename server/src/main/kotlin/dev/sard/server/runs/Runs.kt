@@ -27,7 +27,7 @@ private const val STEPS_OF = "from RunStepRecord where runId = :run order by ord
 private const val FORGOTTEN =
     "select s.stepId from SnapshotRecord s where s.stepId = :step and s.forgottenAt is not null"
 private const val LIST_RUNS =
-    "select r, s.agentId, src from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
+    "select r, s.agentId, src, s.output from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
         "join SourceRecord src on src.id = r.sourceId"
 private val JSON = JsonMapper.builder().build()
 
@@ -189,8 +189,14 @@ class Runs(
                 )
             filter.bind(query)
             after?.bind(query)
-            query.setMaxResults(limit).list().map {
-                RunViews.of(it[0] as RunRecord, it[1] as UUID, it[2] as SourceRecord, emptyList())
+            query.setMaxResults(limit).list().map { row ->
+                RunViews.of(
+                    row[0] as RunRecord,
+                    row[1] as UUID,
+                    row[2] as SourceRecord,
+                    emptyList(),
+                    RunViews.partialOf(row.last() as String?),
+                )
             }
         }
 
@@ -259,6 +265,7 @@ internal object RunViews {
         agentId: UUID,
         source: SourceRecord,
         steps: List<RunStepRecord>,
+        partial: Boolean = steps.any { backupOf(it.output)?.partial == true },
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
@@ -275,6 +282,7 @@ internal object RunViews {
         kind = RunKind.of(run.kind),
         requestedBy = run.requestedBy,
         restore = run.restore?.let(::restoreInfo),
+        partial = partial,
     )
 
     fun step(record: RunStepRecord) =
@@ -355,6 +363,9 @@ internal object RunViews {
     /** A text field of the output, null when absent or empty. */
     private fun JsonNode.text(name: String): String? = path(name).asString().ifEmpty { null }
 
+    /** Whether a step's stored [output] is that of a backup that failed after its snapshot (PL7-2). */
+    fun partialOf(output: String?): Boolean = backupOf(output)?.partial == true
+
     /** The backup output of a step, null for any other output or none. */
     private fun backupOf(output: String?): BackupResult? =
         output
@@ -362,17 +373,29 @@ internal object RunViews {
             ?.takeIf { it.path("kind").asString() == Action.BACKUP.stored }
             ?.let(::backupResult)
 
-    private fun backupResult(node: JsonNode): BackupResult =
-        BackupResult(
+    private fun backupResult(node: JsonNode): BackupResult {
+        val partial = node.path("partial").asBoolean(false)
+        val count = numberOf(node, "unreadableCount")
+        return BackupResult(
             node.path("snapshotId").asString(),
             node.path("totalBytes").asLong(),
             node.path("addedBytes").asLong(),
             node.path("repositoryId").asString(),
-            node.path("partial").asBoolean(false),
-            totalFiles = node.path("totalFiles").takeIf(JsonNode::isNumber)?.asLong(),
+            partial,
+            totalFiles = numberOf(node, "totalFiles"),
             fingerprint = node.path("fingerprint").takeIf(JsonNode::isObject)?.let(FingerprintSummary::of),
-            warnings = warningsOf(node.path("warnings")),
+            warnings = stringsOf(node.path("warnings")),
+            unreadableCount = count,
+            unreadablePaths = stringsOf(node.path("unreadablePaths")),
+            incompleteReason = IncompleteReason.of(partial, count),
         )
+    }
 
-    private fun warningsOf(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
+    /** A number of the output, null when it is absent or not a number. */
+    private fun numberOf(
+        node: JsonNode,
+        name: String,
+    ): Long? = node.path(name).takeIf(JsonNode::isNumber)?.asLong()
+
+    private fun stringsOf(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
 }

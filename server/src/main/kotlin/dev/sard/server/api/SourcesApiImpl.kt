@@ -114,6 +114,7 @@ class SourcesApiImpl(
             view.partial,
             view.restoreBlocked == null,
             view.restoreBlocked?.let { RestoreBlockedReason.valueOf(it.name) },
+            view.incompleteReason?.let { IncompleteReason.valueOf(it.name) },
         )
 
     /** What the request itself must satisfy; whether the agent offers it is the domain's check. */

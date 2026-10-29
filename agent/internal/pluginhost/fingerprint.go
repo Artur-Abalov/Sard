@@ -21,6 +21,10 @@ type Backup struct {
 	restic.BackupSummary
 	Fingerprint       []byte
 	FingerprintSHA256 string
+	// UnreadableCount is the number of distinct paths restic could not read
+	// for the main snapshot, UnreadablePaths the first ten, one line each.
+	UnreadableCount int
+	UnreadablePaths []string
 }
 
 const (

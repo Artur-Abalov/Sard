@@ -43,6 +43,7 @@ internal object RunMapping {
         kind(view.kind),
         view.requestedBy,
         view.restore?.let(RestoreMapping::runRestore),
+        view.partial,
     )
 
     fun summary(
@@ -63,6 +64,7 @@ internal object RunMapping {
         catchUp(period),
         kind(view.kind),
         view.requestedBy,
+        view.partial,
     )
 
     private fun catchUp(period: CatchUpPeriod?) =
@@ -177,6 +179,9 @@ internal object BackupMapping {
             backup.totalFiles,
             backup.fingerprint?.let(::fingerprint),
             backup.warnings,
+            backup.unreadableCount,
+            backup.unreadablePaths,
+            backup.incompleteReason?.let { IncompleteReason.valueOf(it.name) },
         )
 
     private fun fingerprint(f: FingerprintSummary) =

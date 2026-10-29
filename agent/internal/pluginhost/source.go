@@ -114,9 +114,19 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 	h.enter(agentv1.StepPhase_STEP_PHASE_UPLOADING)
 	sum, err := s.store(ctx, h, cfg, repo, d, merged, tags, r, release)
 	if err != nil {
-		return Backup{BackupSummary: sum}, err
+		return withUnreadable(Backup{BackupSummary: sum}, err), err
 	}
 	return s.withFingerprint(ctx, h, cfg, repo, tags, d, Backup{BackupSummary: sum}, early)
+}
+
+// withUnreadable records the unreadable paths a snapshot written without some
+// files comes with; any other failure leaves none.
+func withUnreadable(b Backup, err error) Backup {
+	var partial *restic.PartialError
+	if errors.As(err, &partial) {
+		b.UnreadableCount, b.UnreadablePaths = partial.Unreadable()
+	}
+	return b
 }
 
 // store makes the main snapshot with the tags merged, releases what the dump

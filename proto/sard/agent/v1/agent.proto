@@ -432,6 +432,20 @@ message BackupOutput {
   // Number of files of the main snapshot (restic's total_files_processed);
   // 0 from an agent older than V2.
   uint64 total_files = 7;
+  // Number of distinct paths restic named unreadable while it wrote the main
+  // snapshot (a path reported at scan and at archival counts once; a file that
+  // vanished counts). An agent that knows this field sets it in every
+  // BackupOutput: 0 means no unreadable paths, also when the step failed after
+  // a complete main snapshot (the snapshot of the fingerprint or of the
+  // PostgreSQL globals). Absent from an agent older than this field, which
+  // the presence of the field tells from 0.
+  optional uint64 unreadable_count = 8;
+  // At most 10 of the unreadable paths, in the order restic first reported
+  // them; empty when unreadable_count is 0 or absent. Paths only, never the
+  // content of files. Each path is one line, written as in the step message
+  // without the outer quotes (newline as \n, backslash as \\, a byte that is
+  // not UTF-8 as \xNN), and masked by the agent like StepResult.message.
+  repeated string unreadable_paths = 9;
 }
 
 // RestoreOutput is the outcome of ACTION_RESTORE. A restore is all or

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
@@ -143,7 +144,7 @@ func TestBackupOutputCarriesTheSnapshotAndRepositoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := &agentv1.BackupOutput{SnapshotId: "snap", RepositoryId: "repo-id", TotalBytes: 42}
+	want := &agentv1.BackupOutput{SnapshotId: "snap", RepositoryId: "repo-id", TotalBytes: 42, UnreadableCount: proto.Uint64(0)}
 	if !proto.Equal(res.GetBackup(), want) {
 		t.Errorf("output = %v, want %v", res.GetBackup(), want)
 	}
@@ -159,6 +160,59 @@ func TestPartialBackupFailsWithItsOutput(t *testing.T) {
 	res, err := f.run(t, step(backup, `{}`))
 	if !errors.Is(err, restic.ErrUnreadableSource) || errors.Is(err, executor.ErrRejected) || res.GetBackup().GetSnapshotId() != "snap" {
 		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+// PL7-2, Ф19: restic's report of the unreadable paths goes into the output as
+// a number and the first ten paths, once each, in the order of the first report.
+func partialOutput(t *testing.T, items ...restic.ItemError) *agentv1.BackupOutput {
+	t.Helper()
+	f := newHandlers(t, &plugin{})
+	f.repo.err, f.repo.partial = &restic.PartialError{Items: items}, true
+	res, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrUnreadableSource) {
+		t.Fatalf("err = %v", err)
+	}
+	return res.GetBackup()
+}
+
+func TestPartialBackupOutputCarriesTheNumberAndTheDistinctPaths(t *testing.T) {
+	got := partialOutput(t,
+		restic.ItemError{Item: "/d/locked", During: "scan"}, restic.ItemError{Item: "/d/locked", During: "archival"},
+		restic.ItemError{Item: "/d/sub/x.txt", During: "archival"}, restic.ItemError{Item: "/d/locked", During: "archival"})
+	if got.UnreadableCount == nil || got.GetUnreadableCount() != 2 || !slices.Equal(got.GetUnreadablePaths(), []string{"/d/locked", "/d/sub/x.txt"}) {
+		t.Errorf("output = %v", got)
+	}
+}
+
+func TestPartialBackupOutputNamesTheFirstTenOfElevenPaths(t *testing.T) {
+	var items []restic.ItemError
+	var want []string
+	for i := 1; i <= 11; i++ {
+		p := fmt.Sprintf("/d/f%02d", i)
+		items = append(items, restic.ItemError{Item: p})
+		if i <= 10 {
+			want = append(want, p)
+		}
+	}
+	got := partialOutput(t, items...)
+	if got.GetUnreadableCount() != 11 || !slices.Equal(got.GetUnreadablePaths(), want) {
+		t.Errorf("output = %v", got)
+	}
+}
+
+func TestPartialBackupOutputWritesAPathOnOneLine(t *testing.T) {
+	for name, tc := range map[string]struct{ name, want string }{
+		"newline":   {"a\nb", `a\nb`},
+		"cyrillic":  {"отчёт.txt", "отчёт.txt"},
+		"bad byte":  {"\xffx", `\xffx`},
+		"backslash": {`a\b`, `a\\b`},
+		"quote":     {`a"b`, `a\"b`},
+	} {
+		got := partialOutput(t, restic.ItemError{Item: "/d/" + tc.name}).GetUnreadablePaths()
+		if len(got) != 1 || got[0] != "/d/"+tc.want || !utf8.ValidString(got[0]) {
+			t.Errorf("%s: paths = %q, want %q", name, got, "/d/"+tc.want)
+		}
 	}
 }
 
@@ -297,5 +351,44 @@ func streamer(stream func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Wr
 			return sdk.Dump{Filename: "db.dump"}, nil
 		},
 		stream: stream,
+	}
+}
+
+// errStreamExit3 is what the restic wrapper returns for a --stdin backup that
+// exits 3: a failure without a snapshot, not a partial one.
+var errStreamExit3 = errors.New("restic backup: exit code 3 on a stream: the stream may not have been stored completely")
+
+// A stream that restic ends with exit 3 is not "partial with a snapshot": the
+// step fails without an output and the message names the repository.
+func TestMainStreamExit3FailsWithoutOutputAndNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, withExtra())
+	f.readOnly = &seqRepo{sums: make([]restic.BackupSummary, 1), errs: map[int]error{0: errStreamExit3}}
+	res, err := f.run(t, step(backup, `{}`))
+	if res != nil || !errors.Is(err, errStreamExit3) || errors.Is(err, restic.ErrUnreadableSource) || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestExtraFileStreamExit3FailsKeepingTheMainSnapshotAndNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, withExtra(globals))
+	f.readOnly = &seqRepo{
+		sums: []restic.BackupSummary{{SnapshotID: "main", RepositoryID: "rid", TotalBytes: 100}, {}},
+		errs: map[int]error{1: errStreamExit3},
+	}
+	res, err := f.run(t, step(backup, `{}`))
+	if res.GetBackup().GetSnapshotId() != "main" || !errors.Is(err, errStreamExit3) || strings.Contains(err.Error(), "unreadable paths") || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestFingerprintStreamExit3FailsKeepingTheMainSnapshotAndNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, newCompleter())
+	f.readOnly = &seqRepo{
+		sums: []restic.BackupSummary{{SnapshotID: "main", RepositoryID: "rid", TotalBytes: 100}, {}},
+		errs: map[int]error{1: errStreamExit3},
+	}
+	res, err := f.run(t, step(backup, `{}`))
+	if res.GetBackup().GetSnapshotId() != "main" || len(res.GetBackup().GetFingerprint()) != 0 || !errors.Is(err, errStreamExit3) || strings.Contains(err.Error(), "unreadable paths") || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Fatalf("Run = %v, %v", res, err)
 	}
 }

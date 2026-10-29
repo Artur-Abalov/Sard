@@ -347,7 +347,17 @@ Columns, one line per snapshot, oldest first (the same time: by id):
   HOST    the host that made the snapshot
   SOURCE  the source id from the tag sard.source, - if there is none
   RUN     the run id from the tag sard.run, - if there is none
+  COMPLETE  whether the backup confirmed that it read every file: confirmed,
+          unconfirmed, or - if that does not apply (a snapshot not made by Sard,
+          or a part of a plugin: PostgreSQL, the fingerprint of files)
   PATHS   the paths of the snapshot, separated by commas
+unconfirmed means no fingerprint snapshot is linked to the snapshot: some
+files of the source may be missing from it (unreadable files: check the rights
+of sard-agent, docs/plugins/files.md). A complete snapshot is unconfirmed too
+when its fingerprint snapshot failed, and so is one made before fingerprints:
+unconfirmed does not prove that files were unreadable. When some are
+unconfirmed, one line about them goes to stderr; with --json it is the field
+completeness.
 A repository with no snapshots prints one line and exits 0.
 
 `+readOnlyHelp, []repoHelpCode{
@@ -395,6 +405,13 @@ Flags:
   --source string            only the snapshots of this source id; with latest, the source
   --connect-timeout duration how long the first access to the storage may take (default 30s)
   --timeout duration         how long the whole command may take (default: no limit)
+
+If the completeness of the snapshot is not confirmed (see COMPLETE in
+`+"`sard-agent repo snapshots --help`"+`), the command warns on stderr before it
+starts restic ("warning: completeness of snapshot <id> is not confirmed: some
+files of the source may be missing from it") and restores as usual; the
+summary says "completeness: not confirmed". There is no flag, and latest only
+warns.
 
 Every restore that began to write is recorded in the system log (tag
 sard-agent). An interrupt (SIGINT, SIGTERM) stops restic; files that were

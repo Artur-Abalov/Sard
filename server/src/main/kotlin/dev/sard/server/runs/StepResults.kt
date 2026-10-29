@@ -20,9 +20,10 @@ private const val KEEP_LATE =
         "where tenant_id = :tenant and id = :step and status = 'lost' and output is null"
 private const val SNAPSHOT =
     "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
-        "snapshot_id, total_bytes, added_bytes, created_at, partial, fingerprint, fingerprint_sha256, total_files) " +
+        "snapshot_id, total_bytes, added_bytes, created_at, partial, fingerprint, fingerprint_sha256, total_files, " +
+        "incomplete_reason) " +
         "values (:id, :tenant, :source, :step, :agent, :repositoryName, :repositoryId, :snapshotId, :totalBytes, " +
-        ":addedBytes, :now, :partial, :fingerprint, :fingerprintSha256, :totalFiles) on conflict do nothing"
+        ":addedBytes, :now, :partial, :fingerprint, :fingerprintSha256, :totalFiles, :incompleteReason) on conflict do nothing"
 
 // The last whole snapshot of the source: what a fall of the volume is measured from. Its number of files is null
 // when an agent older than V2 made it; its size is compared all the same.
@@ -192,6 +193,7 @@ class StepResults(
                 .setParameter("fingerprint", backup.fingerprint?.bytes, ByteArray::class.java)
                 .setParameter("fingerprintSha256", backup.fingerprint?.sha256, String::class.java)
                 .setParameter("totalFiles", backup.totalFiles, Long::class.javaObjectType)
+                .setParameter("incompleteReason", backup.storedReason(), String::class.java)
                 .executeUpdate()
         if (inserted == 0) {
             log.warn("snapshot {} of step {} is already recorded for another step", backup.snapshotId, step.id)

@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import dev.sard.server.runs.FingerprintFact as DomainFact
+import dev.sard.server.runs.IncompleteReason as DomainIncompleteReason
 
 private val AT = Instant.parse("2026-10-01T12:00:00Z")
 private val ID = UUID.fromString("0192f7a0-0000-7000-8000-000000000001")
@@ -64,13 +65,17 @@ class RunMappingTest {
                 fingerprint =
                     FingerprintSummary("f".repeat(64), 1, "postgresql", listOf(DomainFact("tables", "exact", "2")), 0),
                 warnings = listOf("w"),
+                unreadableCount = 2,
+                unreadablePaths = listOf("/a", "/b"),
+                incompleteReason = DomainIncompleteReason.UNREADABLE_FILES,
             ),
     )
 
     private fun run(
         status: RunState = RunState.RUNNING,
         trigger: Trigger = Trigger.MANUAL,
-    ) = RunView(ID, ID, "etc", true, ID, trigger, status, "m", AT, AT, null, listOf(step()))
+        partial: Boolean = false,
+    ) = RunView(ID, ID, "etc", true, ID, trigger, status, "m", AT, AT, null, listOf(step()), partial = partial)
 
     @Test
     fun `every status, trigger and action of the domain has its name in the contract`() {
@@ -126,7 +131,20 @@ class RunMappingTest {
         val fingerprint =
             Fingerprint("f".repeat(64), 1, "postgresql", listOf(FingerprintFact("tables", "exact", "2")), 0)
         assertEquals(
-            BackupOutput("snap", 10, 5, "repo", partial = true, restorable = false, 7, fingerprint, listOf("w")),
+            BackupOutput(
+                "snap",
+                10,
+                5,
+                "repo",
+                partial = true,
+                restorable = false,
+                7,
+                fingerprint,
+                listOf("w"),
+                2,
+                listOf("/a", "/b"),
+                IncompleteReason.UNREADABLE_FILES,
+            ),
             mapped.backup,
         )
         assertEquals(listOf("files", "qa", "m"), listOf(mapped.plugin, mapped.repositoryName, mapped.message))
@@ -150,6 +168,22 @@ class RunMappingTest {
         val summary = MutFlow.underTest { RunMapping.summary(run(), null) }
         assertEquals(listOf(ID, ID, ID, "m"), listOf(summary.id, summary.sourceId, summary.agentId, summary.message))
         assertEquals(listOf(AT, AT, null), listOf(summary.queuedAt, summary.startedAt, summary.finishedAt))
+    }
+
+    @Test
+    fun `every reason of incompleteness in the domain has its name in the contract`() {
+        for (reason in DomainIncompleteReason.entries) {
+            assertEquals(reason.stored, MutFlow.underTest { IncompleteReason.valueOf(reason.name) }.name.lowercase())
+        }
+        assertEquals(DomainIncompleteReason.entries.size, IncompleteReason.entries.size)
+    }
+
+    @Test
+    fun `a run and its summary say whether a snapshot was made but is incomplete`() {
+        for (partial in listOf(true, false)) {
+            assertEquals(partial, MutFlow.underTest { RunMapping.run(run(partial = partial), null) }.partial)
+            assertEquals(partial, MutFlow.underTest { RunMapping.summary(run(partial = partial), null) }.partial)
+        }
     }
 
     @Test

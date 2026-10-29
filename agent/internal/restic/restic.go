@@ -443,6 +443,15 @@ func (r *result) err() error {
 	return fmt.Errorf("%s: %w", r.cmd, err)
 }
 
+// streamExitError is the error for exit code 3 of a stream backup.
+func (r *result) streamExitError() error {
+	detail := r.fatalLine()
+	if detail != "" {
+		detail = ": " + detail
+	}
+	return fmt.Errorf("exit code %d on a stream%s: the stream may not have been stored completely", r.code, detail)
+}
+
 // exitError is the error for any other exit code; a fatal message the
 // agent knows how to read adds a sentinel next to the *ExitError.
 func (r *result) exitError() error {

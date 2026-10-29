@@ -407,6 +407,7 @@ class RestoresMutationTest(
         assertEquals(RunKind.RESTORE, run.kind)
         assertEquals(Trigger.MANUAL, run.trigger)
         assertEquals(RunState.QUEUED, run.status)
+        assertEquals(false, run.partial, "a restore run backs nothing up, so it is not partial")
         assertEquals("admin", run.requestedBy)
         assertEquals(s, run.sourceId)
         assertEquals("etc data", run.sourceName)
@@ -430,6 +431,7 @@ class RestoresMutationTest(
         assertEquals("admin", stored.requestedBy)
         assertEquals("$DIR/x/y", stored.restore?.target)
         assertEquals("copy", stored.steps.single().repositoryName)
+        assertEquals(false, stored.partial)
         assertEquals(1, restoreRuns())
     }
 
@@ -463,6 +465,7 @@ class RestoresMutationTest(
         val got = assertNotNull(MutFlow.underTest { runs.get(tenant.id, run.id) })
 
         assertEquals(RestoreResult("$DIR/x", 2, 10, null, null, null, false, null), got.steps.single().restore)
+        assertEquals(false, got.partial)
         assertNull(got.steps.single().backup)
     }
 }

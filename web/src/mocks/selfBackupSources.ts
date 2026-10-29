@@ -113,6 +113,7 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     kind: 'backup',
     requestedBy: 'admin',
     restore: null,
+    partial: false,
   }
 }
 

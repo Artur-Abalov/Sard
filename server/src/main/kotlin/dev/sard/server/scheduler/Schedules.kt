@@ -10,6 +10,7 @@ import dev.sard.server.persistence.ScheduleRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.RunState
+import dev.sard.server.runs.RunViews
 import dev.sard.server.runs.Trigger
 import dev.sard.server.runs.liveSource
 import jakarta.persistence.LockModeType
@@ -22,7 +23,9 @@ import java.util.UUID
 private const val SOURCE_KEY = "schedules_tenant_id_source_id_key"
 private const val OF_SOURCE = "from ScheduleRecord where sourceId = :source"
 private const val FIRES_OF = "from ScheduleFireRecord f where f.scheduleId = :schedule"
-private const val LAST_RUN = "from RunRecord r where r.scheduleId = :schedule order by r.queuedAt desc, r.id desc"
+private const val LAST_RUN =
+    "select r, s.output from RunRecord r left join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
+        "where r.scheduleId = :schedule order by r.queuedAt desc, r.id desc"
 private const val NEWEST_FIRST = "order by f.recordedAt desc, f.id desc"
 
 /**
@@ -191,11 +194,23 @@ private fun lastRunOf(
     scheduleId: UUID,
 ): LastRun? =
     session
-        .createSelectionQuery(LAST_RUN, RunRecord::class.java)
+        .createSelectionQuery(LAST_RUN, Array<Any?>::class.java)
         .setParameter("schedule", scheduleId)
         .setMaxResults(1)
         .uniqueResult()
-        ?.let { LastRun(it.id, Trigger.of(it.trigger), RunState.of(it.status), it.queuedAt, it.finishedAt) }
+        ?.let { lastRun(it[0] as RunRecord, it[1] as String?) }
+
+private fun lastRun(
+    run: RunRecord,
+    output: String?,
+) = LastRun(
+    run.id,
+    Trigger.of(run.trigger),
+    RunState.of(run.status),
+    run.queuedAt,
+    run.finishedAt,
+    RunViews.partialOf(output),
+)
 
 internal fun view(
     record: ScheduleRecord,

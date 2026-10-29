@@ -233,6 +233,7 @@ class RestorePostgresMutationTest(
 
         assertEquals(RunKind.RESTORE, run.kind)
         assertEquals("app_restored_20261011", run.restore?.target)
+        assertEquals(false, run.partial, "a restore run backs nothing up, so it is not partial")
         val step = run.steps.single()
         assertEquals("postgresql", step.plugin)
         assertEquals(Action.RESTORE, step.action)
@@ -242,7 +243,7 @@ class RestorePostgresMutationTest(
         val held = "select repository_id from snapshots where snapshot_id = ?"
         assertEquals(RID, jdbc.queryForObject(held, String::class.java, SQ))
         assertEquals(listOf(tenant.id to a), queued.calls.toList())
-        assertNotNull(MutFlow.underTest { runs.get(tenant.id, run.id) })
+        assertEquals(false, assertNotNull(MutFlow.underTest { runs.get(tenant.id, run.id) }).partial)
     }
 
     // --- the config
@@ -341,6 +342,7 @@ class RestorePostgresMutationTest(
             got.steps.single().restore,
         )
         assertNull(got.steps.single().backup)
+        assertEquals(false, got.partial)
     }
 
     @Test

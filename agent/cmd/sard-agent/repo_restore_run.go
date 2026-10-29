@@ -129,6 +129,7 @@ func (r *restoreRun) restore(ctx context.Context) int {
 	if f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
+	r.warnIfUnconfirmed(snap)
 	target := targetOf(st, who, r.deps)
 	reader := newRestic(st.cfg, st.binary, r.deps, st.repo, runAs(who))
 	if !ext.Tree() {
@@ -142,6 +143,14 @@ func (r *restoreRun) restore(ctx context.Context) int {
 		return report(r.stderr, "repo restore", f)
 	}
 	return r.write(ctx, req)
+}
+
+// warnIfUnconfirmed is Р92: before restic runs, a snapshot whose completeness
+// is not confirmed is warned about; the restore goes on.
+func (r *restoreRun) warnIfUnconfirmed(snap restore.Snapshot) {
+	if snap.Completeness == restore.Unconfirmed {
+		_, _ = fmt.Fprintf(r.stderr, "warning: completeness of snapshot %s is not confirmed: some files of the source may be missing from it\n", snap.ShortID)
+	}
 }
 
 // choose is the snapshot the command names and how it is laid out: by the plugin
@@ -308,4 +317,7 @@ func printExtracted(stdout io.Writer, repoName string, snap restore.Snapshot, ta
 func printSnapshotHeader(stdout io.Writer, repoName string, snap restore.Snapshot, target string) {
 	_, _ = fmt.Fprintf(stdout, "repository %s: snapshot %s restored\n", repoName, snap.ID)
 	_, _ = fmt.Fprintf(stdout, "  time:     %s\n  source:   %s\n  run:      %s\n  target:   %s\n", snap.Stamp(), dashIfNil(snap.Source), dashIfNil(snap.Run), target)
+	if snap.Completeness == restore.Unconfirmed {
+		_, _ = fmt.Fprintln(stdout, "  completeness: not confirmed")
+	}
 }

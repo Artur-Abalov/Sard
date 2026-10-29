@@ -107,6 +107,8 @@ data class Snapshot(
     val restorable: Boolean,
     @field:Schema(description = "Why it cannot be restored from the console; null when restorable")
     val restoreBlockedReason: RestoreBlockedReason?,
+    @field:Schema(description = "Why it is incomplete, as the backup output of its step says; null when it is whole")
+    val incompleteReason: IncompleteReason?,
 )
 
 @Schema(description = "A page of snapshots")

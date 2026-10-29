@@ -166,6 +166,22 @@
 #   sard_metrics_state_refresh_timestamp_seconds           gauge
 #   sard_metrics_state_refresh_failures_total              counter
 #
+# Экспозиция — поправка PL7-2 (SARD-15), утверждена владельцем 2026-10-28
+# вместе с docs/specs/proto/partial-backup.feature (НБ10, вопрос ВН8):
+#   sard_run_partial_total{reason}          counter (Micrometer sard.run.partial)
+#       reason unreadable_files|snapshot_set_incomplete|unknown — причина
+#       неполноты (НБ6; docs/specs/server/rest-api-w2.feature, К19). Растёт на 1
+#       по событию завершения запуска бэкапа со статусом failed, если у его шага
+#       в этот момент есть вывод бэкапа с partial true. Такой запуск учтён и в
+#       sard_run_finished_total{status="failed"}; поэтому провалы без снимка —
+#       sard_run_finished_total{status="failed"} минус сумма
+#       sard_run_partial_total. Поздний вывод после завершения запуска счётчик
+#       не меняет; запуск cancelled с выводом (ПГ17h) не учитывается — он не
+#       failed. Метка reason уже в списке допустимых; три серии — с нуля (МР13).
+#   Почему не новая метка у sard_run_finished_total: существующие метрики
+#   сохраняются (решение 4) — набор серий finished не меняется, запросы и
+#   алерты по status="failed" продолжают видеть все провалы.
+#
 # Допустимые имена меток метрик sard_: source_id, role, kind, status,
 # outcome, health, channel, reason. Значения всех меток, кроме source_id, —
 # из фиксированных перечислений; source_id — UUID.
@@ -570,6 +586,69 @@
       Когда клиент делает scrape
       Тогда имя каждой метрики, объявленной в файле имён, встречается в экспозиции с префиксом sard_
       И в экспозиции нет метрик, кроме начинающихся с sard_, jvm_ и process_
+
+  # -------------------------------------------------------------------------
+  # PL7-2 (НБ10)
+  Правило: Неполный бэкап считается отдельно от провала без снимка
+
+    @server
+    Сценарий: Счётчик неполных бэкапов есть сразу после старта со всеми причинами и нулями
+      Дано сервер стартовал, запусков не было
+      Когда клиент делает scrape
+      Тогда sard_run_partial_total есть с reason unreadable_files, snapshot_set_incomplete и unknown со значением 0
+
+    @server @qa
+    Структура сценария: Неполный бэкап увеличивает счётчик своей причины и счётчик провалов
+      Дано запуск backup в running
+      Когда агент присылает результат failed с выводом бэкапа и <поля>
+      Тогда sard_run_partial_total с reason <причина> вырос на 1
+      И sard_run_partial_total с двумя другими reason не изменился
+      И sard_run_finished_total с status failed вырос на 1
+
+      Примеры:
+        | поля                               | причина                 |
+        | unreadable_count 2 и двумя путями  | unreadable_files        |
+        | unreadable_count 0                 | snapshot_set_incomplete |
+        | без поля unreadable_count          | unknown                 |
+
+    @server
+    Сценарий: Провал без снимка не увеличивает счётчик неполных
+      Дано запуск backup в running
+      Когда агент присылает результат failed без вывода бэкапа
+      Тогда sard_run_finished_total с status failed вырос на 1
+      И sard_run_partial_total ни с одним reason не изменился
+
+    @server
+    Сценарий: Успешный бэкап не увеличивает счётчик неполных
+      Дано запуск backup в running
+      Когда агент присылает результат succeeded с выводом бэкапа и unreadable_count 0
+      Тогда sard_run_partial_total ни с одним reason не изменился
+
+    @server
+    Сценарий: Поздний неполный вывод после потери шага счётчик не меняет
+      Дано шаг запуска backup стал lost, запуск завершился failed
+      Когда агент присылает поздний результат failed с выводом бэкапа и unreadable_count 2
+      Тогда sard_run_partial_total ни с одним reason не изменился
+
+    @server
+    Сценарий: Отмена после основного снимка не считается неполным провалом
+      Дано запуск backup в running
+      Когда агент присылает результат cancelled с выводом бэкапа и unreadable_count 0
+      Тогда sard_run_finished_total с status cancelled вырос на 1
+      И sard_run_partial_total ни с одним reason не изменился
+
+    @server
+    Сценарий: Одновременные неполные завершения учитываются все
+      Дано 200 запусков backup в running
+      Когда агент присылает по каждому результат failed с выводом бэкапа и unreadable_count 1 из 20 потоков одновременно
+      Тогда sard_run_partial_total с reason unreadable_files вырос на 200
+
+    @server
+    Сценарий: В метках счётчика неполных нет путей и текстов
+      Дано запуск backup завершился неполным с путём "/srv/QA-PATH-MARKER" и сообщением "QA-MESSAGE-MARKER"
+      Когда клиент делает scrape
+      Тогда экспозиция не содержит "QA-PATH-MARKER" и "QA-MESSAGE-MARKER"
+      И у серий sard_run_partial_total единственная метка — reason
 
   # -------------------------------------------------------------------------
   Правило: Длительность запуска пишется по событию завершения
@@ -1070,6 +1149,15 @@
       Когда тест извлекает блок yaml с groups и rules
       Тогда в нём есть алерты на бэкап старше N, проверку старше N, истечение сертификата агента, истечение CA, самобэкап в ошибке, агента офлайн и устаревание метрик
       И каждое имя sard_ в выражениях — из таблицы экспозиции этой спецификации
+
+    # PL7-2 (НБ10, НБ14)
+    @doc @qa
+    Сценарий: Страница Мониторинг объясняет счётчик неполных бэкапов
+      Дано docs/operator/14-monitoring.md
+      Когда тест читает страницу
+      Тогда она называет sard_run_partial_total и все три значения reason
+      И говорит, что каждый неполный бэкап учтён и в sard_run_finished_total со status failed
+      И приводит выражение PromQL провалов без снимка, в котором из sard_run_finished_total со status failed вычитается сумма sard_run_partial_total
 
     @e2e
     Сценарий: Правила алертов со страницы Мониторинг проходят promtool

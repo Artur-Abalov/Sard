@@ -77,10 +77,33 @@ func (e *PartialError) Error() string {
 		head += fmt.Sprintf(", first %d", maxNamedPaths)
 		paths = paths[:maxNamedPaths]
 	}
-	for i, p := range paths {
-		paths[i] = fmt.Sprintf("%q", p)
+	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, quoteJoin(paths))
+}
+
+// Unreadable is the number of distinct unreadable paths and the first ten,
+// in the order of the first report, each written on one line: quoted as in
+// the error text, without the outer quotes.
+func (e *PartialError) Unreadable() (int, []string) {
+	paths := distinctPaths(e.Items)
+	count := len(paths)
+	if count > maxNamedPaths {
+		paths = paths[:maxNamedPaths]
 	}
-	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, strings.Join(paths, ", "))
+	lines := make([]string, len(paths))
+	for i, p := range paths {
+		q := fmt.Sprintf("%q", p)
+		lines[i] = q[1 : len(q)-1]
+	}
+	return count, lines
+}
+
+// quoteJoin writes the paths quoted, separated by commas.
+func quoteJoin(paths []string) string {
+	quoted := make([]string, len(paths))
+	for i, p := range paths {
+		quoted[i] = fmt.Sprintf("%q", p)
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // distinctPaths are the paths of the items, each once, in the order of the
@@ -148,7 +171,7 @@ func (c *CLI) Backup(ctx context.Context, req BackupRequest, progress func(Progr
 	if req.Stdin == nil {
 		return out.result(c.runRepo(ctx, call{args: req.args(), stdout: out.line}))
 	}
-	return out.result(c.backupStdin(ctx, req, out.line))
+	return out.streamResult(c.backupStdin(ctx, req, out.line))
 }
 
 // streamError marks a cancellation of restic caused by a failed stream.
@@ -238,6 +261,16 @@ const exitPartial = 3
 type backupOutput struct {
 	progress func(Progress)
 	summary  BackupSummary
+}
+
+// streamResult is result for a --stdin backup: a stream has no unreadable
+// files, so exit code 3 is a failure without a snapshot, and the stream may
+// not have been stored completely.
+func (o *backupOutput) streamResult(res *result, err error) (BackupSummary, error) {
+	if res.code == exitPartial {
+		return BackupSummary{}, fmt.Errorf("restic backup: %w", res.streamExitError())
+	}
+	return o.result(res, err)
 }
 
 // result keeps the summary of a snapshot written without some files.

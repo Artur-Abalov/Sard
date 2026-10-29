@@ -113,11 +113,12 @@ class W2MutationTest(
         status: String = "succeeded",
         plugin: String = PLUGIN,
         name: String = "prod-db",
+        extra: String = "",
     ): UUID {
         val run = runs.start(tenant.id, sources.create(tenant.id, tenant.draft(name = name, plugin = plugin)).id)
         val output =
             """{"kind":"backup","snapshotId":"s1","totalBytes":10,"addedBytes":4,"repositoryId":"$REPOSITORY_ID"""" +
-                (partial?.let { ""","partial":$it""" } ?: "") + "}"
+                (partial?.let { ""","partial":$it""" } ?: "") + extra + "}"
         jdbc.update(
             "update run_steps set status = ?, dispatched_at = ?, finished_at = ?, output = ?::jsonb where run_id = ?",
             status,
@@ -319,6 +320,67 @@ class W2MutationTest(
                 ?.partial,
         )
         assertNull(MutFlow.underTest { runs.get(tenant.id, UUID.randomUUID()) })
+    }
+
+    // PL7-2 К18, К19, К21
+    @Test
+    fun `a stored output reads back the unreadable files and the reason of its incompleteness`() {
+        val twoPaths = ""","unreadableCount":2,"unreadablePaths":["/a","/b"]"""
+        val files = backup("true", "failed", name = "files", extra = twoPaths)
+        val set = backup("true", "failed", name = "set", extra = ""","unreadableCount":0,"unreadablePaths":[]""")
+        val old = backup("true", "failed", name = "old")
+        val whole = backup("false", name = "whole")
+
+        fun result(run: UUID) =
+            MutFlow
+                .underTest { runs.get(tenant.id, run) }
+                ?.steps
+                ?.single()
+                ?.backup
+
+        assertEquals(
+            Triple(2L, listOf("/a", "/b"), IncompleteReason.UNREADABLE_FILES),
+            result(files)?.let {
+                Triple(it.unreadableCount, it.unreadablePaths, it.incompleteReason)
+            },
+        )
+        assertEquals(
+            Triple(0L, emptyList<String>(), IncompleteReason.SNAPSHOT_SET_INCOMPLETE),
+            result(set)?.let {
+                Triple(it.unreadableCount, it.unreadablePaths, it.incompleteReason)
+            },
+        )
+        assertEquals(
+            Triple(null, emptyList<String>(), IncompleteReason.UNKNOWN),
+            result(old)?.let {
+                Triple(it.unreadableCount, it.unreadablePaths, it.incompleteReason)
+            },
+        )
+        assertEquals(
+            Triple(null, emptyList<String>(), null),
+            result(whole)?.let {
+                Triple(it.unreadableCount, it.unreadablePaths, it.incompleteReason)
+            },
+        )
+    }
+
+    @Test
+    fun `a run is partial in its card and its list exactly when its backup output is`() {
+        val ids =
+            mapOf(
+                "whole" to backup("false", name = "whole"),
+                "partial" to backup("true", "failed", name = "partial"),
+                "unknown" to backup(null, "failed", name = "nopartial"),
+                "nothing" to backup("true", "failed", name = "nothing"),
+            )
+        jdbc.update("update run_steps set output = null where run_id = ?", ids.getValue("nothing"))
+
+        val listed = MutFlow.underTest { runs.list(tenant.id, RunFilter(), null, 10) }.associate { it.id to it.partial }
+        val card = ids.mapValues { MutFlow.underTest { runs.get(tenant.id, it.value) }?.partial }
+
+        val expected = mapOf("whole" to false, "partial" to true, "unknown" to false, "nothing" to false)
+        assertEquals(expected, ids.mapValues { listed[it.value] })
+        assertEquals(expected, card)
     }
 
     private fun schema(json: String) =

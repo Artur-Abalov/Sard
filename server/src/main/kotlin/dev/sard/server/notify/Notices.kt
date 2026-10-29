@@ -146,7 +146,16 @@ internal object Notices {
             agentHostname = agent.hostname,
             stepStatus = stepView.status,
             startedAt = run.startedAt,
-            backup = stepView.backup?.let { BackupSizes(it.totalBytes, it.addedBytes) },
+            backup =
+                stepView.backup?.let {
+                    BackupSizes(
+                        it.totalBytes,
+                        it.addedBytes,
+                        it.incompleteReason,
+                        it.unreadableCount,
+                        it.unreadablePaths,
+                    )
+                },
             previousStatus = previousStatus(session, run),
             failuresBefore = failuresBefore(session, run),
             notifyOnSuccess = notifiesOnSuccess(session, run),

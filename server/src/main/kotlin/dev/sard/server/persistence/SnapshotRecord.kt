@@ -40,6 +40,9 @@ class SnapshotRecord(
     /** The step failed after saving it (S8b В8). */
     @Column(nullable = false, insertable = false, updatable = false)
     val partial: Boolean,
+    /** Why it is partial (PL7-2): unreadable_files, snapshot_set_incomplete or unknown; null for a whole one. */
+    @Column(name = "incomplete_reason", insertable = false, updatable = false)
+    val incompleteReason: String? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, insertable = false, updatable = false)
     val tenantId: UUID? = null,

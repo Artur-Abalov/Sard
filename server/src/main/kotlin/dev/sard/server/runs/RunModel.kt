@@ -178,6 +178,12 @@ data class BackupResult(
     val fingerprint: FingerprintSummary? = null,
     /** What the server noticed about the backup, such as a fall of its volume (V2). */
     val warnings: List<String> = emptyList(),
+    /** Distinct paths restic could not read; null when the agent did not say or the backup is whole (PL7-2). */
+    val unreadableCount: Long? = null,
+    /** The first of them, as the agent sent them: paths only, masked by the agent (A7b). */
+    val unreadablePaths: List<String> = emptyList(),
+    /** Why the snapshot is incomplete; null for a whole one. */
+    val incompleteReason: IncompleteReason? = null,
 )
 
 /** What a restore run was asked for, as the console shows it; [config] is the JSON text the agent got. */
@@ -228,6 +234,8 @@ data class RunView(
     val requestedBy: String? = null,
     /** What a restore run restores; null for a backup. */
     val restore: RestoreInfo? = null,
+    /** The backup step of the run has an output of a failed result: a snapshot exists, but is incomplete (PL7-2). */
+    val partial: Boolean = false,
 )
 
 /** One step; [id] is the command_id the agent sees. Progress fields stay null until S7 fills them. */

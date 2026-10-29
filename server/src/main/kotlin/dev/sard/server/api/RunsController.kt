@@ -35,6 +35,9 @@ data class CatchUp(
     val timezone: String,
 )
 
+private const val PARTIAL =
+    "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
+
 private const val CATCH_UP = "Set only for trigger catch_up: the downtime it stands for"
 
 private const val REQUESTED_BY =
@@ -76,6 +79,8 @@ data class RunSummary(
     val kind: RunKind,
     @field:Schema(description = REQUESTED_BY)
     val requestedBy: String?,
+    @field:Schema(description = PARTIAL)
+    val partial: Boolean,
 )
 
 @Schema(description = "What a backup step produced")
@@ -110,6 +115,20 @@ data class BackupOutput(
                 "snapshot of the source. The backup still succeeded",
     )
     val warnings: List<String>,
+    @field:Schema(
+        description =
+            "How many distinct paths restic could not read; null when the agent did not say (older than PL7-2) " +
+                "or the output is not partial",
+    )
+    val unreadableCount: Long?,
+    @field:Schema(
+        description =
+            "The first of them (at most 10) in the order restic reported them: paths only, masked by the agent, " +
+                "each cut at 4096 characters; empty when unreadableCount is null or 0",
+    )
+    val unreadablePaths: List<String>,
+    @field:Schema(description = "Why the snapshot is incomplete; null when the output is not partial")
+    val incompleteReason: IncompleteReason?,
 )
 
 @Schema(
@@ -228,6 +247,8 @@ data class Run(
     val requestedBy: String?,
     @field:Schema(description = "Set for a restore run; null for a backup")
     val restore: RunRestore?,
+    @field:Schema(description = PARTIAL)
+    val partial: Boolean,
 )
 
 @Schema(description = "A page of runs")

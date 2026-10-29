@@ -121,6 +121,9 @@
 #   К2. Schedule + lastRun: {id, trigger, status, queuedAt, finishedAt} | null —
 #       последний запуск, созданный этим расписанием (schedule или catch_up),
 #       по queuedAt (G3).
+#   К8. [PL7-2, черновик; docs/specs/proto/partial-backup.feature, НБ5] lastRun +
+#       partial (boolean, обязателен) — тот же смысл, что RunSummary.partial
+#       (docs/specs/server/rest-api-w2.feature, К21).
 #   К3. Schedule + notifyOnSuccess: boolean; ScheduleInput + notifyOnSuccess,
 #       необязательное, по умолчанию false (Р3). Смена только notifyOnSuccess
 #       nextRunAt не сдвигает.
@@ -521,6 +524,20 @@
       Дано расписание источника db-main создало запуск R1 по cron, а после простоя — догоняющий R2
       Когда администратор запрашивает расписание источника db-main
       Тогда lastRun — R2 с trigger catch_up
+
+    # PL7-2 К8 (docs/specs/proto/partial-backup.feature, НБ5; черновик)
+    @server
+    Структура сценария: Последний запуск расписания говорит, неполный ли бэкап
+      Дано последний запуск расписания источника db-main — <как>
+      Когда администратор запрашивает расписание источника db-main
+      Тогда lastRun содержит status <статус> и partial <признак>
+
+      Примеры:
+        | как                                   | статус    | признак |
+        | succeeded                             | succeeded | false   |
+        | failed со снимком и unreadable_count 2 | failed    | true    |
+        | failed без вывода                     | failed    | false   |
+        | running                               | running   | false   |
 
   # ===========================================================================
   Правило: Догоняющий запуск называет период пропущенных срабатываний

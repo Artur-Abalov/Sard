@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.runs.IncompleteReason
 import dev.sard.server.runs.StepState
 
 /** The words of one language; the names of sources and agents are never translated. */
@@ -16,7 +17,17 @@ internal class Wording(
     val notGiven: String,
     val fullText: String,
     val connectionLost: String,
-    val snapshotMade: String,
+    /** The line about the snapshot of a failed backup, per [IncompleteReason] (PL7-2). */
+    val snapshotUnreadable: String,
+    val snapshotSetIncomplete: String,
+    val snapshotUnknown: String,
+    /** After "Reason: " when restic could not read files; the number follows. */
+    val unreadableFiles: String,
+    /** Around the number of unreadable paths not listed: "and 3 more". */
+    val moreBefore: String,
+    val moreAfter: String,
+    /** Before the link to the section on whose behalf the files are read. */
+    val permissionHint: String,
     val units: List<String>,
     val decimalSeparator: Char,
     val durationUnits: List<String>,
@@ -28,6 +39,13 @@ internal class Wording(
     /** The words of a restore (R2). */
     val restore: RestoreWording,
 ) {
+    fun snapshotLine(reason: IncompleteReason): String =
+        when (reason) {
+            IncompleteReason.UNREADABLE_FILES -> snapshotUnreadable
+            IncompleteReason.SNAPSHOT_SET_INCOMPLETE -> snapshotSetIncomplete
+            IncompleteReason.UNKNOWN -> snapshotUnknown
+        }
+
     /** The headline of a finished step; null for a step still active (nothing to announce). */
     fun headline(
         step: StepState,
@@ -122,8 +140,20 @@ private val EN =
         fullText = "The full text is in the console.",
         connectionLost =
             "The connection to the agent was interrupted while the step was running. The next run can be started.",
-        snapshotMade =
-            "The snapshot was created and can be restored, but part of the data did not get into it.",
+        snapshotUnreadable =
+            "The snapshot was created but is incomplete: part of the data did not get into it. " +
+                "It can be restored only on the host, with repo restore.",
+        snapshotSetIncomplete =
+            "The main snapshot was saved in full, but the additional snapshot linked to it (the fingerprint of the " +
+                "source or the PostgreSQL global objects) was not saved, so the backup did not finish. " +
+                "The snapshot can be restored only on the host, with repo restore.",
+        snapshotUnknown =
+            "The snapshot was created, but the backup did not finish, so the snapshot counts as incomplete. " +
+                "It can be restored only on the host, with repo restore.",
+        unreadableFiles = "files the agent could not read: ",
+        moreBefore = "and ",
+        moreAfter = " more",
+        permissionHint = "Check that the user sard-agent can read these files: ",
         units = listOf("B", "KiB", "MiB", "GiB", "TiB"),
         decimalSeparator = '.',
         durationUnits = listOf("s", "min", "h"),
@@ -179,7 +209,20 @@ private val RU =
         notGiven = "Причина: не указана",
         fullText = "Полный текст — в консоли.",
         connectionLost = "Связь с агентом прервалась, пока шаг выполнялся. Можно запустить бэкап снова.",
-        snapshotMade = "Снимок создан и пригоден для восстановления, но часть данных в него не попала.",
+        snapshotUnreadable =
+            "Снимок создан, но неполный: часть данных в него не попала. " +
+                "Восстановить его можно только на хосте командой repo restore.",
+        snapshotSetIncomplete =
+            "Основной снимок сохранён полностью, но связанный с ним дополнительный снимок (отпечаток источника или " +
+                "глобальные объекты PostgreSQL) не сохранился, поэтому бэкап не завершён. " +
+                "Восстановить снимок можно только на хосте командой repo restore.",
+        snapshotUnknown =
+            "Снимок создан, но бэкап не завершён, поэтому снимок считается неполным. " +
+                "Восстановить его можно только на хосте командой repo restore.",
+        unreadableFiles = "файлов, которые агент не смог прочитать: ",
+        moreBefore = "и ещё ",
+        moreAfter = "",
+        permissionHint = "Проверьте, что пользователь sard-agent может читать эти файлы: ",
         units = listOf("Б", "КиБ", "МиБ", "ГиБ", "ТиБ"),
         decimalSeparator = ',',
         durationUnits = listOf("с", "мин", "ч"),

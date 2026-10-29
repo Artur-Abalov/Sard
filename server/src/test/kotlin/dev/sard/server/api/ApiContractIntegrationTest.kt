@@ -121,6 +121,43 @@ class ApiContractIntegrationTest(
         )
     }
 
+    // PL7-2 К18-К21
+    @Test
+    fun `the unreadable files, the reason of incompleteness and the partial run are in the contract`() {
+        fun required(name: String) = schema(name).path("required").strings().toSet()
+
+        val reported = setOf("unreadableCount", "unreadablePaths", "incompleteReason")
+        assertTrue(required("BackupOutput").containsAll(reported))
+        val count = schema("BackupOutput").path("properties").path("unreadableCount")
+        assertEquals(
+            listOf("int64", "integer"),
+            listOf(count.path("format").asString(), count.path("type").strings().first { it != "null" }),
+        )
+        assertTrue("null" in count.path("type").strings())
+        assertEquals(
+            listOf("array", "string"),
+            schema("BackupOutput").path("properties").path("unreadablePaths").let {
+                listOf(it.path("type").asString(), it.path("items").path("type").asString())
+            },
+        )
+        assertEquals(listOf("unreadable_files", "snapshot_set_incomplete", "unknown"), enumValues("IncompleteReason"))
+        assertTrue("incompleteReason" in required("Snapshot"))
+        for (name in listOf("RunSummary", "Run", "ScheduleLastRun")) {
+            assertTrue("partial" in required(name), name)
+            assertEquals(
+                "boolean",
+                schema(name)
+                    .path("properties")
+                    .path("partial")
+                    .path("type")
+                    .asString(),
+                name,
+            )
+        }
+        val statuses = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled")
+        assertEquals(statuses, enumValues("RunStatus"))
+    }
+
     @Test
     fun `agent_role_mismatch is documented on createSource and startRun`() {
         for ((path, method) in listOf("/api/v1/sources" to "post", "/api/v1/sources/{sourceId}/runs" to "post")) {

@@ -241,7 +241,6 @@
     "edit": "Edit",
     "noSnapshots": "Snapshots appear after a backup.",
     "partial": "incomplete",
-    "partialWhy": "The snapshot can be restored, but part of the data did not get into it.",
     "snapshot": "Snapshot",
     "snapshots": "Snapshots",
     "total": "Total",
@@ -272,7 +271,6 @@
     "log": "Log",
     "logTruncated": "The server cut this step’s log at its size limit.",
     "noLogLines": "There are no lines yet.",
-    "partialNote": "The snapshot can be restored, but part of the data did not get into it.",
     "repository": "Repository: <m>{{name}}</m>",
     "snapshot": "Snapshot",
     "stepNote": {
@@ -1052,5 +1050,15 @@
     "failureFixed": "Fixed",
     "notFixed": "not fixed",
     "generated": "Generated {{time}}. Version: {{version}}."
+  },
+  "incomplete": {
+    "mark": "incomplete",
+    "markWhy": "The backup did not finish, but a snapshot was created — see the run for details",
+    "permissionHint": "Check that the sard-agent user has permission to read these files. See <a>“On whose behalf files are read”</a>.",
+    "snapshot_set_incomplete": "The main snapshot was saved in full, but the additional snapshot linked to it (the fingerprint of the source or the PostgreSQL global objects) was not saved, so the backup did not finish. The snapshot can be restored only on the host, with repo restore.",
+    "unknown": "The snapshot was created, but the backup did not finish, so the snapshot counts as incomplete. It can be restored only on the host, with repo restore.",
+    "unreadableCount": "Files the agent could not read: {{count}}",
+    "unreadableMore": "and {{count}} more",
+    "unreadable_files": "The snapshot was created but is incomplete: part of the data did not get into it. It can be restored only on the host, with repo restore."
   }
 }

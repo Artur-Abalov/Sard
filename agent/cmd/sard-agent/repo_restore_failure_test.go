@@ -25,7 +25,7 @@ func TestWithoutATimeoutTheRestoreHasNoOverallLimit(t *testing.T) {
 	}
 	code, _, stderr := h.restore(idF)
 	assertCode(t, code, exitOK)
-	if stderr != "" {
+	if stderr != "" && !strings.HasPrefix(stderr, completenessWarning) {
 		t.Errorf("stderr %q", stderr)
 	}
 }
