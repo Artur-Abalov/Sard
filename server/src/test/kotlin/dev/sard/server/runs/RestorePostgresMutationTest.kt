@@ -410,5 +410,8 @@ class RestorePostgresMutationTest(
 
         assertEquals(RUNS_NOW.plusSeconds(24 * 3600), run.agentWaitUntil)
         assertEquals(720 * 60L, run.steps.single().timeoutSeconds)
+        // agent A has no stream here: the answer to the start says so, as a read does
+        assertEquals(false, run.agentOnline)
+        assertEquals(RunOutcome.WAITING_FOR_AGENT, run.outcome)
     }
 }
