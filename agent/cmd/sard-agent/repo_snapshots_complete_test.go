@@ -187,3 +187,11 @@ func TestInJSONTheCompletenessIsAStringOrNull(t *testing.T) {
 		t.Fatalf("got %v stderr %q", shown, stderr)
 	}
 }
+
+func TestASingleUnconfirmedSnapshotIsExplainedToo(t *testing.T) {
+	h := withFingerprint(t)
+	_, _, stderr := h.snapshots()
+	if want := "completeness of 1 snapshot(s) is not confirmed"; !strings.Contains(stderr, want) {
+		t.Errorf("stderr %q lacks %q", stderr, want)
+	}
+}
