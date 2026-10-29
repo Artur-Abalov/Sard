@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.runs.IncompleteReason
 import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.StepState
@@ -37,6 +38,7 @@ class RunNoticeFormatter(
     private val figures = NoticeFigures(words)
     private val lines = NoticeLines(words, figures, console)
     private val restores = RestoreNoticeFormatter(words, figures, lines)
+    private val unreadable = UnreadableNoticeLines(words)
 
     override fun format(notice: RunNotice): Message? {
         val telling = Telling.of(notice) ?: return null
@@ -117,7 +119,7 @@ class RunNoticeFormatter(
 
             StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
                 val timeout = lines.timeoutLines(notice, words.timedOutHint)
-                lines.reasonLines(notice.message) + timeout + snapshotLines(sizes)
+                failureLines(notice) + timeout + snapshotLines(notice.backup)
             }
 
             StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING, StepState.AGENT_UNAVAILABLE -> {
@@ -126,8 +128,22 @@ class RunNoticeFormatter(
         }
     }
 
-    private fun snapshotLines(sizes: List<Message.Part>?): List<List<Message.Part>> =
-        if (sizes == null) emptyList() else listOf(listOf(Message.Text(words.snapshotMade)), sizes)
+    /** Why it failed: unreadable files in the notice's language, anything else as the agent said it. */
+    private fun failureLines(notice: RunNotice): List<List<Message.Part>> {
+        val backup = notice.backup
+        return if (backup?.incompleteReason == IncompleteReason.UNREADABLE_FILES) {
+            unreadable.lines(backup)
+        } else {
+            lines.reasonLines(notice.message)
+        }
+    }
+
+    /** The snapshot a failed backup left: why it is incomplete, and its sizes; nothing when there is none. */
+    private fun snapshotLines(backup: BackupSizes?): List<List<Message.Part>> {
+        if (backup == null) return emptyList()
+        val reason = backup.incompleteReason ?: IncompleteReason.UNKNOWN
+        return listOf(listOf(Message.Text(words.snapshotLine(reason))), sizesLine(backup))
+    }
 
     private fun sizesLine(sizes: BackupSizes): List<Message.Part> {
         val total = figures.size(sizes.totalBytes)

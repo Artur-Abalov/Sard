@@ -349,11 +349,25 @@ func (e *Executor) finish(c *command, r *agentv1.StepResult) {
 		e.active--
 	}
 	c.state, c.result = finished, r
-	e.opts.Logger.Info("step finished", "command_id", r.GetCommandId(), "status", r.GetStatus().String())
+	e.opts.Logger.Info("step finished", finishedAttrs(r)...)
 	e.save(r)
 	e.opts.Sink.Result(r)
 	e.dispatch()
 	e.signalIdle()
+}
+
+// finishedAttrs are the log attributes of a finished step: the failure
+// message and the snapshot are named when there are any. The result is
+// already masked.
+func finishedAttrs(r *agentv1.StepResult) []any {
+	attrs := []any{"command_id", r.GetCommandId(), "status", r.GetStatus().String()}
+	if m := r.GetMessage(); m != "" {
+		attrs = append(attrs, "message", m)
+	}
+	if id := r.GetBackup().GetSnapshotId(); id != "" {
+		attrs = append(attrs, "snapshot_id", id)
+	}
+	return attrs
 }
 
 // save stores a result and then drops the command's journal entry; a crash

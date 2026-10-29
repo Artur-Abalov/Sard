@@ -58,6 +58,8 @@ data class Cancellation(
 private const val AGENT_WAIT_UNTIL =
     "Until when the queued run waits for an offline agent: the console shows \"starts when the agent " +
         "connects, waiting until <time>\". null once the run left the queue, and for a run that never waited"
+private const val PARTIAL =
+    "The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed"
 
 private const val CATCH_UP = "Set only for trigger catch_up: the downtime it stands for"
 
@@ -110,6 +112,8 @@ data class RunSummary(
                 "\"timed out (6 h)\" with it. null for records before J1b",
     )
     val timeoutSeconds: Long?,
+    @field:Schema(description = PARTIAL)
+    val partial: Boolean,
 )
 
 @Schema(description = "What a backup step produced")
@@ -144,6 +148,20 @@ data class BackupOutput(
                 "snapshot of the source. The backup still succeeded",
     )
     val warnings: List<String>,
+    @field:Schema(
+        description =
+            "How many distinct paths restic could not read; null when the agent did not say (older than PL7-2) " +
+                "or the output is not partial",
+    )
+    val unreadableCount: Long?,
+    @field:Schema(
+        description =
+            "The first of them (at most 10) in the order restic reported them: paths only, masked by the agent, " +
+                "each cut at 4096 characters; empty when unreadableCount is null or 0",
+    )
+    val unreadablePaths: List<String>,
+    @field:Schema(description = "Why the snapshot is incomplete; null when the output is not partial")
+    val incompleteReason: IncompleteReason?,
 )
 
 @Schema(
@@ -292,6 +310,8 @@ data class Run(
                 "connected, or the run did not expire",
     )
     val agentUnavailableSince: Instant?,
+    @field:Schema(description = PARTIAL)
+    val partial: Boolean,
 )
 
 @Schema(description = "A page of runs")

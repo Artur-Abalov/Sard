@@ -25,6 +25,7 @@ object SardMetricNames {
     const val RUN_STEP_LOGS_TRUNCATED = "sard.run.step.logs.truncated"
     const val RUN_FINISHED = "sard.run.finished"
     const val RUN_DURATION = "sard.run.duration"
+    const val RUN_PARTIAL = "sard.run.partial"
 
     // Notifications.
     const val NOTIFY_PENDING = "sard.notify.pending"

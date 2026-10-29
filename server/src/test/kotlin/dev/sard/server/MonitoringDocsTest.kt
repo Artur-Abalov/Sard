@@ -66,6 +66,20 @@ class MonitoringDocsTest {
         for (variable in METRICS_VARIABLES) assertTrue(variable in page, variable)
     }
 
+    // PL7-2 (НБ10, НБ14)
+    @Test
+    fun `Страница Мониторинг объясняет счётчик неполных бэкапов`() {
+        val page = text("docs/operator/14-monitoring.md")
+
+        assertTrue("sard_run_partial_total" in page)
+        for (reason in listOf("unreadable_files", "snapshot_set_incomplete", "unknown")) {
+            assertTrue(reason in page, reason)
+        }
+        assertTrue(Regex("""учтён\w* и в `sard_run_finished_total`[^.]*`status="failed"`""").containsMatchIn(page))
+        val withoutSnapshot = Regex("""sard_run_finished_total\{status="failed"}\)\s*-\s*sum\(sard_run_partial_total""")
+        assertTrue(withoutSnapshot.containsMatchIn(page), "the PromQL of failures without a snapshot")
+    }
+
     @Test
     fun `Страница Мониторинг предупреждает об открытии порта наружу и даёт пример override`() {
         val page = text("docs/operator/14-monitoring.md")

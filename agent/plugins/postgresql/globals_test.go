@@ -242,6 +242,35 @@ func TestGlobalsSaveFailureAfterTheDatabaseSnapshotFailsWithTheSnapshot(t *testi
 	oneLine(t, res.GetMessage())
 }
 
+// Scenario: Сбой сохранения глобальных объектов даёт в выводе число нечитаемых ноль.
+// Scenario: Код 3 restic у снимка глобальных объектов не называет файлы нечитаемыми.
+func TestAFailedGlobalsSnapshotReportsZeroUnreadable(t *testing.T) {
+	for name, code := range map[string]int{"storage error": 1, "exit code 3": 3} {
+		r := newRig(t)
+		r.restic.backup = func(ctx context.Context, n int, cmd resticCommand) int {
+			if n == 0 {
+				return r.restic.defaultBackup(ctx, n, cmd)
+			}
+			_ = slurp(cmd)
+			return code
+		}
+		res := r.backup(kg())
+		want(t, res, failed)
+		if out := res.GetBackup(); out.GetSnapshotId() != snapshotID(0) || out.UnreadableCount == nil || out.GetUnreadableCount() != 0 || len(out.GetUnreadablePaths()) != 0 {
+			t.Errorf("%s: output = %v", name, out)
+		}
+	}
+}
+
+// Scenario: Успешный дамп базы даёт в выводе число нечитаемых ноль.
+func TestASuccessfulDumpReportsZeroUnreadable(t *testing.T) {
+	res := newRig(t).backup(kg())
+	want(t, res, succeeded)
+	if res.GetBackup().UnreadableCount == nil || res.GetBackup().GetUnreadableCount() != 0 {
+		t.Errorf("output = %v", res.GetBackup())
+	}
+}
+
 // Scenario: Отмена во время сохранения глобальных объектов оставляет только снимок базы.
 func TestCancelWhileSavingTheGlobalsKeepsOnlyTheDatabaseSnapshot(t *testing.T) {
 	r := newRig(t)

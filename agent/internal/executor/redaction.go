@@ -58,6 +58,10 @@ func (e *Executor) compile(c *command) (*redact.Set, map[string][]byte, error) {
 // maskResult masks the texts of a result that may quote a tool or a plugin.
 func maskResult(set *redact.Set, r *agentv1.StepResult) {
 	r.Message = set.Mask(r.GetMessage())
+	paths := r.GetBackup().GetUnreadablePaths()
+	for i, path := range paths {
+		paths[i] = set.Mask(path)
+	}
 	for _, check := range r.GetVerify().GetChecks() {
 		check.Detail = set.Mask(check.GetDetail())
 	}

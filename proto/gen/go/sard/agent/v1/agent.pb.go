@@ -2157,9 +2157,23 @@ type BackupOutput struct {
 	FingerprintSha256 string `protobuf:"bytes,6,opt,name=fingerprint_sha256,json=fingerprintSha256,proto3" json:"fingerprint_sha256,omitempty"`
 	// Number of files of the main snapshot (restic's total_files_processed);
 	// 0 from an agent older than V2.
-	TotalFiles    uint64 `protobuf:"varint,7,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TotalFiles uint64 `protobuf:"varint,7,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
+	// Number of distinct paths restic named unreadable while it wrote the main
+	// snapshot (a path reported at scan and at archival counts once; a file that
+	// vanished counts). An agent that knows this field sets it in every
+	// BackupOutput: 0 means no unreadable paths, also when the step failed after
+	// a complete main snapshot (the snapshot of the fingerprint or of the
+	// PostgreSQL globals). Absent from an agent older than this field, which
+	// the presence of the field tells from 0.
+	UnreadableCount *uint64 `protobuf:"varint,8,opt,name=unreadable_count,json=unreadableCount,proto3,oneof" json:"unreadable_count,omitempty"`
+	// At most 10 of the unreadable paths, in the order restic first reported
+	// them; empty when unreadable_count is 0 or absent. Paths only, never the
+	// content of files. Each path is one line, written as in the step message
+	// without the outer quotes (newline as \n, backslash as \\, a byte that is
+	// not UTF-8 as \xNN), and masked by the agent like StepResult.message.
+	UnreadablePaths []string `protobuf:"bytes,9,rep,name=unreadable_paths,json=unreadablePaths,proto3" json:"unreadable_paths,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *BackupOutput) Reset() {
@@ -2239,6 +2253,20 @@ func (x *BackupOutput) GetTotalFiles() uint64 {
 		return x.TotalFiles
 	}
 	return 0
+}
+
+func (x *BackupOutput) GetUnreadableCount() uint64 {
+	if x != nil && x.UnreadableCount != nil {
+		return *x.UnreadableCount
+	}
+	return 0
+}
+
+func (x *BackupOutput) GetUnreadablePaths() []string {
+	if x != nil {
+		return x.UnreadablePaths
+	}
+	return nil
 }
 
 // RestoreOutput is the outcome of ACTION_RESTORE. A restore is all or
@@ -3354,7 +3382,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x06verify\x18\f \x01(\v2\x1b.sard.agent.v1.VerifyOutputH\x00R\x06verify\x12,\n" +
 	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03run\x12@\n" +
 	"\rreject_reason\x18\x0e \x01(\x0e2\x1b.sard.agent.v1.RejectReasonR\frejectReasonB\b\n" +
-	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\x88\x02\n" +
+	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\xf8\x02\n" +
 	"\fBackupOutput\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12\x1f\n" +
@@ -3366,7 +3394,10 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\vfingerprint\x18\x05 \x01(\fR\vfingerprint\x12-\n" +
 	"\x12fingerprint_sha256\x18\x06 \x01(\tR\x11fingerprintSha256\x12\x1f\n" +
 	"\vtotal_files\x18\a \x01(\x04R\n" +
-	"totalFiles\"\xa6\x02\n" +
+	"totalFiles\x12.\n" +
+	"\x10unreadable_count\x18\b \x01(\x04H\x00R\x0funreadableCount\x88\x01\x01\x12)\n" +
+	"\x10unreadable_paths\x18\t \x03(\tR\x0funreadablePathsB\x13\n" +
+	"\x11_unreadable_count\"\xa6\x02\n" +
 	"\rRestoreOutput\x12\x16\n" +
 	"\x06target\x18\x01 \x01(\tR\x06target\x12%\n" +
 	"\x0efiles_restored\x18\x02 \x01(\x04R\rfilesRestored\x12%\n" +
@@ -3665,6 +3696,7 @@ func file_sard_agent_v1_agent_proto_init() {
 		(*StepResult_Verify)(nil),
 		(*StepResult_Run)(nil),
 	}
+	file_sard_agent_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	file_sard_agent_v1_agent_proto_msgTypes[28].OneofWrappers = []any{
 		(*ConnectResponse_RunStep)(nil),
 		(*ConnectResponse_CancelStep)(nil),

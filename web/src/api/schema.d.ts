@@ -1265,6 +1265,8 @@ export interface components {
             queuedAt: string;
             /** Format: date-time */
             finishedAt: string | null;
+            /** @description The backup failed after saving a snapshot: it is incomplete (RunSummary.partial) */
+            partial: boolean;
         };
         /** @description A password change; the new password is 12 to 1024 Unicode code points */
         PasswordChangeRequest: {
@@ -1421,6 +1423,15 @@ export interface components {
             fingerprint: components["schemas"]["Fingerprint"] | null;
             /** @description What the server noticed: the number of files or the size fell by more than 30% since the last snapshot of the source. The backup still succeeded */
             warnings: string[];
+            /**
+             * Format: int64
+             * @description How many distinct paths restic could not read; null when the agent did not say (older than PL7-2) or the output is not partial
+             */
+            unreadableCount: number | null;
+            /** @description The first of them (at most 10) in the order restic reported them: paths only, masked by the agent, each cut at 4096 characters; empty when unreadableCount is null or 0 */
+            unreadablePaths: string[];
+            /** @description Why the snapshot is incomplete; null when the output is not partial */
+            incompleteReason: components["schemas"]["IncompleteReason"] | null;
         };
         /** @description What a catch-up run stands for: the fires missed while the server was down */
         CatchUp: {
@@ -1468,6 +1479,8 @@ export interface components {
             rule: string;
             value: string;
         };
+        /** @enum {string} */
+        IncompleteReason: "unreadable_files" | "snapshot_set_incomplete" | "unknown";
         /** @enum {string} */
         RestoreOutcome: "restored" | "nothing" | "rollback_failed" | "late";
         /** @description What a restore step reported. A restore is all or nothing: a succeeded one has everything it did, any other has this only when its rollback failed, and then leftover alone. A field the restore does not have is null: a database restore has no files, a restore of files no tables */
@@ -1532,6 +1545,8 @@ export interface components {
              * @description The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never connected, or the run did not expire
              */
             agentUnavailableSince: string | null;
+            /** @description The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed */
+            partial: boolean;
         };
         /** @enum {string} */
         RunKind: "backup" | "restore";
@@ -2223,6 +2238,8 @@ export interface components {
             restorable: boolean;
             /** @description Why it cannot be restored from the console; null when restorable */
             restoreBlockedReason: components["schemas"]["RestoreBlockedReason"] | null;
+            /** @description Why it is incomplete, as the backup output of its step says; null when it is whole */
+            incompleteReason: components["schemas"]["IncompleteReason"] | null;
         };
         /** @description A page of snapshots */
         SnapshotPage: {
@@ -2440,6 +2457,8 @@ export interface components {
              * @description The timeout the run's step was created with, in seconds, as RunStep.timeoutSeconds: the list says "timed out (6 h)" with it. null for records before J1b
              */
             timeoutSeconds: number | null;
+            /** @description The backup step has an output of a failed result: a snapshot exists but is incomplete. The status stays failed */
+            partial: boolean;
         };
         /** @enum {string} */
         LogLevel: "debug" | "info" | "warn" | "error";

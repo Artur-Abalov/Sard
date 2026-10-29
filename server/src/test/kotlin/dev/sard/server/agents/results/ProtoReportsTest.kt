@@ -99,6 +99,33 @@ class ProtoReportsTest {
         )
     }
 
+    // PL7-2: the number of unreadable paths is optional on the wire, so an older agent is not "0".
+    @Test
+    fun `a backup brings the unreadable count and paths, an older agent's neither, a sent zero as zero`() {
+        val base =
+            BackupOutput
+                .newBuilder()
+                .setSnapshotId("s")
+                .setTotalBytes(10)
+                .setRepositoryId("r")
+        val sent =
+            base
+                .clone()
+                .setUnreadableCount(2)
+                .addUnreadablePaths("/srv/данные/отчёт.txt")
+                .addUnreadablePaths("/srv/a\\nb")
+        val zero = base.clone().setUnreadableCount(0)
+
+        fun backup(output: BackupOutput.Builder) =
+            MutFlow.underTest { ProtoReports.of(builder().setBackup(output).build()) }.output as StepOutput.Backup
+
+        assertEquals(2L, backup(sent).unreadableCount)
+        assertEquals(listOf("/srv/данные/отчёт.txt", "/srv/a\\nb"), backup(sent).unreadablePaths)
+        assertEquals(0L, backup(zero).unreadableCount)
+        assertEquals(null, backup(base).unreadableCount)
+        assertEquals(emptyList(), backup(base).unreadablePaths)
+    }
+
     @Test
     fun `each output maps to its domain kind`() {
         val backup =

@@ -167,8 +167,10 @@ internal class RestoreScene(
         jdbc.update("update runs set status = ?, finished_at = ? where id = ?", status, at, run.id)
         jdbc.update(
             "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
-                "snapshot_id, total_bytes, added_bytes, created_at, partial, forgotten_at) " +
-                "select ?, tenant_id, source_id, id, ?, 'main', ?, ?, ?, 10, ?, ?, ? from run_steps where run_id = ?",
+                "snapshot_id, total_bytes, added_bytes, created_at, partial, " +
+                "incomplete_reason, forgotten_at) " +
+                "select ?, tenant_id, source_id, id, ?, 'main', ?, ?, ?, 10, ?, ?, ?, ? " +
+                "from run_steps where run_id = ?",
             UUID.randomUUID(),
             agent,
             repositoryId,
@@ -176,6 +178,7 @@ internal class RestoreScene(
             SF_BYTES,
             at,
             partial,
+            if (partial) "unknown" else null,
             if (forgotten) at else null,
             run.id,
         )

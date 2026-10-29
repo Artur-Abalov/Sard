@@ -7,13 +7,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 // variants returns the distinct byte strings a value can appear as in a
 // tool's output: as is, URL-encoded (query, path segment, password in
 // userinfo; upper- and lowercase hex), and each of those JSON-escaped with
-// and without HTML escaping (restic writes --json output).
+// and without HTML escaping (restic writes --json output) and Go-quoted (the
+// agent names unreadable paths with %q).
 func variants(v []byte) [][]byte {
 	s := string(v)
 	encoded := []string{url.QueryEscape(s), url.PathEscape(s), userinfoPassword(s)}
@@ -24,7 +26,7 @@ func variants(v []byte) [][]byte {
 	var out [][]byte
 	seen := map[string]bool{}
 	for _, f := range forms {
-		for _, g := range []string{f, jsonEscape(f, true), jsonEscape(f, false)} {
+		for _, g := range []string{f, jsonEscape(f, true), jsonEscape(f, false), goQuote(f)} {
 			if !seen[g] {
 				seen[g] = true
 				out = append(out, []byte(g))
@@ -46,6 +48,12 @@ func jsonEscape(s string, html bool) string {
 	_ = enc.Encode(s) // encoding a string cannot fail
 	out := buf.String()
 	return out[1 : len(out)-2] // strip the quotes and Encode's newline
+}
+
+// goQuote is s as Go's %q writes it inside the quotes.
+func goQuote(s string) string {
+	q := strconv.Quote(s)
+	return q[1 : len(q)-1]
 }
 
 // lowerHex lowercases the hex digits of every %XX escape in v. In URL

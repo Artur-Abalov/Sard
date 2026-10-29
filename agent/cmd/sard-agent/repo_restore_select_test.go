@@ -57,7 +57,7 @@ func TestASnapshotIsRestoredByItsFullID(t *testing.T) {
 	h := restoreHost(t)
 	code, _, stderr := h.restore(idF)
 	assertCode(t, code, exitOK)
-	if stderr != "" {
+	if stderr != "" && !strings.HasPrefix(stderr, completenessWarning) {
 		t.Errorf("stderr %q", stderr)
 	}
 	h.assertRestored(idF)
@@ -197,7 +197,7 @@ func TestSourceWithTheIDOfASnapshotOfThatSourceRestoresIt(t *testing.T) {
 	h := restoreHost(t)
 	code, _, stderr := h.restore("aaaa1111", "--source", "s1")
 	assertCode(t, code, exitOK)
-	if stderr != "" {
+	if stderr != "" && !strings.HasPrefix(stderr, completenessWarning) {
 		t.Errorf("stderr %q", stderr)
 	}
 	h.assertRestored(idF)

@@ -7,12 +7,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -130,6 +132,27 @@ func TestTheResultMessageIsMaskedBeforeItIsSentOrStored(t *testing.T) {
 	f.restart(t)
 	pending := f.e.PendingResults()
 	if len(pending) != 1 || pending[0].GetMessage() != want {
+		t.Fatalf("stored = %v", pending)
+	}
+}
+
+// PL7-2, Ф19: the unreadable paths quote file names, masked like the message,
+// and the number and paths survive a restart with the stored result.
+func TestUnreadablePathsAreMaskedAndKeptWithTheStoredResult(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	out := &agentv1.StepResult{Output: &agentv1.StepResult_Backup{Backup: &agentv1.BackupOutput{
+		SnapshotId: "snap", UnreadableCount: proto.Uint64(2), UnreadablePaths: []string{"/d/" + secretValue, "/d/b"},
+	}}}
+	c.finish(out, errors.New("unreadable"))
+	want := []string{"/d/[REDACTED]", "/d/b"}
+	if got := f.sink.result(t).GetBackup().GetUnreadablePaths(); !slices.Equal(got, want) {
+		t.Fatalf("sent = %q", got)
+	}
+	f.restart(t)
+	pending := f.e.PendingResults()
+	if len(pending) != 1 || pending[0].GetBackup().UnreadableCount == nil || pending[0].GetBackup().GetUnreadableCount() != 2 ||
+		!slices.Equal(pending[0].GetBackup().GetUnreadablePaths(), want) {
 		t.Fatalf("stored = %v", pending)
 	}
 }

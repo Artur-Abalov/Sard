@@ -312,6 +312,7 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
     cancellation: null,
     agentWaitUntil: null,
     agentUnavailableSince: null,
+    partial: false,
   }
 }
 

@@ -134,6 +134,8 @@ class FakeAgent(
             total: Long = 1000,
             added: Long = 10,
             repository: String = "r0".padEnd(REPOSITORY_ID_LENGTH, '0'),
+            unreadableCount: Long? = null,
+            unreadablePaths: List<String> = emptyList(),
         ): BackupOutput =
             BackupOutput
                 .newBuilder()
@@ -141,6 +143,8 @@ class FakeAgent(
                 .setTotalBytes(total)
                 .setAddedBytes(added)
                 .setRepositoryId(repository)
+                .addAllUnreadablePaths(unreadablePaths)
+                .also { builder -> unreadableCount?.let(builder::setUnreadableCount) }
                 .build()
 
         private const val REPOSITORY_ID_LENGTH = 64

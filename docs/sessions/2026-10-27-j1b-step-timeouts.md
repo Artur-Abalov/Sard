@@ -7,7 +7,7 @@
 черновик `docs/adr/00XX-draft-run-cancel-deadlines.md`, раздел «J1b». proto и агент не менялись.
 
 ## Что сделано
-- Миграция `V202610271300__step_timeouts.sql`: `sources.backup_timeout_minutes`, `restore_timeout_minutes`;
+- Миграция `V202610281020__step_timeouts.sql`: `sources.backup_timeout_minutes`, `restore_timeout_minutes`;
   `run_steps.timeout_seconds`, `timed_out_by`; таблица `run_defaults` (по тенанту); частичный индекс молчащих шагов.
 - `TimeoutSettings` (`GET/PUT /api/v1/run-defaults`, 360 и 720 минут до первой записи); поля срока у `Source` и
   `SourceInput`, проверка 1–1440 (`RunTimeouts.kt`); дробное число для целого поля отклоняется (yaml).

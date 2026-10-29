@@ -49,6 +49,7 @@ internal object RunMapping {
         view.cancellation?.let(CancelMapping::cancellation),
         view.agentWaitUntil,
         view.agentUnavailableSince,
+        view.partial,
     )
 
     fun summary(
@@ -72,6 +73,7 @@ internal object RunMapping {
         CancelMapping.outcome(view.outcome),
         view.agentWaitUntil,
         view.stepTimeoutSeconds,
+        view.partial,
     )
 
     private fun catchUp(period: CatchUpPeriod?) =
@@ -208,6 +210,9 @@ internal object BackupMapping {
             backup.totalFiles,
             backup.fingerprint?.let(::fingerprint),
             backup.warnings,
+            backup.unreadableCount,
+            backup.unreadablePaths,
+            backup.incompleteReason?.let { IncompleteReason.valueOf(it.name) },
         )
 
     private fun fingerprint(f: FingerprintSummary) =

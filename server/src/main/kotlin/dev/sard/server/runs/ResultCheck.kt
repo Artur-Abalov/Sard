@@ -7,6 +7,8 @@ import tools.jackson.databind.json.JsonMapper
 import java.time.Instant
 
 private val JSON = JsonMapper.builder().build()
+private const val MAX_PATHS = 10
+private const val MAX_PATH_CHARS = 4096
 private const val INVALID = "invalid result: "
 private const val RESULT_OF_FAILED_RESTORE = "a restore output with a result for a restore that did not succeed"
 
@@ -33,8 +35,39 @@ sealed interface StepOutput {
         val totalFiles: Long? = null,
         /** What the server noticed about this backup: a fall of its volume (V2); it still succeeded. */
         val warnings: List<String> = emptyList(),
+        /** Distinct paths restic could not read; null when the agent did not say or the backup is whole (PL7-2). */
+        val unreadableCount: Long? = null,
+        /** The first of them in the agent's order, paths only (A7b); empty when the backup is whole. */
+        val unreadablePaths: List<String> = emptyList(),
     ) : StepOutput {
         override val kind = Action.BACKUP
+
+        /** Why the snapshot is incomplete (НБ6); null for a whole one. */
+        fun incompleteReason(): IncompleteReason? = IncompleteReason.of(partial, unreadableCount)
+
+        /** [incompleteReason] as snapshots.incomplete_reason keeps it. */
+        fun storedReason(): String? = incompleteReason()?.stored
+
+        /**
+         * This output as the server keeps it once the result's status is known (НБ4): a whole backup keeps no
+         * unreadable files; an incomplete one the first ten paths, none longer than 4096 characters, and a count
+         * that is not below them.
+         */
+        fun judged(failed: Boolean): Backup =
+            if (failed) {
+                val kept = unreadablePaths.take(MAX_PATHS).map(::capped)
+                val count = unreadableCount?.coerceAtLeast(kept.size.toLong())
+                copy(partial = true, unreadableCount = count, unreadablePaths = kept)
+            } else {
+                copy(partial = false, unreadableCount = null, unreadablePaths = emptyList())
+            }
+
+        private fun capped(path: String): String =
+            if (path.codePointCount(0, path.length) <= MAX_PATH_CHARS) {
+                path
+            } else {
+                path.substring(0, path.offsetByCodePoints(0, MAX_PATH_CHARS)) + "…"
+            }
 
         override fun fields() =
             mapOf(
@@ -46,6 +79,8 @@ sealed interface StepOutput {
                 "totalFiles" to totalFiles,
                 "fingerprint" to fingerprint?.summary()?.fields(),
                 "warnings" to warnings,
+                "unreadableCount" to unreadableCount,
+                "unreadablePaths" to unreadablePaths,
             )
 
         /** What restic counted: its bytes always, its files when the agent knows them (V2). */
@@ -276,7 +311,7 @@ object ResultCheck {
     private fun marked(
         output: StepOutput?,
         status: StepState,
-    ): StepOutput? = if (output is StepOutput.Backup) output.copy(partial = status != StepState.SUCCEEDED) else output
+    ): StepOutput? = if (output is StepOutput.Backup) output.judged(failed = status != StepState.SUCCEEDED) else output
 
     private fun problem(
         action: Action,

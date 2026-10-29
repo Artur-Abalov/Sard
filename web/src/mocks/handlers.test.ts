@@ -268,6 +268,8 @@ describe('with a session', () => {
       'failed',
       'failed',
       'failed',
+      'failed',
+      'failed',
       'succeeded',
       'succeeded',
       // The first backups of the self-backup the default mock is bound with (Рк18).
@@ -371,7 +373,7 @@ describe('with a session', () => {
   test('snapshots of a source', async () => {
     const path = { params: { path: { sourceId: ids.etcSource } } }
     const { data } = await api.GET('/api/v1/sources/{sourceId}/snapshots', path)
-    expect(data?.items.map((s) => s.snapshotId)).toEqual(['a1b2c3', '4f1c2a9e'])
+    expect(data?.items.map((s) => s.snapshotId)).toEqual(['a1b2c3', 'c7d8e9', '4f1c2a9e'])
   })
 })
 
@@ -988,6 +990,52 @@ describe('W2 mocks', () => {
     expect(step.status).toBe('failed')
     expect(step.backup?.partial).toBe(true)
     expect(snapshot?.partial).toBe(true)
+  })
+
+  test('the fixtures cover every reason of an incomplete backup', () => {
+    const backups = runs.flatMap((r) => r.steps.flatMap((s) => (s.backup === null ? [] : [s])))
+    const failedWith = (reason: string) =>
+      backups.filter((s) => s.status === 'failed' && s.backup?.incompleteReason === reason)
+    expect(failedWith('snapshot_set_incomplete').length).toBeGreaterThan(0)
+    expect(failedWith('unknown').length).toBeGreaterThan(0)
+    const unreadable = failedWith('unreadable_files').map((s) => s.backup)
+    expect(
+      unreadable.some(
+        (b) =>
+          (b?.unreadableCount ?? 0) > (b?.unreadablePaths.length ?? 0) &&
+          b?.unreadablePaths.some((p) => p.includes('[REDACTED]')),
+      ),
+    ).toBe(true)
+    for (const s of backups) {
+      expect(s.backup).toHaveProperty('unreadableCount')
+      expect(s.backup).toHaveProperty('unreadablePaths')
+      expect(s.backup).toHaveProperty('incompleteReason')
+    }
+    for (const snapshot of snapshots) expect(snapshot).toHaveProperty('incompleteReason')
+  })
+
+  test('a run is partial exactly when the backup of its step is, in list and card', async () => {
+    const list = must(await api.GET('/api/v1/runs', {})).items
+    const steps = runs.flatMap((r) => r.steps)
+    expect(list.some((r) => r.partial)).toBe(true)
+    for (const item of list) {
+      const card = must(
+        await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: item.id } } }),
+      )
+      const step = card.steps.find((s) => s.backup !== null)
+      expect(item.partial).toBe(card.partial)
+      expect(card.partial).toBe(step?.backup?.partial === true)
+      const snapshot = snapshots.find((x) => x.stepId === step?.id)
+      if (snapshot !== undefined) {
+        expect(snapshot.incompleteReason).toBe(step?.backup?.incompleteReason)
+      }
+    }
+    expect(steps.length).toBeGreaterThan(0)
+  })
+
+  test('the last run of a schedule can be incomplete', () => {
+    expect(schedules.some((s) => s.lastRun?.partial === true)).toBe(true)
+    expect(schedules.some((s) => s.lastRun?.partial === false)).toBe(true)
   })
 
   test('the log that the server cut says so', async () => {

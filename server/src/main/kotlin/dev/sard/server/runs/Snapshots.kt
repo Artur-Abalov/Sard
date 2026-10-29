@@ -30,6 +30,8 @@ data class SnapshotView(
     val partial: Boolean,
     /** Why the console does not restore it; null when it does (R2). */
     val restoreBlocked: RestoreBlock?,
+    /** Why it is incomplete, as the output of its step says; null for a whole one (PL7-2). */
+    val incompleteReason: IncompleteReason?,
 )
 
 /** The snapshots of a source (S8b): its history stays when the source is deleted (ADR 0013, rule 3). */
@@ -78,5 +80,6 @@ class Snapshots(
         record.forgottenAt,
         record.partial,
         RestoreSupport.blocked(plugin, record.partial, record.forgottenAt != null),
+        IncompleteReason.ofStored(record.incompleteReason),
     )
 }

@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Alert, Badge, Card, Code, Group, Progress, Stack, Text, Title } from '@mantine/core'
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Card,
+  Code,
+  Group,
+  Progress,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core'
 import type { ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import type { RunStep } from '../api/queries'
@@ -12,8 +23,9 @@ import {
   formatRolesRestored,
   formatTablesRestored,
 } from '../format'
+import { FILES_PERMISSIONS_DOC } from '../install'
 import { stepPollInterval } from '../polling'
-import { partialNoteShown, stepNoteShown } from '../stepNotes'
+import { backupExplanation, stepNoteShown, unreadableRemainder } from '../stepNotes'
 import { useFormat } from '../useFormat'
 import { Mono } from './Mono'
 import { StatusBadge } from './StatusBadge'
@@ -26,11 +38,12 @@ type Schemas = components['schemas']
 function Reason({ step }: { step: RunStep }) {
   const { t } = useTranslation()
   const explained = stepNoteShown(step.status)
-  if (!explained && step.message === null) return null
+  const messageShown = backupExplanation(step.backup).messageShown && step.message !== null
+  if (!explained && !messageShown) return null
   return (
     <Alert color={tones.error}>
       {explained && <Text size="sm">{t(`run.stepNote.${step.status}`)}</Text>}
-      {step.message !== null && <Text>{step.message}</Text>}
+      {messageShown && <Text>{step.message}</Text>}
     </Alert>
   )
 }
@@ -66,12 +79,39 @@ function Progress_({ step }: { step: RunStep }) {
   )
 }
 
+// The files the agent could not read: the number, every stored path as the server sent it
+// (wrapping, never cut), the rest by number and where to look at the permissions.
+function UnreadableFiles({ backup }: { backup: Schemas['BackupOutput'] }) {
+  const { t } = useTranslation()
+  const rest = unreadableRemainder(backup.unreadableCount, backup.unreadablePaths.length)
+  return (
+    <Stack gap={4} mt="xs">
+      <Text>{t('incomplete.unreadableCount', { count: backup.unreadableCount ?? 0 })}</Text>
+      {backup.unreadablePaths.map((path, i) => (
+        <div key={`${i}:${path}`}>
+          <Mono>{path}</Mono>
+        </div>
+      ))}
+      {rest !== null && <Text size="sm">{t('incomplete.unreadableMore', { count: rest })}</Text>}
+      <Text size="sm">
+        <Trans
+          i18nKey="incomplete.permissionHint"
+          components={{
+            a: <Anchor href={FILES_PERMISSIONS_DOC} target="_blank" rel="noopener noreferrer" />,
+          }}
+        />
+      </Text>
+    </Stack>
+  )
+}
+
 // The snapshot a backup step made, with the sizes; incomplete when the server says so.
 function BackupBlock({ step }: { step: RunStep }) {
   const { t } = useTranslation()
   const format = useFormat()
   const { backup } = step
   if (backup === null) return null
+  const explanation = backupExplanation(backup)
   return (
     <Card withBorder>
       <Title order={5}>{t('run.snapshot')}</Title>
@@ -99,9 +139,10 @@ function BackupBlock({ step }: { step: RunStep }) {
           />
         </Text>
       </Group>
-      {partialNoteShown(step) && (
+      {explanation.permissionHint && <UnreadableFiles backup={backup} />}
+      {explanation.noteKey !== null && (
         <Alert color={tones.warning} mt="xs">
-          {t('run.partialNote')}
+          {t(explanation.noteKey)}
         </Alert>
       )}
     </Card>

@@ -7,6 +7,7 @@ import dev.sard.server.fleet.AgentPresence
 import dev.sard.server.metrics.DatabaseSettingsGauges
 import dev.sard.server.metrics.RoleExcessGauges
 import dev.sard.server.metrics.RunDurations
+import dev.sard.server.metrics.RunPartials
 import dev.sard.server.metrics.SelfBackupSource
 import dev.sard.server.metrics.StateGauges
 import dev.sard.server.metrics.StateReader
@@ -59,6 +60,10 @@ class MetricsStateConfiguration {
     /** Heard by the announcer of finished runs with the other [dev.sard.server.runs.RunFinishedListener] beans. */
     @Bean
     fun runDurations(meters: PrometheusMeterRegistry) = RunDurations(meters)
+
+    /** Counts the failed backups that left an incomplete snapshot, by reason (PL7-2). */
+    @Bean
+    fun runPartials(meters: PrometheusMeterRegistry) = RunPartials(meters)
 
     @Bean
     fun stateGauges(meters: PrometheusMeterRegistry) = StateGauges(meters)

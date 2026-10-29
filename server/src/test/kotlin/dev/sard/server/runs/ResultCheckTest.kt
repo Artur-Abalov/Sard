@@ -41,6 +41,86 @@ class ResultCheckTest {
     }
 
     @Test
+    fun `the reason of an incomplete backup follows the number of unreadable paths the agent sent`() {
+        val sent = BACKUP.copy(unreadableCount = 2, unreadablePaths = listOf("/srv/a", "/srv/b"))
+        val reasons =
+            listOf(
+                sent,
+                sent.copy(unreadableCount = 0, unreadablePaths = emptyList()),
+                sent.copy(unreadableCount = null, unreadablePaths = emptyList()),
+            ).map { (check(Action.BACKUP, StepState.FAILED, it).output as StepOutput.Backup).incompleteReason() }
+
+        assertEquals(
+            IncompleteReason.entries,
+            reasons,
+        )
+    }
+
+    @Test
+    fun `a timed out backup with a snapshot is incomplete for the same reasons`() {
+        val verdict = check(Action.BACKUP, StepState.TIMED_OUT, BACKUP.copy(unreadableCount = 0))
+
+        assertEquals(IncompleteReason.SNAPSHOT_SET_INCOMPLETE, (verdict.output as StepOutput.Backup).incompleteReason())
+    }
+
+    @Test
+    fun `a succeeded backup keeps no unreadable files and has no reason`() {
+        val sent = BACKUP.copy(unreadableCount = 3, unreadablePaths = listOf("/x"))
+
+        val kept = check(Action.BACKUP, StepState.SUCCEEDED, sent).output as StepOutput.Backup
+
+        assertEquals(BACKUP, kept)
+        assertEquals(null, kept.incompleteReason())
+    }
+
+    @Test
+    fun `only the first ten unreadable paths are kept and the count stays`() {
+        val paths = (1..12).map { "/p%02d".format(it) }
+
+        val kept = check(Action.BACKUP, StepState.FAILED, BACKUP.copy(unreadableCount = 40, unreadablePaths = paths))
+
+        assertEquals(40L, (kept.output as StepOutput.Backup).unreadableCount)
+        assertEquals(paths.take(10), (kept.output as StepOutput.Backup).unreadablePaths)
+    }
+
+    @Test
+    fun `a count below the kept paths becomes their number`() {
+        val sent = BACKUP.copy(unreadableCount = 1, unreadablePaths = listOf("/a", "/b", "/c"))
+
+        val kept = check(Action.BACKUP, StepState.FAILED, sent).output as StepOutput.Backup
+
+        assertEquals(3L, kept.unreadableCount)
+        assertEquals(IncompleteReason.UNREADABLE_FILES, kept.incompleteReason())
+    }
+
+    @Test
+    fun `a path longer than 4096 characters is cut with a mark and one of 4096 is not`() {
+        val sent = BACKUP.copy(unreadableCount = 2, unreadablePaths = listOf("я".repeat(5000), "я".repeat(4096)))
+
+        val kept = check(Action.BACKUP, StepState.FAILED, sent).output as StepOutput.Backup
+
+        assertEquals(listOf("я".repeat(4096) + "…", "я".repeat(4096)), kept.unreadablePaths)
+    }
+
+    @Test
+    fun `a path is cut by characters, never in the middle of a surrogate pair`() {
+        val sent = BACKUP.copy(unreadableCount = 1, unreadablePaths = listOf("\uD83D\uDCE6".repeat(4097)))
+
+        val kept = check(Action.BACKUP, StepState.FAILED, sent).output as StepOutput.Backup
+
+        assertEquals("\uD83D\uDCE6".repeat(4096) + "…", kept.unreadablePaths.single())
+    }
+
+    @Test
+    fun `the redaction marker in a path stays as it came`() {
+        val sent = BACKUP.copy(unreadableCount = 1, unreadablePaths = listOf("/srv/[REDACTED]/a.txt"))
+
+        val kept = check(Action.BACKUP, StepState.FAILED, sent).output as StepOutput.Backup
+
+        assertEquals(listOf("/srv/[REDACTED]/a.txt"), kept.unreadablePaths)
+    }
+
+    @Test
     fun `a backup that added nothing, of nothing, is still a snapshot`() {
         val empty = BACKUP.copy(totalBytes = 0, addedBytes = 0)
 
@@ -136,7 +216,7 @@ class ResultCheckTest {
             listOf(
                 """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
                     """"repositoryId":"$REPOSITORY_ID","partial":false,"totalFiles":null,"fingerprint":null,""" +
-                    """"warnings":[]}""",
+                    """"warnings":[],"unreadableCount":null,"unreadablePaths":[]}""",
                 """{"kind":"restore","target":"/r","filesRestored":0,"bytesRestored":0,"database":"",""" +
                     """"tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
@@ -310,7 +390,7 @@ class FingerprintResultCheckTest {
             """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
                 """"repositoryId":"$REPOSITORY_ID","partial":false,"totalFiles":1,""" +
                 """"fingerprint":{"sha256":"${hexOf(FP_BYTES)}","format":1,"plugin":"postgresql",""" +
-                """"facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"]}"""
+                """"facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"],"unreadableCount":null,"unreadablePaths":[]}"""
         assertEquals(expected, json)
         assertEquals(SnapshotTotals(1, 1_000), backup.totals())
         assertEquals(SnapshotTotals(null, 1_000), BACKUP.totals())

@@ -49,7 +49,7 @@ func runRepoSnapshots(ctx context.Context, args []string, stdout, stderr io.Writ
 	if f != nil {
 		return report(stderr, "repo snapshots", f)
 	}
-	printSnapshots(stdout, st.repo.Name, opts, list)
+	printSnapshots(stdout, stderr, st.repo.Name, opts, list)
 	return exitOK
 }
 
@@ -146,7 +146,7 @@ func passwordValues(repo config.Repository, who hostsetup.Principal, deps hostDe
 	return []string{string(data), strings.TrimSpace(string(data))}
 }
 
-func printSnapshots(stdout io.Writer, repoName string, opts hostOptions, list []restore.Snapshot) {
+func printSnapshots(stdout, stderr io.Writer, repoName string, opts hostOptions, list []restore.Snapshot) {
 	switch {
 	case opts.json:
 		printSnapshotsJSON(stdout, repoName, list)
@@ -154,7 +154,30 @@ func printSnapshots(stdout io.Writer, repoName string, opts hostOptions, list []
 		_, _ = fmt.Fprintln(stdout, emptyListLine(repoName, opts))
 	default:
 		printSnapshotsTable(stdout, list)
+		explainUnconfirmed(stderr, list)
 	}
+}
+
+// explainUnconfirmed is Р90: one line on stderr when the completeness of
+// some snapshots is not confirmed.
+func explainUnconfirmed(stderr io.Writer, list []restore.Snapshot) {
+	n := 0
+	for _, s := range list {
+		if s.Completeness == restore.Unconfirmed {
+			n++
+		}
+	}
+	if n > 0 {
+		_, _ = fmt.Fprintf(stderr, "completeness of %d snapshot(s) is not confirmed: the backup that made them did not confirm that every file was read (see sard-agent repo snapshots --help)\n", n)
+	}
+}
+
+// completeColumn is the COMPLETE column: "-" when it does not apply.
+func completeColumn(s restore.Snapshot) string {
+	if s.Completeness == restore.NotApplicable {
+		return "-"
+	}
+	return string(s.Completeness)
 }
 
 func emptyListLine(repoName string, opts hostOptions) string {
@@ -168,9 +191,9 @@ func emptyListLine(repoName string, opts hostOptions) string {
 // columns separated by one space.
 func printSnapshotsTable(stdout io.Writer, list []restore.Snapshot) {
 	var b strings.Builder
-	b.WriteString("ID TIME HOST SOURCE RUN PATHS\n")
+	b.WriteString("ID TIME HOST SOURCE RUN COMPLETE PATHS\n")
 	for _, s := range list {
-		fmt.Fprintf(&b, "%s %s %s %s %s %s\n", s.ShortID, s.Stamp(), s.Hostname, dashIfNil(s.Source), dashIfNil(s.Run), strings.Join(s.Paths, ","))
+		fmt.Fprintf(&b, "%s %s %s %s %s %s %s\n", s.ShortID, s.Stamp(), s.Hostname, dashIfNil(s.Source), dashIfNil(s.Run), completeColumn(s), strings.Join(s.Paths, ","))
 	}
 	_, _ = io.WriteString(stdout, b.String())
 }
@@ -192,6 +215,8 @@ type snapshotJSON struct {
 	Run      *string  `json:"run"`
 	Step     *string  `json:"step"`
 	Tags     []string `json:"tags"`
+	// Completeness is "confirmed", "unconfirmed" or null (Р91).
+	Completeness *string `json:"completeness"`
 }
 
 // printSnapshotsJSON is Р56: {"repository":"<name>","snapshots":[...]}.
@@ -203,7 +228,7 @@ func printSnapshotsJSON(stdout io.Writer, repoName string, list []restore.Snapsh
 	for _, s := range list {
 		out.Snapshots = append(out.Snapshots, snapshotJSON{
 			ID: s.ID, ShortID: s.ShortID, Time: s.Stamp(), Hostname: s.Hostname, Paths: nonNil(s.Paths),
-			Source: s.Source, Run: s.Run, Step: s.Step, Tags: nonNil(s.Tags),
+			Source: s.Source, Run: s.Run, Step: s.Step, Tags: nonNil(s.Tags), Completeness: completenessJSON(s),
 		})
 	}
 	printJSON(stdout, out)
@@ -215,4 +240,12 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+func completenessJSON(s restore.Snapshot) *string {
+	if s.Completeness == restore.NotApplicable {
+		return nil
+	}
+	c := string(s.Completeness)
+	return &c
 }

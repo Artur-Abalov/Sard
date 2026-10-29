@@ -71,6 +71,7 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     cancellation: null,
     agentWaitUntil: null,
     agentUnavailableSince: null,
+    partial: false,
   }
   return run
 }

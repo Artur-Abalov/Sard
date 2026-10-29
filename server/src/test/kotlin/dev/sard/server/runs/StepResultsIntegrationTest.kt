@@ -105,8 +105,8 @@ class StepResultsIntegrationTest(
     }
 
     /** A run whose single step the agent accepted. */
-    private fun running(): Pair<RunView, UUID> {
-        val run = started()
+    private fun running(name: String = "prod-db"): Pair<RunView, UUID> {
+        val run = started(name)
         val step = run.steps.single().id
         assertTrue(steps.claim(tenant.id, step))
         assertTrue(steps.accepted(tenant.id, step, "accepted"))
@@ -182,6 +182,40 @@ class StepResultsIntegrationTest(
                 RUNS_NOW,
             )
         assertEquals(listOf(Heard(expected, "succeeded")), finished.heard)
+    }
+
+    @Test
+    fun `RunFinished names why a failed backup with a snapshot is incomplete, a failure without one names none`() {
+        val sent =
+            listOf(
+                StepOutput.Backup("a1", 1, 1, REPOSITORY_ID, unreadableCount = 2, unreadablePaths = listOf("/a")),
+                StepOutput.Backup("a2", 1, 1, REPOSITORY_ID, unreadableCount = 0),
+                StepOutput.Backup("a3", 1, 1, REPOSITORY_ID),
+                null,
+            )
+        val reasons =
+            sent.mapIndexed { index, output ->
+                val (_, step) = running("source-$index")
+                finished.heard.clear()
+                record(step, StepReport(StepState.FAILED, "m", output))
+                finished.heard
+                    .single()
+                    .event.incompleteReason
+            }
+        val (_, whole) = running("whole")
+        finished.heard.clear()
+        val whole4 = StepOutput.Backup("a4", 1, 1, REPOSITORY_ID, unreadableCount = 0)
+        record(whole, StepReport(StepState.SUCCEEDED, null, whole4))
+
+        assertEquals(
+            IncompleteReason.entries + null,
+            reasons,
+        )
+        assertNull(
+            finished.heard
+                .single()
+                .event.incompleteReason,
+        )
     }
 
     @Test

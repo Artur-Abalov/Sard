@@ -31,6 +31,8 @@ data class RunFinished(
     val finishedAt: Instant,
     /** When the server started the run; null for one cancelled before it started. */
     val startedAt: Instant?,
+    /** Why the backup's snapshot is incomplete, as its step's output said when the run finished; null if it is not. */
+    val incompleteReason: IncompleteReason? = null,
 )
 
 /** A subscriber to [RunFinished] (S9); called on the thread that finished the run, so it must be quick. */
@@ -84,6 +86,7 @@ class RunAnnouncer(
                     run.message,
                     checkNotNull(run.finishedAt) { "run ${run.id} is not finished" },
                     run.startedAt,
+                    RunViews.step(step).backup?.incompleteReason,
                 )
             }
         publisher.publish(event)

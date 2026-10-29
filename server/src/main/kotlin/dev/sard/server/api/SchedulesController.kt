@@ -53,6 +53,8 @@ data class ScheduleLastRun(
     val status: RunStatus,
     val queuedAt: Instant,
     val finishedAt: Instant?,
+    @field:Schema(description = "The backup failed after saving a snapshot: it is incomplete (RunSummary.partial)")
+    val partial: Boolean,
 )
 
 @Schema(description = "A source's schedule")
@@ -269,6 +271,7 @@ class SchedulesApiImpl(
             RunStatus.valueOf(run.status.name),
             run.queuedAt,
             run.finishedAt,
+            run.partial,
         )
 
     private fun fireOf(view: FireView) =

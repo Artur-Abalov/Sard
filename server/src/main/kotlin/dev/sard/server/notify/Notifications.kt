@@ -4,6 +4,7 @@
 package dev.sard.server.notify
 
 import dev.sard.server.fleet.CertificateEvent
+import dev.sard.server.runs.IncompleteReason
 import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.RunState
@@ -142,10 +143,16 @@ enum class Telling {
     }
 }
 
-/** How much a backup saw and how much of it was new, in bytes. */
+/** How much a backup saw and how much of it was new, in bytes, and what is known of its incompleteness. */
 data class BackupSizes(
     val totalBytes: Long,
     val addedBytes: Long,
+    /** Why the snapshot is incomplete; null for a whole one (PL7-2). */
+    val incompleteReason: IncompleteReason? = null,
+    /** How many paths restic could not read; null when the agent did not say. */
+    val unreadableCount: Long? = null,
+    /** The first of them, as the server keeps them: paths only, masked by the agent (A7b). */
+    val unreadablePaths: List<String> = emptyList(),
 )
 
 /**

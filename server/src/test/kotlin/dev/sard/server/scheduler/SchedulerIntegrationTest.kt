@@ -712,44 +712,37 @@ class SchedulerIntegrationTest(
         assertEquals(at("2026-09-30T11:10:00Z"), saved.updatedAt)
     }
 
-    private fun waitUntil(runId: UUID): Instant =
-        jdbc
-            .queryForObject("select agent_wait_until from runs where id = ?", Timestamp::class.java, runId)!!
-            .toInstant()
-
-    // J1c: Запуск по расписанию ждёт агента до следующего срабатывания
+    // PL7-2 К8
     @Test
-    fun `a scheduled run waits for an offline agent until the next fire of its schedule`() {
-        schedule(source(), cron = "0 */6 * * *")
-
-        tickAt(at("2026-09-30T12:00:00Z"))
-
-        assertEquals(at("2026-09-30T18:00:00Z"), waitUntil(tables.runs().single().id))
-    }
-
-    // J1c: Ожидание не дольше потолка
-    @Test
-    fun `a scheduled run of a weekly schedule waits no longer than a day`() {
-        schedule(source(), cron = "0 0 * * 0")
-
-        tickAt(at("2026-10-04T00:00:00Z"))
-
-        assertEquals(at("2026-10-05T00:00:00Z"), waitUntil(tables.runs().single().id))
-    }
-
-    // J1c: Срабатывание в момент истечения ожидания создаёт новый запуск, а не пропуск
-    @Test
-    fun `a fire at the moment a wait expires creates a new run, not a skip`() {
-        val schedule = schedule(source())
+    fun `the latest run of a schedule is partial exactly when its backup output is`() {
+        val source = source()
+        schedule(source)
         tickAt(at("2026-09-30T11:00:00Z"))
-        val waiting = tables.runs().single().id
+        val run = tables.runs().single()
+        val draft = ScheduleDraft(HOURLY, "UTC", enabled = true)
+        val output = { partial: Boolean ->
+            """{"kind":"backup","snapshotId":"s","totalBytes":1,"addedBytes":1,"repositoryId":"r","partial":$partial}"""
+        }
+        val failedWith = { output: String? ->
+            val finished = Timestamp.from(RUNS_NOW)
+            jdbc.update("update runs set status = 'failed', finished_at = ? where id = ?", finished, run.id)
+            jdbc.update(
+                "update run_steps set status = 'failed', dispatched_at = ?, finished_at = ?, output = ?::jsonb " +
+                    "where run_id = ?",
+                finished,
+                finished,
+                output,
+                run.id,
+            )
+            set(source, draft).lastRun
+        }
 
-        tickAt(at("2026-09-30T12:00:00Z"))
+        val running = set(source, draft).lastRun
+        val incomplete = failedWith(output(true))
+        val whole = failedWith(output(false))
+        val nothing = failedWith(null)
 
-        val expired = jdbc.queryForObject("select status from runs where id = ?", String::class.java, waiting)
-        assertEquals("agent_unavailable", expired)
-        val fires = tables.fires(schedule.id)
-        assertEquals(listOf("run_created", "run_created"), fires.map { it.outcome })
-        assertEquals(2, tables.runs().size)
+        assertEquals(listOf(false, true, false, false), listOf(running, incomplete, whole, nothing).map { it?.partial })
+        assertEquals(RunState.FAILED, incomplete?.status)
     }
 }

@@ -9,7 +9,7 @@
 proto и агент не менялись.
 
 ## Что сделано
-- Миграция `V202610271200__run_cancel.sql`: `runs.cancel_requested_at/by`, `cancel_result`;
+- Миграция `V202610281010__run_cancel.sql`: `runs.cancel_requested_at/by`, `cancel_result`;
   `run_steps.late_status`; `run_steps_dispatched_check` допускает `cancelled` без отправки.
 - `RunCancels` (`POST /api/v1/runs/{runId}/cancel`): очередь закрывается условным UPDATE, запуск в
   полёте получает отметку; повторная отмена и гонки дают одну запись; 404, 409 `run_finished`,

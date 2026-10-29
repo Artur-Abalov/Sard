@@ -7,7 +7,7 @@
 черновик `docs/adr/00XX-draft-run-cancel-deadlines.md`, раздел «J1c». proto и агент не менялись.
 
 ## Что сделано
-- Миграция `V202610271400__agent_wait.sql`: статус `agent_unavailable` у запуска и шага, `runs.agent_wait_until`,
+- Миграция `V202610281030__agent_wait.sql`: статус `agent_unavailable` у запуска и шага, `runs.agent_wait_until`,
   `runs.agent_unavailable_since`, частичный индекс queued-запусков со сроком.
 - Срок ожидания считается при создании запуска и хранится: `Runs` (ручной — создание + `sard.run.agent-wait.max`; по
   расписанию и догоняющий — следующее срабатывание того же расписания, не дальше максимума, `Firing`), `Restores`

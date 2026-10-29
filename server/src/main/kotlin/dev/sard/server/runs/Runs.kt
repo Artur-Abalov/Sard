@@ -28,11 +28,12 @@ private const val STEPS_OF = "from RunStepRecord where runId = :run order by ord
 private const val FORGOTTEN =
     "select s.stepId from SnapshotRecord s where s.stepId = :step and s.forgottenAt is not null"
 private const val LIST_RUNS =
-    "select r, s.agentId, src, s.status, s.timeoutSeconds " +
+    "select r, s.agentId, src, s.status, s.timeoutSeconds, s.output " +
         "from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
         "join SourceRecord src on src.id = r.sourceId"
 private const val LIST_STEP_STATUS = 3
 private const val LIST_STEP_TIMEOUT = 4
+private const val LIST_STEP_OUTPUT = 5
 private val JSON = JsonMapper.builder().build()
 
 /**
@@ -233,6 +234,7 @@ class Runs(
             StepState.of(row[LIST_STEP_STATUS] as String),
             onlineOf(run, agent),
             row[LIST_STEP_TIMEOUT] as Long?,
+            RunViews.partialOf(row[LIST_STEP_OUTPUT] as String?),
         )
     }
 
@@ -316,6 +318,12 @@ class Runs(
     )
 }
 
+/** The cancel somebody asked for of a stored run; null when none was (J1a). */
+private fun cancellationOf(run: RunRecord): Cancellation? {
+    val at = run.cancelRequestedAt ?: return null
+    return Cancellation(at, checkNotNull(run.cancelRequestedBy), CancelResult.of(checkNotNull(run.cancelResult)))
+}
+
 /** Stored rows to views. */
 internal object RunViews {
     fun of(
@@ -326,6 +334,7 @@ internal object RunViews {
         stepStatus: StepState? = null,
         agentOnline: Boolean = true,
         stepTimeoutSeconds: Long? = null,
+        partial: Boolean = steps.any { backupOf(it.output)?.partial == true },
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
@@ -342,18 +351,14 @@ internal object RunViews {
         kind = RunKind.of(run.kind),
         requestedBy = run.requestedBy,
         restore = run.restore?.let(::restoreInfo),
-        cancellation = cancellation(run),
+        cancellation = cancellationOf(run),
         stepStatus = stepStatus,
         agentWaitUntil = run.agentWaitUntil.takeIf { RunState.of(run.status) == RunState.QUEUED },
         agentUnavailableSince = run.agentUnavailableSince,
         agentOnline = agentOnline,
         stepTimeoutSeconds = stepTimeoutSeconds,
+        partial = partial,
     )
-
-    private fun cancellation(run: RunRecord): Cancellation? {
-        val at = run.cancelRequestedAt ?: return null
-        return Cancellation(at, checkNotNull(run.cancelRequestedBy), CancelResult.of(checkNotNull(run.cancelResult)))
-    }
 
     fun step(record: RunStepRecord) =
         StepView(
@@ -436,6 +441,9 @@ internal object RunViews {
     /** A text field of the output, null when absent or empty. */
     private fun JsonNode.text(name: String): String? = path(name).asString().ifEmpty { null }
 
+    /** Whether a step's stored [output] is that of a backup that failed after its snapshot (PL7-2). */
+    fun partialOf(output: String?): Boolean = backupOf(output)?.partial == true
+
     /** The backup output of a step, null for any other output or none. */
     private fun backupOf(output: String?): BackupResult? =
         output
@@ -443,17 +451,29 @@ internal object RunViews {
             ?.takeIf { it.path("kind").asString() == Action.BACKUP.stored }
             ?.let(::backupResult)
 
-    private fun backupResult(node: JsonNode): BackupResult =
-        BackupResult(
+    private fun backupResult(node: JsonNode): BackupResult {
+        val partial = node.path("partial").asBoolean(false)
+        val count = numberOf(node, "unreadableCount")
+        return BackupResult(
             node.path("snapshotId").asString(),
             node.path("totalBytes").asLong(),
             node.path("addedBytes").asLong(),
             node.path("repositoryId").asString(),
-            node.path("partial").asBoolean(false),
-            totalFiles = node.path("totalFiles").takeIf(JsonNode::isNumber)?.asLong(),
+            partial,
+            totalFiles = numberOf(node, "totalFiles"),
             fingerprint = node.path("fingerprint").takeIf(JsonNode::isObject)?.let(FingerprintSummary::of),
-            warnings = warningsOf(node.path("warnings")),
+            warnings = stringsOf(node.path("warnings")),
+            unreadableCount = count,
+            unreadablePaths = stringsOf(node.path("unreadablePaths")),
+            incompleteReason = IncompleteReason.of(partial, count),
         )
+    }
 
-    private fun warningsOf(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
+    /** A number of the output, null when it is absent or not a number. */
+    private fun numberOf(
+        node: JsonNode,
+        name: String,
+    ): Long? = node.path(name).takeIf(JsonNode::isNumber)?.asLong()
+
+    private fun stringsOf(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
 }

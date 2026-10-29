@@ -224,6 +224,24 @@ enum class RestoreBlockedReason {
     PLUGIN_NOT_SUPPORTED,
 }
 
+/**
+ * Why the snapshot of a failed backup is incomplete (PL7-2): the server decides, the console only shows it.
+ * unreadable_files: restic could not read some files. snapshot_set_incomplete: the main snapshot is whole, but the
+ * additional snapshot linked to it (fingerprint, PostgreSQL global objects) failed. unknown: an older agent did not
+ * say.
+ */
+@Schema(enumAsRef = true)
+enum class IncompleteReason {
+    @JsonProperty("unreadable_files")
+    UNREADABLE_FILES,
+
+    @JsonProperty("snapshot_set_incomplete")
+    SNAPSHOT_SET_INCOMPLETE,
+
+    @JsonProperty("unknown")
+    UNKNOWN,
+}
+
 /** Why an agent with the snapshot's repository cannot restore it. */
 @Schema(enumAsRef = true)
 enum class IneligibleReason {

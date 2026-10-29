@@ -129,6 +129,7 @@ scrape_configs:
 | `sard_source_last_backup_success_timestamp_seconds{source_id}` | Unix-время последнего успешного бэкапа источника; `0` — успехов не было |
 | `sard_source_last_verification_success_timestamp_seconds{source_id}` | то же для последней успешной проверки восстановления |
 | `sard_run_duration_seconds{kind,status}` | гистограмма длительности запусков; `kind` — `backup`, `restore`, `verify`; `status` — `succeeded`, `failed`, `cancelled`; корзины 60 300 900 1800 3600 7200 14400 28800 86400 секунд |
+| `sard_run_partial_total{reason}` | бэкапы, которые закончились ошибкой, но оставили свой снимок (неполный); `reason` — `unreadable_files`, `snapshot_set_incomplete`, `unknown`; три серии есть с нуля |
 | `sard_agents{role}`, `sard_agents_online{role}` | агенты (не отозванные) и агенты на связи по роли `source` и `verifier` |
 | `sard_runs_active{kind,status}` | активные запуски: `queued`, `dispatched`, `running` |
 | `sard_verification_jobs{status}` | очередь проверок: `queued`, `running` |
@@ -143,11 +144,36 @@ scrape_configs:
 | `sard_database_role_excess{reason}` | две серии, читаются при старте: `1`, если роль сервера в базе суперпользователь (`superuser`) или владелец схемы `sard` либо член её владельца (`schema_owner`); под `sard_app` обе `0` ([раздел 16](16-postgresql.md#роли)) |
 | `sard_database_settings_mismatch{reason}` | пять серий, читаются при старте: `1`, если база сервера отличается от базы новой установки по `data_checksums`, `encoding`, `locale`, `timezone` или `version` ([раздел 16](16-postgresql.md)) |
 
-Метрики событий (`sard_run_finished_total`, `sard_run_duration_seconds`,
+Метрики событий (`sard_run_finished_total`, `sard_run_partial_total`, `sard_run_duration_seconds`,
 `sard_notify_*`, `sard_scheduler_fires_total`, `sard_retention_deleted_total`)
 обнуляются при перезапуске сервера — считайте их через `rate()` и `increase()`.
 Метрики состояния появляются после первого успешного чтения (при старте оно идёт
 сразу, в фоне); до него в ответе их нет.
+
+### Неполные бэкапы
+
+Неполный бэкап — это запуск в статусе `failed`, у которого есть снимок: часть данных
+в него не попала или не сохранился связанный с ним снимок. Новых статусов запуска
+нет, поэтому каждый такой запуск учтён и в `sard_run_finished_total` со
+`status="failed"`, и в `sard_run_partial_total` с одной из причин:
+
+- `unreadable_files` — restic не смог прочитать часть файлов источника (число и
+  первые пути видны в карточке запуска; причину чаще всего решают права
+  пользователя `sard-agent`);
+- `snapshot_set_incomplete` — основной снимок сохранён полностью, но упал
+  связанный с ним снимок отпечатка источника или глобальных объектов PostgreSQL;
+- `unknown` — агент старше этой версии не сообщил, сколько файлов не прочитано.
+
+`sard_run_finished_total` считает все запуски, а не только бэкапы. Разность
+ниже — все неуспешные запуски (включая восстановления и проверки), кроме
+неполных бэкапов, а не только бэкапы без снимка:
+
+```promql
+sum(sard_run_finished_total{status="failed"}) - sum(sard_run_partial_total)
+```
+
+Для окна времени оберните обе части в `increase(...[1d])`. Поздний результат
+потерянного шага и отменённый запуск счётчик неполных не меняют.
 
 ### Когда база недоступна
 

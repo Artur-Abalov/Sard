@@ -104,8 +104,8 @@ class RestoreWorld(
         world.jdbc.update("update run_steps set output = ?::jsonb where id = ?", output, UUID.fromString(step))
         world.jdbc.update(
             "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
-                "snapshot_id, total_bytes, added_bytes, created_at, partial, forgotten_at) " +
-                "select ?, tenant_id, source_id, id, agent_id, ?, ?, ?, ?, 10, ?, ?, ? " +
+                "snapshot_id, total_bytes, added_bytes, created_at, partial, incomplete_reason, forgotten_at) " +
+                "select ?, tenant_id, source_id, id, agent_id, ?, ?, ?, ?, 10, ?, ?, ?, ? " +
                 "from run_steps where id = ?",
             UUID.randomUUID(),
             repositoryName,
@@ -114,6 +114,7 @@ class RestoreWorld(
             SF_BYTES,
             Timestamp.from(at),
             partial,
+            if (partial) "unknown" else null,
             if (forgotten) Timestamp.from(at) else null,
             UUID.fromString(step),
         )

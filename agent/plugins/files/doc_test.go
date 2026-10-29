@@ -34,3 +34,28 @@ func TestTheDocumentationSaysWhoReadsTheFilesAndHowToGrantRead(t *testing.T) {
 		}
 	}
 }
+
+// Scenario (Ф20): Документация плагина объясняет неполный бэкап и пометку
+// полноты на хосте.
+func TestTheDocumentationExplainsAnIncompleteBackupAndTheCompletenessMark(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "plugins", "files.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(doc)
+	for _, want := range []string{
+		"## От чьего имени читаются файлы", // the section the server hint links to
+		"до десяти первых путей",           // what the server shows
+		"подсказку о правах",
+		"sard-agent repo restore",     // the host restores an incomplete snapshot
+		"колонке COMPLETE",            // the mark in repo snapshots
+		"unconfirmed",                 // its value
+		"до появления отпечатков",     // snapshots made before fingerprints
+		"снимок отпечатка не создан",  // a failed fingerprint snapshot
+		"completeness: not confirmed", // what repo restore says
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("docs/plugins/files.md does not contain %q", want)
+		}
+	}
+}

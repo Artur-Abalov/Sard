@@ -195,7 +195,7 @@ func TestSSHForAnSFTPRepositoryRunsAsTheServiceUser(t *testing.T) {
 	h, url := restoreSFTPHost(t)
 	code, _, stderr := h.sudo("repo", "restore", "extra", "aaaa1111", "--target", h.target(), "--config", "C")
 	assertCode(t, code, exitOK)
-	if stderr != "" {
+	if stderr != "" && !strings.HasPrefix(stderr, completenessWarning) {
 		t.Errorf("stderr %q", stderr)
 	}
 	calls := h.restic.callsTo(url, "restore")

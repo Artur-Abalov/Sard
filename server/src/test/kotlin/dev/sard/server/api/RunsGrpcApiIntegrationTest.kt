@@ -270,6 +270,214 @@ class RunsGrpcApiIntegrationTest(
         assertEquals(false, step.path("backup").path("partial").asBoolean(true))
     }
 
+    // --- PL7-2: нечитаемые файлы, причина неполноты, признак неполного запуска
+
+    private var sources = 0
+
+    private fun failedWith(
+        output: dev.sard.proto.agent.v1.BackupOutput? = null,
+        status: StepStatus = StepStatus.STEP_STATUS_FAILED,
+        message: String = "at least one source file could not be read",
+    ): Started {
+        val started = started("src-${sources++}")
+        fake.progress(started.step)
+        fake.result(started.step, status, message, output)
+        eventually {
+            assertEquals(true, card(started.run).path("status").asString() in setOf("failed", "succeeded", "cancelled"))
+        }
+        return started
+    }
+
+    private fun unreadable(
+        count: Long,
+        vararg paths: String,
+    ) = FakeAgent.backup(unreadableCount = count, unreadablePaths = paths.toList())
+
+    private fun backupOf(started: Started): JsonNode = stepOf(started.run).path("backup")
+
+    private fun strings(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
+
+    @Test
+    fun `Причину неполноты решает сервер по статусу и числу нечитаемых`() {
+        val cases =
+            listOf(
+                Triple(unreadable(2, "/srv/a", "/srv/b"), 2L, "unreadable_files"),
+                Triple(FakeAgent.backup(unreadableCount = 0), 0L, "snapshot_set_incomplete"),
+                Triple(FakeAgent.backup(), null, "unknown"),
+            )
+        for ((index, case) in cases.withIndex()) {
+            val started = failedWith(case.first)
+            val backup = backupOf(started)
+
+            assertEquals(true, backup.path("partial").asBoolean(), "partial $index")
+            assertEquals(case.second, backup.path("unreadableCount").takeIf { it.isNumber }?.asLong(), "count $index")
+            assertEquals(case.third, backup.path("incompleteReason").asString(), "reason $index")
+            assertEquals(true, backup.has("unreadableCount") && backup.has("incompleteReason"))
+        }
+        assertEquals(
+            listOf("/srv/a", "/srv/b"),
+            strings(
+                backupOf(
+                    failedWith(FakeAgent.backup(unreadableCount = 2, unreadablePaths = listOf("/srv/a", "/srv/b"))),
+                ).path("unreadablePaths"),
+            ),
+        )
+    }
+
+    @Test
+    fun `Тайм-аут с нулём нечитаемых называет неполный набор снимков`() {
+        val started = failedWith(FakeAgent.backup(unreadableCount = 0), StepStatus.STEP_STATUS_TIMED_OUT, "timed out")
+
+        assertEquals("snapshot_set_incomplete", backupOf(started).path("incompleteReason").asString())
+    }
+
+    @Test
+    fun `Успешный вывод не хранит нечитаемых файлов и причины`() {
+        val started = started()
+        fake.progress(started.step)
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            backup = FakeAgent.backup(unreadableCount = 3, unreadablePaths = listOf("/x")),
+        )
+
+        val backup = eventually { backupOf(started).also { assertEquals(false, it.isNull) } }
+
+        assertEquals(
+            listOf(false, true, 0, true),
+            listOf(
+                backup.path("partial").asBoolean(),
+                backup.path("unreadableCount").isNull,
+                backup.path("unreadablePaths").size(),
+                backup.path("incompleteReason").isNull,
+            ),
+        )
+    }
+
+    @Test
+    fun `Сообщение шага с нечитаемыми файлами хранится как прислал агент`() {
+        val message = "at least one source file could not be read: unreadable paths (2): \"/srv/a\", \"/srv/b\""
+        val started = failedWith(unreadable(2, "/srv/a", "/srv/b"), message = message)
+
+        assertEquals(message, stepOf(started.run).path("message").asString())
+    }
+
+    @Test
+    fun `Больше десяти путей от агента - сервер хранит первые десять`() {
+        val paths = (1..12).map { "/p%02d".format(it) }
+        val started = failedWith(FakeAgent.backup(unreadableCount = 40, unreadablePaths = paths))
+
+        assertEquals(paths.take(10), strings(backupOf(started).path("unreadablePaths")))
+        assertEquals(40, backupOf(started).path("unreadableCount").asLong())
+    }
+
+    @Test
+    fun `Число меньше числа путей заменяется числом путей`() {
+        val started = failedWith(FakeAgent.backup(unreadableCount = 1, unreadablePaths = listOf("/a", "/b", "/c")))
+
+        assertEquals(3, backupOf(started).path("unreadableCount").asLong())
+        assertEquals("unreadable_files", backupOf(started).path("incompleteReason").asString())
+    }
+
+    @Test
+    fun `Путь длиннее 4096 символов обрезается с меткой`() {
+        val started = failedWith(FakeAgent.backup(unreadableCount = 1, unreadablePaths = listOf("я".repeat(5000))))
+
+        assertEquals(listOf("я".repeat(4096) + "…"), strings(backupOf(started).path("unreadablePaths")))
+    }
+
+    @Test
+    fun `Маркер маскирования в пути отдаётся как прислал агент`() {
+        val started = failedWith(unreadable(1, "/srv/[REDACTED]/a.txt"))
+
+        assertEquals(listOf("/srv/[REDACTED]/a.txt"), strings(backupOf(started).path("unreadablePaths")))
+    }
+
+    @Test
+    fun `Поздний неполный вывод потерянного шага называет нечитаемые файлы`() {
+        val started = started()
+        fake.progress(started.step)
+        eventually { assertEquals("running", stepOf(started.run).path("status").asString()) }
+        world.forceRun(UUID.fromString(started.run), "lost", "agent lost the step")
+
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_FAILED,
+            "x",
+            FakeAgent.backup(unreadableCount = 1, unreadablePaths = listOf("/srv/a")),
+        )
+
+        val step = eventually { stepOf(started.run).also { assertEquals(false, it.path("backup").isNull) } }
+        assertEquals(
+            listOf("lost", true, 1L, "unreadable_files"),
+            listOf(
+                step.path("status").asString(),
+                step.path("backup").path("partial").asBoolean(),
+                step.path("backup").path("unreadableCount").asLong(),
+                step.path("backup").path("incompleteReason").asString(),
+            ),
+        )
+        assertEquals(true, card(started.run).path("partial").asBoolean())
+    }
+
+    @Test
+    fun `Причина неполноты снимка совпадает с причиной вывода его шага, а неполный снимок не восстанавливается`() {
+        val cases =
+            listOf(
+                FakeAgent.backup("a1", unreadableCount = 2, unreadablePaths = listOf("/a", "/b")) to "unreadable_files",
+                FakeAgent.backup("a2", unreadableCount = 0) to "snapshot_set_incomplete",
+                FakeAgent.backup("a3") to "unknown",
+            )
+        for ((output, reason) in cases) {
+            val started = failedWith(output)
+            val snapshot = snapshots(started.source).get(0)
+
+            assertEquals(
+                listOf(true, reason, false, "partial"),
+                listOf(
+                    snapshot.path("partial").asBoolean(),
+                    snapshot.path("incompleteReason").asString(),
+                    snapshot.path("restorable").asBoolean(true),
+                    snapshot.path("restoreBlockedReason").asString(),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `У полного снимка причины неполноты нет`() {
+        val started = started()
+        fake.progress(started.step)
+        val whole = FakeAgent.backup("a1b2c3", unreadableCount = 0)
+        fake.result(started.step, StepStatus.STEP_STATUS_SUCCEEDED, backup = whole)
+
+        val snapshot = eventually { snapshots(started.source).also { assertEquals(1, it.size()) } }.get(0)
+
+        assertEquals(false, snapshot.path("partial").asBoolean(true))
+        assertTrue(snapshot.path("incompleteReason").isNull)
+    }
+
+    @Test
+    fun `Неполный запуск остаётся failed, partial виден в списке и карточке, провал без снимка не partial`() {
+        val incomplete = failedWith(unreadable(2, "/a"))
+        val broken = failedWith()
+
+        val listed =
+            world.api
+                .get("/api/v1/runs?status=failed", admin)
+                .json
+                .path("items")
+                .associate { it.path("id").asString() to it }
+
+        val shown = { run: String -> listed.getValue(run).let { it.path("status").asString() to it.path("partial") } }
+        assertEquals("failed", shown(incomplete.run).first)
+        assertEquals(true, shown(incomplete.run).second.asBoolean())
+        assertEquals("failed", shown(broken.run).first)
+        assertEquals(false, shown(broken.run).second.asBoolean(true))
+        assertEquals(true, card(incomplete.run).path("partial").asBoolean())
+        assertEquals(false, card(broken.run).path("partial").asBoolean(true))
+    }
+
     @Test
     fun `Снимок источника показывает репозиторий, идентификаторы и объёмы`() {
         val started = started()
