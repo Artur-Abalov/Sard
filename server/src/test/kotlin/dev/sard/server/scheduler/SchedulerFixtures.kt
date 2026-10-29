@@ -39,6 +39,18 @@ internal class ScheduleTables(
     private val jdbc: JdbcTemplate,
     private val tenant: RunsTenant,
 ) {
+    fun nextRunAt(scheduleId: UUID): Instant? = instant("select next_run_at from schedules where id = ?", scheduleId)
+
+    fun nextCatchUp(scheduleId: UUID): Instant? = instant("select catch_up_at from schedules where id = ?", scheduleId)
+
+    /** Until when a queued run waits for its agent (J1c). */
+    fun waitUntil(runId: UUID): Instant = instant("select agent_wait_until from runs where id = ?", runId)!!
+
+    private fun instant(
+        sql: String,
+        id: UUID,
+    ): Instant? = jdbc.queryForObject(sql, Timestamp::class.java, id)?.toInstant()
+
     fun runs(): List<RunRow> =
         jdbc.query(
             "select id, source_id, trigger, schedule_id from runs where tenant_id = ? order by queued_at, id",

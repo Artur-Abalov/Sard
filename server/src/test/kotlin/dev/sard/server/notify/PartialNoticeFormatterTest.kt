@@ -62,9 +62,10 @@ private fun Message.lines() = text().split("\n")
 /**
  * PL7-2 (Р11 to Р13): why a snapshot of a failed backup is incomplete, and the unreadable files, in both languages.
  * The durations, sizes and the cut of a reason (NoticeFigures, NoticeLines) are not its concern: the boundaries of
- * their formats are pinned by RunNoticeFormatterTest, which mutates them.
+ * their formats are pinned by RunNoticeFormatterTest, which mutates them. Nor is whether a run is told at all
+ * (Telling: a series, a person's cancel): RunNoticeFormatterTest mutates that too.
  */
-@MutFlowTest(excludeTargets = [NoticeFigures::class, NoticeLines::class])
+@MutFlowTest(excludeTargets = [NoticeFigures::class, NoticeLines::class, Telling::class, Telling.Companion::class])
 class PartialNoticeFormatterTest {
     private fun format(
         notice: RunNotice,

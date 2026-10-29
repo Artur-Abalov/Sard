@@ -115,11 +115,6 @@ class SchedulerIntegrationTest(
     private fun anotherServer(metrics: SchedulerMetrics = SchedulerMetrics.NONE) =
         Scheduler(sessions, clock, runs, UuidV7(clock, SecureRandom()), queued, settings, metrics, {})
 
-    private fun nextRunAt(scheduleId: UUID): Instant? =
-        jdbc
-            .queryForObject("select next_run_at from schedules where id = ?", Timestamp::class.java, scheduleId)
-            ?.toInstant()
-
     @Test
     fun `1 - a schedule fires once at its moment and moves to the next one`() {
         val source = source()
@@ -137,7 +132,7 @@ class SchedulerIntegrationTest(
         assertEquals(RunRow(run.id, source.id, "schedule", schedule.id), run)
         val fire = FireRow("schedule", at("2026-09-30T11:00:00Z"), "run_created", run.id, null, null, 0, false)
         assertEquals(listOf(fire), tables.fires(schedule.id))
-        assertEquals(at("2026-09-30T12:00:00Z"), nextRunAt(schedule.id))
+        assertEquals(at("2026-09-30T12:00:00Z"), tables.nextRunAt(schedule.id))
         assertEquals(listOf(tenant.id to tenant.agentId), queued.calls)
     }
 
@@ -184,7 +179,7 @@ class SchedulerIntegrationTest(
 
         assertEquals(emptyList(), tables.runs())
         assertEquals(emptyList(), tables.fires(schedule.id))
-        assertEquals(at("2026-09-30T11:00:00Z"), nextRunAt(schedule.id))
+        assertEquals(at("2026-09-30T11:00:00Z"), tables.nextRunAt(schedule.id))
         assertTrue(output.out.contains("Schedule ${schedule.id} failed to fire; retrying at the next tick"))
 
         TestAdmin.of(jdbc).execute("drop trigger fail_fires on schedule_fires")
@@ -196,7 +191,7 @@ class SchedulerIntegrationTest(
 
         assertEquals(1, tables.runs().size)
         assertEquals(listOf("run_created"), tables.fires(schedule.id).map { it.outcome })
-        assertEquals(at("2026-09-30T12:00:00Z"), nextRunAt(schedule.id))
+        assertEquals(at("2026-09-30T12:00:00Z"), tables.nextRunAt(schedule.id))
     }
 
     @Test
@@ -208,7 +203,7 @@ class SchedulerIntegrationTest(
         assertEquals(emptyList(), tables.runs(), "the catch-up waits for its slot")
         val downtime = FireRow("schedule", at("2026-09-30T11:00:00Z"), "skipped_downtime", null, null, 4, 0, false)
         assertEquals(listOf(downtime), tables.fires(schedule.id))
-        assertEquals(at("2026-09-30T15:00:00Z"), nextRunAt(schedule.id))
+        assertEquals(at("2026-09-30T15:00:00Z"), tables.nextRunAt(schedule.id))
 
         // The slot is the downtime tick's own moment: the next tick at that very instant runs the catch-up.
         tickAt(at("2026-09-30T14:30:00Z"))
@@ -404,7 +399,7 @@ class SchedulerIntegrationTest(
 
         assertEquals(emptyList(), tables.runs())
         assertEquals(emptyList(), tables.fires(schedule.id))
-        assertNull(nextRunAt(schedule.id))
+        assertNull(tables.nextRunAt(schedule.id))
     }
 
     @Test
@@ -590,26 +585,21 @@ class SchedulerIntegrationTest(
         val source = source()
         val schedule = schedule(source)
         tickAt(at("2026-09-30T12:30:00Z"))
-        val slot = nextCatchUp(schedule.id)
+        val slot = tables.nextCatchUp(schedule.id)
         clock.now = at("2026-09-30T12:31:00Z")
         set(source, ScheduleDraft(HOURLY, "UTC", enabled = true, notifyOnSuccess = true))
-        assertEquals(slot, nextCatchUp(schedule.id))
+        assertEquals(slot, tables.nextCatchUp(schedule.id))
 
         tickAt(at("2026-09-30T12:32:00Z"))
         val run = tables.runs().single()
         assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T12:00:00Z", 2), periodOf(run.id))
     }
 
-    private fun nextCatchUp(scheduleId: UUID): Instant? =
-        jdbc
-            .queryForObject("select catch_up_at from schedules where id = ?", Timestamp::class.java, scheduleId)
-            ?.toInstant()
-
     private fun pendingCatchUpCancelledBy(draft: ScheduleDraft) {
         val source = source()
         val schedule = schedule(source)
         tickAt(at("2026-09-30T12:30:00Z"))
-        assertNotNull(nextCatchUp(schedule.id))
+        assertNotNull(tables.nextCatchUp(schedule.id))
         clock.now = at("2026-09-30T12:30:00Z")
         val saved = set(source, draft)
         assertNull(saved.catchUpAt)
@@ -710,6 +700,42 @@ class SchedulerIntegrationTest(
         val expected = LastRun(run.id, Trigger.SCHEDULE, RunState.QUEUED, at("2026-09-30T11:00:00Z"), null)
         assertEquals(expected, saved.lastRun)
         assertEquals(at("2026-09-30T11:10:00Z"), saved.updatedAt)
+    }
+
+    // J1c: Запуск по расписанию ждёт агента до следующего срабатывания
+    @Test
+    fun `a scheduled run waits for an offline agent until the next fire of its schedule`() {
+        schedule(source(), cron = "0 */6 * * *")
+
+        tickAt(at("2026-09-30T12:00:00Z"))
+
+        assertEquals(at("2026-09-30T18:00:00Z"), tables.waitUntil(tables.runs().single().id))
+    }
+
+    // J1c: Ожидание не дольше потолка
+    @Test
+    fun `a scheduled run of a weekly schedule waits no longer than a day`() {
+        schedule(source(), cron = "0 0 * * 0")
+
+        tickAt(at("2026-10-04T00:00:00Z"))
+
+        assertEquals(at("2026-10-05T00:00:00Z"), tables.waitUntil(tables.runs().single().id))
+    }
+
+    // J1c: Срабатывание в момент истечения ожидания создаёт новый запуск, а не пропуск
+    @Test
+    fun `a fire at the moment a wait expires creates a new run, not a skip`() {
+        val schedule = schedule(source())
+        tickAt(at("2026-09-30T11:00:00Z"))
+        val waiting = tables.runs().single().id
+
+        tickAt(at("2026-09-30T12:00:00Z"))
+
+        val expired = jdbc.queryForObject("select status from runs where id = ?", String::class.java, waiting)
+        assertEquals("agent_unavailable", expired)
+        val fires = tables.fires(schedule.id)
+        assertEquals(listOf("run_created", "run_created"), fires.map { it.outcome })
+        assertEquals(2, tables.runs().size)
     }
 
     // PL7-2 К8
