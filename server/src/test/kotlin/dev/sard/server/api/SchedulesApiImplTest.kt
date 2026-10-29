@@ -125,6 +125,20 @@ class SchedulesApiImplTest(
     }
 
     @Test
+    fun `the latest run of a schedule is partial in the answer exactly when its backup output is`() {
+        val source = source()
+        set(source)
+        tickAt(at("2026-09-30T11:00:00Z"))
+        assertEquals(false, assertNotNull(get(source).lastRun).partial)
+
+        val output =
+            """{"kind":"backup","snapshotId":"s","totalBytes":1,"addedBytes":1,"repositoryId":"r","partial":true}"""
+        jdbc.update("update run_steps set output = ?::jsonb where ordinal = 0", output)
+
+        assertEquals(true, assertNotNull(get(source).lastRun).partial)
+    }
+
+    @Test
     fun `the journal is mapped fire by fire, newest first, and paged by cursor`() {
         val source = source()
         set(source, cron = "* * * * *")

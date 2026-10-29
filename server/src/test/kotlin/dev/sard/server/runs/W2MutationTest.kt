@@ -376,7 +376,7 @@ class W2MutationTest(
         jdbc.update("update run_steps set output = null where run_id = ?", ids.getValue("nothing"))
 
         val listed = MutFlow.underTest { runs.list(tenant.id, RunFilter(), null, 10) }.associate { it.id to it.partial }
-        val card = ids.mapValues { runs.get(tenant.id, it.value)?.partial }
+        val card = ids.mapValues { MutFlow.underTest { runs.get(tenant.id, it.value) }?.partial }
 
         val expected = mapOf("whole" to false, "partial" to true, "unknown" to false, "nothing" to false)
         assertEquals(expected, ids.mapValues { listed[it.value] })

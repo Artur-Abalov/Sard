@@ -59,15 +59,19 @@ private fun Message.text() = parts.joinToString("") { it.text }
 
 private fun Message.lines() = text().split("\n")
 
-/** PL7-2 (Р11 to Р13): why a snapshot of a failed backup is incomplete, and the unreadable files, in both languages. */
-@MutFlowTest
+/**
+ * PL7-2 (Р11 to Р13): why a snapshot of a failed backup is incomplete, and the unreadable files, in both languages.
+ * The durations, sizes and the cut of a reason (NoticeFigures, NoticeLines) are not its concern: the boundaries of
+ * their formats are pinned by RunNoticeFormatterTest, which mutates them.
+ */
+@MutFlowTest(excludeTargets = [NoticeFigures::class, NoticeLines::class])
 class PartialNoticeFormatterTest {
     private fun format(
         notice: RunNotice,
         language: NoticeLanguage = NoticeLanguage.RU,
     ): Message {
-        val formatter = RunNoticeFormatter(language, ConsoleUrl.parse(CONSOLE))
-        return assertNotNull(MutFlow.underTest { formatter.format(notice) })
+        val console = ConsoleUrl.parse(CONSOLE)
+        return assertNotNull(MutFlow.underTest { RunNoticeFormatter(language, console).format(notice) })
     }
 
     private fun incomplete(

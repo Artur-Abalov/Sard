@@ -110,7 +110,7 @@ class RunNoticeFormatter(
             }
 
             StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
-                failureLines(notice) + snapshotLines(notice.backup, sizes)
+                failureLines(notice) + snapshotLines(notice.backup)
             }
 
             StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
@@ -129,13 +129,11 @@ class RunNoticeFormatter(
         }
     }
 
-    private fun snapshotLines(
-        backup: BackupSizes?,
-        sizes: List<Message.Part>?,
-    ): List<List<Message.Part>> {
-        if (backup == null || sizes == null) return emptyList()
+    /** The snapshot a failed backup left: why it is incomplete, and its sizes; nothing when there is none. */
+    private fun snapshotLines(backup: BackupSizes?): List<List<Message.Part>> {
+        if (backup == null) return emptyList()
         val reason = backup.incompleteReason ?: IncompleteReason.UNKNOWN
-        return listOf(listOf(Message.Text(words.snapshotLine(reason))), sizes)
+        return listOf(listOf(Message.Text(words.snapshotLine(reason))), sizesLine(backup))
     }
 
     private fun sizesLine(sizes: BackupSizes): List<Message.Part> {
