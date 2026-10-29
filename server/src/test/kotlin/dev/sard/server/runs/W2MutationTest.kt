@@ -487,4 +487,24 @@ class W2MutationTest(
         val replaced = MutFlow.underTest { sources.replace(tenant.id, timed.id, draft) }
         assertEquals(listOf(9, null), listOf(replaced.backupTimeoutMinutes, replaced.restoreTimeoutMinutes))
     }
+
+    // ДJ13: a replace leaves a timeout its caller omitted; a create has nothing to keep and stores the draft's
+    @Test
+    fun `a replace keeps the timeout that was omitted and stores the one that was sent, a create stores both`() {
+        val kept = tenant.draft("k").copy(backupTimeoutMinutes = 3, restoreTimeoutMinutes = 4, keepBackupTimeout = true)
+        val created = MutFlow.underTest { sources.create(tenant.id, kept) }
+        assertEquals(listOf(3, 4), listOf(created.backupTimeoutMinutes, created.restoreTimeoutMinutes))
+        val keptRestore = tenant.draft("r").copy(backupTimeoutMinutes = 6, keepRestoreTimeout = true)
+        val createdRestore = MutFlow.underTest { sources.create(tenant.id, keptRestore) }
+        assertEquals(listOf(6, null), listOf(createdRestore.backupTimeoutMinutes, createdRestore.restoreTimeoutMinutes))
+
+        val omitBackup = tenant.draft("k").copy(restoreTimeoutMinutes = 8, keepBackupTimeout = true)
+        val first = MutFlow.underTest { sources.replace(tenant.id, created.id, omitBackup) }
+        assertEquals(listOf(3, 8), listOf(first.backupTimeoutMinutes, first.restoreTimeoutMinutes))
+
+        val omitRestore = tenant.draft("k").copy(backupTimeoutMinutes = 9, keepRestoreTimeout = true)
+        val second = MutFlow.underTest { sources.replace(tenant.id, created.id, omitRestore) }
+        assertEquals(listOf(9, 8), listOf(second.backupTimeoutMinutes, second.restoreTimeoutMinutes))
+        assertEquals(second, sources.get(tenant.id, created.id))
+    }
 }

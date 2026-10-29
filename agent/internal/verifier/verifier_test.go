@@ -541,6 +541,10 @@ func TestAJobDirectoryThatCannotBeRemovedMakesAPassedVerificationUnproven(t *tes
 	if s.GetStatus() != cannotRun || !strings.Contains(s.GetOutput(), workDir+"/"+jobID) || v.GetVerdict() != agentv1.VerifyVerdict_VERIFY_VERDICT_CANNOT_VERIFY || err == nil {
 		t.Fatalf("stage %v, verdict %v, err %v", s, v.GetVerdict(), err)
 	}
+	// without a sandbox there is nothing to say before the directory
+	if want := "cannot remove " + workDir + "/" + jobID + ", remove it by hand: unlinkat: device or resource busy"; s.GetOutput() != want {
+		t.Fatalf("output %q, want %q", s.GetOutput(), want)
+	}
 }
 
 func TestAFailedVerificationStaysFailedWhenItsDirectoryCannotBeRemoved(t *testing.T) {
