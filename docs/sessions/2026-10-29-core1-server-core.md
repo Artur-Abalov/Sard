@@ -87,3 +87,38 @@
 
 ## Окружение
 - В контейнере не было запущенного Docker; `dockerd` поднят вручную, после этого Testcontainers, образ и e2e доступны.
+
+## Фаза 2 — разбиение модулей без изменения кода
+- `server/` — библиотека (Gradle `:server`, артефакт `sard-server-core`): bootJar выключен, обычный jar без
+  классификатора, в манифесте `Implementation-Title/Version` (по нему Spring пишет версию в строке старта); свой
+  `build-info.properties` только для тестов (`testBuildInfo` → test resources). Консоль и `bootBuildInfo` из модуля
+  убраны. Файлы не переносились: правило 5(б), пути тестов и ворот прежние.
+- `server-app/` — без кода: `server` + `server-console` → `sard-server.jar`, `mainClass` из библиотеки, `buildInfo`
+  с прежними `artifact`/`name` = `server`, `Implementation-Title: server`.
+- `server-console/` — jar с `console/` из `-PsardConsoleDist`, та же проверка `index.html`.
+- Lock-файлы новых модулей; `server/gradle.lockfile` не изменился. Dockerfile, `.dockerignore`, Makefile (`build`),
+  `renovate-pins.yml`, README, ADR 0040, спецификация и QA консоли, QA self-agent — на `:server-app:bootJar`.
+
+### Проверено
+- Развёрнутый состав jar: 1963 записи, sha256 совпадают с одномодульной сборкой (вложенные `sard-server-core` и
+  `sard-server-console` развёрнуты в `BOOT-INF/classes`; `build.time` не сравнивается). Отличаются только место
+  записей `META-INF/spring*` (внутри jar ядра), порядок строк манифеста и `layers.idx`.
+- Образ из `make server-image` (тот же поддельный каталог пакетов агента у обоих): файловая система совпадает до записи,
+  кроме `/app/sard-server.jar`; конфигурация образа идентична.
+- Запуск jar без базы: та же строка старта (с версией) и та же причина отказа, что у прежнего jar.
+- Целевые тесты сервера зелёные: `SardServerIntegrationTest`, загрузки агентов, консоль, `StatusController`,
+  `CaStartupIntegrationTest`, `OnboardingDatabaseDownIntegrationTest`; `license-check` зелёный.
+
+### Не проверено в этом окружении
+- Полные ворота `gate.sh server fast`: четыре прогона, каждый раз падает 1 тест (разные: `BindException` в
+  `OnboardingDatabaseDownIntegrationTest`, `CaStartupIntegrationTest`), а отчёт Gradle затем ломается `EOFException`.
+  Чистый main (`b608141`) в этом же контейнере тоже падает: воркер тестов убит с кодом 137 (SIGKILL). Оба класса по
+  отдельности зелёные. Вывод: окружение (память, порты), не изменение; подтвердит CI.
+- `make server-jar` (стадия build Dockerfile): Gradle внутри Docker не скачивает плагины (429 Maven Central и Docker
+  Hub через прокси). Путь `:server-app:bootJar` и `COPY` новых модулей проверит CI.
+- e2e и мутационный прогон (`processMutatedMainResources` больше не зависит от `bootBuildInfo`, build-info приходит из
+  test resources).
+
+### Окружение (локально, не в репозитории)
+- `~/.gradle/init.d/mirror.init.gradle.kts` — Maven Central через зеркало Google (429); `org.gradle.workers.max=1`;
+  `dockerd` с `registry-mirrors: mirror.gcr.io`.

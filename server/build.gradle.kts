@@ -99,6 +99,10 @@ tasks.bootJar {
 }
 tasks.jar {
     archiveClassifier = ""
+    // The main class lives here, so Spring Boot's startup line reads the version from this manifest.
+    manifest {
+        attributes("Implementation-Title" to "sard-server-core", "Implementation-Version" to project.version)
+    }
 }
 val testBuildInfo by tasks.registering(org.springframework.boot.gradle.tasks.buildinfo.BuildInfo::class) {
     destinationDir = layout.buildDirectory.dir("test-build-info")
