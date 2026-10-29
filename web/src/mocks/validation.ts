@@ -105,11 +105,14 @@ export function validateSource(
 
 const MAX_TIMEOUT_MINUTES = 1440
 
-/** The source's own step timeouts are 1 to 1440 minutes, or null for the installation's default. */
+/** The source's own step timeouts are whole 1 to 1440 minutes, or null for the installation's default. */
 function validTimeouts(source: Schemas['SourceInput']): Schemas['ValidationProblem'] | null {
   for (const field of ['backupTimeoutMinutes', 'restoreTimeoutMinutes'] as const) {
     const minutes = source[field]
-    if (minutes != null && (minutes < 1 || minutes > MAX_TIMEOUT_MINUTES)) {
+    if (
+      minutes != null &&
+      !(Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_TIMEOUT_MINUTES)
+    ) {
       return rejected('validation_failed', field, 'must be 1 to 1440 minutes')
     }
   }

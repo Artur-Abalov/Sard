@@ -424,16 +424,18 @@ describe('sources', () => {
     expect((await api.GET('/api/v1/sources/{sourceId}', path)).response.status).toBe(404)
   })
 
-  test.each(['backupTimeoutMinutes', 'restoreTimeoutMinutes'] as const)(
-    'a %s out of 1 to 1440 is 422 at its field',
-    async (field) => {
-      const { response, error } = await api.POST('/api/v1/sources', {
-        body: { ...input, [field]: 1441 },
-      })
-      expect(response.status).toBe(422)
-      expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field }] })
-    },
-  )
+  test.each([
+    ['backupTimeoutMinutes', 1441],
+    ['restoreTimeoutMinutes', 1441],
+    ['backupTimeoutMinutes', 1.5],
+    ['restoreTimeoutMinutes', 1.5],
+  ] as const)('a %s of %s is 422 at its field, as on the server', async (field, minutes) => {
+    const { response, error } = await api.POST('/api/v1/sources', {
+      body: { ...input, [field]: minutes },
+    })
+    expect(response.status).toBe(422)
+    expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field }] })
+  })
 
   test('a repository the agent did not report is 422 unknown_repository', async () => {
     const { response, error } = await api.POST('/api/v1/sources', {
