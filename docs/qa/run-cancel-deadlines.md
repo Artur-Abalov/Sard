@@ -115,7 +115,7 @@
 28. Запустить сервер с `SARD_RUN_AGENT_WAIT_MAX=2m`. Остановить агента
     `qa1`. Запустить бэкап `big`.
     Ожидается: `outcome waiting_for_agent`, `agentWaitUntil` — время запуска
-    + 2 мин.
+    плюс 2 мин.
 29. Ждать 2 мин + тик.
     Ожидается: `status agent_unavailable`, `outcome agent_unavailable`,
     `agentUnavailableSince` — время остановки агента; в Telegram одно

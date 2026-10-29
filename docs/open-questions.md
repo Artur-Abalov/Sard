@@ -118,7 +118,6 @@
 |---|---|
 | OQ-264. Функция `clear_verification_evidence` считала запись `cancelled` «не пройденной»: отмена после старого провала очищала вывод стадий этого провала раньше срока. | Миграция `server/src/main/resources/db/migration/V202610281300__retention_looks_through_cancelled.sql` (`CREATE OR REPLACE`, `n.status <> 'cancelled'` в `EXISTS`); тест `RetentionEvidenceIntegrationTest` «Отмена после старого провала не очищает улики этого провала». |
 
-
 ### 2026-10-27, J1c — ожидание офлайн-агента (ветка `ccr-j1d`)
 
 Спецификация `docs/specs/server/run-cancel-deadlines.feature` (утверждена 2026-10-27), ADR
