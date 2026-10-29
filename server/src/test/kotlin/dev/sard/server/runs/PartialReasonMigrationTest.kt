@@ -16,6 +16,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 private const val BEFORE = "202610271000"
+private const val PARTIAL_CHECK = "snapshots_incomplete_reason_partial_check"
 private const val SCHEMA = "sard"
 private val T0 = Timestamp.from(Instant.parse("2026-10-28T12:00:00Z"))
 
@@ -80,5 +81,18 @@ class PartialReasonMigrationTest {
         assertTrue("snapshots_incomplete_reason_check" in refused.message.orEmpty(), refused.message)
         jdbc.update("update snapshots set incomplete_reason = 'snapshot_set_incomplete' where snapshot_id = 'partial'")
         assertEquals("snapshot_set_incomplete", reasons()["partial"])
+    }
+
+    private fun assertRefusedByPartialCheck(sql: String) {
+        val refused = assertFailsWith<DataIntegrityViolationException> { jdbc.update(sql) }
+        assertTrue(PARTIAL_CHECK in refused.message.orEmpty(), refused.message)
+    }
+
+    @Test
+    fun `the database refuses a partial snapshot without a reason and a whole one with a reason`() {
+        migrated()
+
+        assertRefusedByPartialCheck("update snapshots set incomplete_reason = null where snapshot_id = 'partial'")
+        assertRefusedByPartialCheck("update snapshots set incomplete_reason = 'unknown' where snapshot_id = 'whole'")
     }
 }

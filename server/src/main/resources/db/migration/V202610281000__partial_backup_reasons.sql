@@ -8,3 +8,6 @@ ALTER TABLE snapshots ADD COLUMN incomplete_reason TEXT;
 UPDATE snapshots SET incomplete_reason = 'unknown' WHERE partial;
 ALTER TABLE snapshots ADD CONSTRAINT snapshots_incomplete_reason_check
     CHECK (incomplete_reason IN ('unreadable_files', 'snapshot_set_incomplete', 'unknown'));
+-- A snapshot is partial exactly when it has a reason: the two cannot disagree.
+ALTER TABLE snapshots ADD CONSTRAINT snapshots_incomplete_reason_partial_check
+    CHECK (partial = (incomplete_reason IS NOT NULL));

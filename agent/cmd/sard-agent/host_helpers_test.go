@@ -49,14 +49,16 @@ var (
 // section of docs/specs/agent/host-setup.feature in a temporary directory D.
 type setupHost struct {
 	*repoHost
-	fsys   *fakeFS
-	sd     *fakeSystemd
-	log    *fakeSyslog
-	term   *fakeTerminal
-	stdin  *bytes.Buffer
-	hung   *hungInput
-	env    map[string]string
-	people []hostsetup.User
+	fsys  *fakeFS
+	sd    *fakeSystemd
+	log   *fakeSyslog
+	term  *fakeTerminal
+	stdin *bytes.Buffer
+	// stderrNow is the standard error of the running command so far; fakes read it mid-command.
+	stderrNow *bytes.Buffer
+	hung      *hungInput
+	env       map[string]string
+	people    []hostsetup.User
 	// readOwned and plainReads are the paths read through the owner-checked
 	// read (with the uid asked for) and through the plain one.
 	readOwned  []ownedRead
@@ -131,6 +133,7 @@ func newSetupHost(t *testing.T) *setupHost {
 func (h *setupHost) runAs(euid uint32, args ...string) (code int, stdout, stderr string) {
 	h.deps.euid = euid
 	var out, errOut bytes.Buffer
+	h.stderrNow = &errOut
 	ctx := context.Background()
 	args = h.subst(args)
 	switch args[0] {

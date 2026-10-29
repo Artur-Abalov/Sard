@@ -158,10 +158,16 @@ func TestIntegrationARepositoryAttachedWithThePasswordOfACopyIsRestoredWithoutRe
 	if stderr != "" {
 		t.Errorf("stderr %q", stderr)
 	}
+	_, listed, _ := h.sudo("repo", "snapshots", "--config", "C", "--json", "main")
+	id := hexID.FindString(listed)
+	if id == "" {
+		t.Fatalf("no snapshot in %q", listed)
+	}
 	code, _, stderr = h.sudo("repo", "restore", "main", "latest", "--source", "s1", "--target", h.target(), "--config", "C")
 	assertCode(t, code, exitOK)
-	if stderr != "" && !strings.HasPrefix(stderr, completenessWarning) {
-		t.Errorf("stderr %q", stderr)
+	// the backup has no fingerprint: the completeness is not confirmed
+	if want := completenessWarning + id[:8] + " is not confirmed: some files of the source may be missing from it\n"; stderr != want {
+		t.Errorf("stderr %q, want %q", stderr, want)
 	}
 	sameFile(t, src+"/a.txt", filepath.Join(h.target(), src, "a.txt"))
 }

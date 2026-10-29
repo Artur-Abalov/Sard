@@ -29,6 +29,20 @@ func TestRestoringASnapshotWithUnconfirmedCompletenessWarnsAndRestores(t *testin
 	h.assertRestored(idF)
 }
 
+// Scenario "Предупреждение о полноте печатается до запуска restic restore":
+// the warning is on stderr already when restic restore is invoked.
+func TestTheCompletenessWarningIsPrintedBeforeResticRestoreStarts(t *testing.T) {
+	h := restoreHost(t)
+	var seen string
+	started := false
+	h.base().restoreState.before = func(string) { started, seen = true, h.stderrNow.String() }
+	code, _, _ := h.restore(idF)
+	assertCode(t, code, exitOK)
+	if !started || !strings.Contains(seen, completenessWarning+"aaaa1111 is not confirmed") {
+		t.Errorf("restic restore started: %v, stderr at that moment %q", started, seen)
+	}
+}
+
 func TestRestoringASnapshotWithConfirmedCompletenessSaysNothingOfIt(t *testing.T) {
 	h := restoreHost(t)
 	h.base().snapshots = append(h.base().snapshots, fingerprintOf(idFP, idF2))
