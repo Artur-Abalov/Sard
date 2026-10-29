@@ -22,12 +22,30 @@
   далее каждый запрос — `curl -b jar …`. Изменяющие запросы — без `Origin`.
 - `RUN=<id>` — id запуска из ответа `POST /api/v1/sources/{id}/runs`.
 
+Переменные `SARD_RUN_START_GRACE` и `SARD_RUN_AGENT_WAIT_MAX` (шаги 6, 28, 34) `deploy/docker-compose.yml` в сервер
+не передаёт: `export` на хосте их не доставит. Создать `deploy/docker-compose.qa.yml`:
+
+```yaml
+services:
+  server:
+    environment:
+      SARD_RUN_START_GRACE: ${SARD_RUN_START_GRACE:-2m}
+      SARD_RUN_AGENT_WAIT_MAX: ${SARD_RUN_AGENT_WAIT_MAX:-24h}
+```
+
+и добавить `-f deploy/docker-compose.qa.yml` к вызову compose выше. «Запустить сервер с X» в шагах значит: задать X в
+окружении и выполнить `up -d --force-recreate server` (`restart` не перечитывает окружение). Значения по умолчанию в файле
+совпадают со значениями сервера; «вернуть значение» — снять переменную и пересоздать службу.
+
 ## Часть 1. Перезапуск сервера (J1d)
 
 1. Запустить бэкап `big`; дождаться `outcome = running` в
    `GET /api/v1/runs/$RUN`.
    Ожидается: `status running`, `outcome running`.
-2. `docker compose -f deploy/docker-compose.yml restart sard-server`.
+2. Тем же вызовом compose, что и `make up`
+   (`COMPOSE` в `Makefile`): `env SARD_VERSION=$(git describe --tags --always --dirty)
+   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml
+   --env-file deploy/.env restart server` (служба называется `server`).
    Ожидается: сервер поднялся, в журнале агента — переподключение.
 3. Ждать до конца бэкапа, читать `GET /api/v1/runs/$RUN`.
    Ожидается: `status succeeded`; шаг ни разу не был `lost` (в журнале

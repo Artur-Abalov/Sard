@@ -5,6 +5,7 @@ package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RestoreScene.Companion.DESTINATION
@@ -23,7 +24,9 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import tools.jackson.databind.json.JsonMapper
+import java.security.SecureRandom
 import java.sql.Timestamp
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.AfterTest
@@ -55,6 +58,7 @@ class RestoresMutationTest(
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
     @Autowired private val timeouts: TimeoutSettings,
+    @Autowired private val sessions: TenantSessions,
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
@@ -444,6 +448,26 @@ class RestoresMutationTest(
 
         assertEquals(RUNS_NOW.plusSeconds(24 * 3600), run.agentWaitUntil)
         assertEquals(RUNS_NOW.plusSeconds(24 * 3600), runs.get(tenant.id, run.id)!!.agentWaitUntil)
+    }
+
+    // J1c: the answer to the start of a restore says the same as a later read
+    @Test
+    fun `a restore started for an offline agent is waiting for the agent at once`() {
+        val s = source()
+        snapshot(s)
+        val offline =
+            Restores(
+                sessions,
+                clock,
+                UuidV7(clock, SecureRandom()),
+                queued,
+                Duration.ofHours(24),
+                { false },
+            )
+
+        val run = MutFlow.underTest { offline.start(tenant.id, s, SF, draft(a)) }
+
+        assertEquals(RunOutcome.WAITING_FOR_AGENT, run.outcome)
     }
 
     // J1b: the step of a restore gets the source's restore timeout, or the tenant's default

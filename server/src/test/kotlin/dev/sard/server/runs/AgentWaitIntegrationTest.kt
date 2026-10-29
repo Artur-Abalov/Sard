@@ -107,6 +107,17 @@ class AgentWaitIntegrationTest(
         assertEquals(RunOutcome.QUEUED, online.single().outcome)
     }
 
+    // J1c: the answer to the start of a run says the same as a later read
+    @Test
+    fun `the run a start creates for an offline agent is waiting for the agent at once`() {
+        val source = sources.create(tenant.id, tenant.draft()).id
+
+        val created = runsSeeing(online = false).start(tenant.id, source)
+
+        assertEquals(RunOutcome.WAITING_FOR_AGENT, created.outcome)
+        assertEquals(created.outcome, runsSeeing(online = false).get(tenant.id, created.id)!!.outcome)
+    }
+
     // J1e follow-up: the list carries the deadline of the wait and the timeout of the step
     @Test
     fun `a listed run has its wait deadline and the timeout of its step`() {

@@ -83,6 +83,18 @@ func TestAJobPastItsDeadlineGivesAStageNoTime(t *testing.T) {
 	}
 }
 
+func TestTheCleanupOfAJobPastItsDeadlineStillGetsItsOwnLimit(t *testing.T) {
+	r := newRig(t)
+	r.step.Verify.Deadline.Seconds = t0.Add(-time.Hour).Unix()
+
+	_, _ = r.run()
+
+	timers := r.clock.timers
+	if last := timers[len(timers)-1]; last.at.Sub(r.clock.Now()) != 10*time.Minute {
+		t.Fatalf("the cleanup is limited until %v, now is %v", last.at, r.clock.Now())
+	}
+}
+
 func TestEveryStageStopsItsTimerAndEndsItsContext(t *testing.T) {
 	r := newRig(t)
 

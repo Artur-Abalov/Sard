@@ -189,11 +189,13 @@ class RestoresConfiguration {
         clock: Clock,
         queued: ObjectProvider<StepsQueued>,
         waiting: AgentWaitProperties,
+        presence: ObjectProvider<AgentOnline>,
     ) = Restores(
         sessions,
         clock,
         UuidV7(clock, SecureRandom()),
         queued.getIfUnique { StepsQueued.NONE },
         waiting.limit(),
+        presence.getIfUnique { AgentOnline.ALWAYS },
     )
 }

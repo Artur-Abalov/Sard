@@ -677,7 +677,7 @@
       "restore": "Restore timeout (hours)",
       "submit": "Save the timeouts",
       "saved": "The timeouts are saved.",
-      "hint": "A source that sets none of its own takes these. 1 to 1440 minutes."
+      "hint": "A source that sets none of its own takes these. 1 to 24 hours."
     },
     "verification": {
       "title": "Restore verification",

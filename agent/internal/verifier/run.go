@@ -123,15 +123,22 @@ func (x *run) execute() (*agentv1.StepResult, error) {
 		}
 	}
 	x.ctx = context.WithoutCancel(x.ctx)
-	x.stage(stage{0, "cleanup", x.opts.Limits.Prepare, x.cleanup})
+	c := stage{0, "cleanup", x.opts.Limits.Prepare, x.cleanup}
+	x.within(c, c.limit)
 	return &agentv1.StepResult{Output: &agentv1.StepResult_Verify{Verify: x.out}}, x.verdict()
 }
 
 // stage runs s within its limit, records and reports it, and says whether
 // the pipeline goes on.
 func (x *run) stage(s stage) bool {
+	return x.within(s, x.limit(s.limit, x.opts.Clock.Now()))
+}
+
+// within runs s for at most limit. The cleanup is given its own limit, not
+// the time the job has left: a job past its deadline must still remove its
+// sandbox (J1f, OQ-265).
+func (x *run) within(s stage, limit time.Duration) bool {
 	started := x.opts.Clock.Now()
-	limit := x.limit(s.limit, started)
 	ctx, cancel := context.WithCancelCause(x.ctx)
 	timer := x.opts.Clock.AfterFunc(limit, func() { cancel(errOutOfTime) })
 	o := s.run(ctx)

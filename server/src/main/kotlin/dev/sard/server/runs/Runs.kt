@@ -282,7 +282,7 @@ class Runs(
         session.persist(run)
         session.persist(step)
         session.flush()
-        return RunViews.of(run, source.agentId, source, listOf(step))
+        return RunViews.of(run, source.agentId, source, listOf(step), agentOnline = presence.online(source.agentId))
     }
 
     /** A scheduled run waits until the schedule fires again, the others and the far fires, the longest wait. */
