@@ -353,8 +353,11 @@ Columns, one line per snapshot, oldest first (the same time: by id):
   PATHS   the paths of the snapshot, separated by commas
 unconfirmed means no fingerprint snapshot is linked to the snapshot: some
 files of the source may be missing from it (unreadable files: check the rights
-of sard-agent, docs/plugins/files.md). When some are unconfirmed, one line
-about them goes to stderr; with --json it is the field completeness.
+of sard-agent, docs/plugins/files.md). A complete snapshot is unconfirmed too
+when its fingerprint snapshot failed, and so is one made before fingerprints:
+unconfirmed does not prove that files were unreadable. When some are
+unconfirmed, one line about them goes to stderr; with --json it is the field
+completeness.
 A repository with no snapshots prints one line and exits 0.
 
 `+readOnlyHelp, []repoHelpCode{

@@ -71,3 +71,19 @@ func assertSameSet(t *testing.T, got [][]byte, want []string) {
 		t.Fatalf("variants:\n got %q\nwant %q", g, w)
 	}
 }
+
+func TestVariantsCoverGoQuotedControlAndInvalidBytes(t *testing.T) {
+	// The agent writes paths with Go %q (restic PartialError): a control
+	// byte or a byte that is not UTF-8 is escaped there unlike JSON.
+	for _, tc := range []struct{ value, quoted string }{
+		{"pa\ass", `pa\ass`},
+		{"pa\vss", `pa\vss`},
+		{"pa\x01ss", `pa\x01ss`},
+		{"pa\xffss", `pa\xffss`},
+	} {
+		got := variants([]byte(tc.value))
+		if !slices.ContainsFunc(got, func(v []byte) bool { return string(v) == tc.quoted }) {
+			t.Errorf("variants(%q) lack the Go-quoted form %s", tc.value, tc.quoted)
+		}
+	}
+}

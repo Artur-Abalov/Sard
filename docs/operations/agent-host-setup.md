@@ -418,21 +418,24 @@ sudo sard-agent repo snapshots <имя> [--source <источник>] [--json] [
 по возрастанию, при равном времени по id:
 
 ```text
-ID TIME HOST SOURCE RUN PATHS
-dddd1111 2026-10-09T12:00:00Z old-host - - /etc
-aaaa1111 2026-10-10T03:00:00Z db1 s1 r1 /srv/data
+ID TIME HOST SOURCE RUN COMPLETE PATHS
+dddd1111 2026-10-09T12:00:00Z old-host - - - /etc
+aaaa1111 2026-10-10T03:00:00Z db1 s1 r1 confirmed /srv/data
 ```
 
 - `ID` — короткий id (8 символов); `TIME` — UTC, RFC 3339 до секунд с `Z`;
 - `SOURCE` и `RUN` — значения тегов `sard.source` и `sard.run`, `-`, если тега
-  нет или он пуст (снимок, сделанный вручную); `PATHS` — пути через запятую;
+  нет или он пуст (снимок, сделанный вручную); `COMPLETE` — полнота снимка
+  (`confirmed`, `unconfirmed` или `-`, раздел «Полнота снимка» ниже); `PATHS` —
+  пути через запятую;
 - нет снимков — одна строка `no snapshots in repository <имя>` (с `--source` —
   `no snapshots of source <id> in repository <имя>`), код 0;
 - `--source <id>` (1–128 печатных символов ASCII без пробела и запятой) — только
   снимки этого источника; иначе ошибка использования, называющая `--source`;
 - `--json` — один объект `{"repository":"<имя>","snapshots":[{"id","short_id",
-  "time","hostname","paths","source","run","step","tags"}]}`: `id` полный (64
-  символа), `source`, `run`, `step` — строка или `null`, `tags` — все теги;
+  "time","hostname","paths","source","run","step","tags","completeness"}]}`: `id`
+  полный (64 символа), `source`, `run`, `step` — строка или `null`, `tags` — все
+  теги, `completeness` — `"confirmed"`, `"unconfirmed"` или `null`;
   ошибки остаются текстом в stderr.
 
 Отказы: `REPOSITORY_UNKNOWN` (называет подключённые имена),

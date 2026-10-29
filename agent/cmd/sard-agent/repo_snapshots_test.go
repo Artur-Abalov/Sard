@@ -344,6 +344,18 @@ func TestWhoMayListTheSnapshots(t *testing.T) {
 	h.assertNoBackendCalls()
 }
 
+// Р93: unconfirmed is not proof of unreadable files.
+func TestSnapshotsHelpNamesTheOtherCausesOfUnconfirmed(t *testing.T) {
+	h := newSetupHost(t)
+	_, stdout, _ := h.sudo("repo", "snapshots", "--help")
+	text := strings.Join(strings.Fields(stdout), " ")
+	for _, want := range []string{"its fingerprint snapshot failed", "made before fingerprints", "does not prove that files were unreadable", "completeness"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("help lacks %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestWithoutTheServiceUserRootGetsNoList(t *testing.T) {
 	h := snapshotsHost(t)
 	h.people = nil
