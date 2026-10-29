@@ -16,6 +16,8 @@
 web/dist/
 build/
 server/build/
+server-app/build/
+server-console/build/
 proto/jvm/build/
 test/e2e/build/*
 !test/e2e/build/dist/

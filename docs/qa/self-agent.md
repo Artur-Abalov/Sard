@@ -231,7 +231,7 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
 ## Часть 7. Без канала (установка не из compose)
 
 52. `$DC down`; запустить сервер вне compose без `SARD_SELF_DIR`
-    (`java -jar server/build/libs/sard-server.jar` с переменными базы из
+    (`java -jar server-app/build/libs/sard-server.jar` с переменными базы из
     `deploy/.env` и `SARD_DB_URL=jdbc:postgresql://localhost:5432/sard`, база
     `$DC up -d postgres` с опубликованным портом) → сервер стартует; в логе нет
     строк `WARN` со ссылкой на `docs/operations/self-agent.md` и строки

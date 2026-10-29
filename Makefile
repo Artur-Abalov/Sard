@@ -93,7 +93,7 @@ proto: tools
 build: build-agent build-cli
 	$(MAKE) web-deps
 	cd web && SARD_VERSION=$(VERSION) npm run build
-	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION) -PsardConsoleDist=web/dist
+	$(GRADLE) :server-app:bootJar -PsardVersion=$(VERSION) -PsardConsoleDist=web/dist
 
 build-agent:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent

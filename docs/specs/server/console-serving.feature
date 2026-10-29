@@ -24,7 +24,10 @@
 #       самодостаточен, в образе по-прежнему один файл /app/sard-server.jar.
 #       Gradle включает набор только по свойству -PsardConsoleDist=<каталог>
 #       (готовая сборка web/dist); без свойства jar собирается без консоли,
-#       поэтому ./gradlew :server:test и :server:bootJar не требуют Node.
+#       поэтому ./gradlew :server:test и :server-app:bootJar не требуют Node.
+#       С CORE1 набор собирает модуль server-console в свой jar
+#       (sard-server-console-<версия>.jar), а sard-server.jar кладёт его в
+#       BOOT-INF/lib рядом с server-core; путь на classpath — тот же console/.
 #       Свойство задано, а в каталоге нет index.html — сборка падает с
 #       сообщением, называющим свойство и каталог.
 #       Расположение набора при запуске — свойство сервера sard.console.location
@@ -586,21 +589,21 @@
 
     @qa-only
     Сценарий: Jar без свойства каталога консоли собирается без консоли
-      Когда выполняется ./gradlew :server:bootJar без -PsardConsoleDist
+      Когда выполняется ./gradlew :server-app:bootJar без -PsardConsoleDist
       Тогда сборка успешна
       И jar не содержит console/index.html
 
     @qa-only
     Сценарий: Каталог консоли без index приводит к ошибке сборки
       Дано каталог без index.html
-      Когда выполняется ./gradlew :server:bootJar с -PsardConsoleDist, указывающим на него
+      Когда выполняется ./gradlew :server-app:bootJar с -PsardConsoleDist, указывающим на него
       Тогда сборка завершается ошибкой
       И сообщение называет sardConsoleDist и этот каталог
 
     @qa-only
     Сценарий: make build собирает jar с консолью той же версии
       Когда выполняется make build VERSION=0.0.0-qa
-      Тогда server/build/libs/sard-server.jar содержит console/index.html
+      Тогда server-app/build/libs/sard-server.jar содержит console/index.html
       И meta sard-version в нём равна 0.0.0-qa
 
     @qa-only

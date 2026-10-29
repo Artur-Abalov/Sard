@@ -16,6 +16,12 @@ plugins {
 group = "dev.sard"
 version = providers.gradleProperty("sardVersion").getOrElse("dev")
 
+// server-core (CORE1): the library the open-core application (server-app) and an enterprise
+// build package; the project keeps its path :server so the gates and the tests' paths stay put.
+base {
+    archivesName = "sard-server-core"
+}
+
 // Kotlin 2.4.20 overrides the 2.3.x managed by Spring Boot 4.1.2 (owner's decision, see session log).
 extra["kotlin.version"] = "2.4.20"
 
@@ -85,33 +91,23 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-springBoot {
-    buildInfo()
-}
-
+// A library: sard-server.jar and the build-info.properties the server reads its version from
+// belong to the application that packages it (server-app). The tests read the build info from
+// the classpath as the server does, so they get their own copy.
 tasks.bootJar {
-    archiveFileName = "sard-server.jar"
+    enabled = false
 }
-
-// The console (S10, ADR 0040): the jar carries web/dist under console/ only when -PsardConsoleDist=<dir>
-// names a finished build (make build and the image's Dockerfile do); without it the jar has no console
-// and needs no Node. A directory without index.html fails the build, naming the property and the directory.
-val consoleDist = providers.gradleProperty("sardConsoleDist")
-val verifyConsoleDist by tasks.registering {
-    val dist = consoleDist.map { rootProject.layout.projectDirectory.dir(it) }
-    onlyIf { dist.isPresent }
-    doFirst {
-        val directory = dist.get().asFile
-        check(directory.resolve("index.html").isFile) {
-            "-PsardConsoleDist=${consoleDist.get()}: $directory has no index.html; build the console first (cd web && npm run build)"
-        }
-    }
+tasks.jar {
+    archiveClassifier = ""
 }
-tasks.processResources {
-    if (consoleDist.isPresent) {
-        dependsOn(verifyConsoleDist)
-        from(consoleDist.map { rootProject.layout.projectDirectory.dir(it) }) { into("console") }
-    }
+val testBuildInfo by tasks.registering(org.springframework.boot.gradle.tasks.buildinfo.BuildInfo::class) {
+    destinationDir = layout.buildDirectory.dir("test-build-info")
+}
+sourceSets.test {
+    resources.srcDir(layout.buildDirectory.dir("test-build-info"))
+}
+tasks.processTestResources {
+    dependsOn(testBuildInfo)
 }
 
 // The real sard-agent for the agent seam tests (S4a), built once per build and shared by every
@@ -309,7 +305,3 @@ mutflow {
     targets = listOf("dev.sard.server.**")
 }
 
-// mutflow's mutated copy of main also packages build-info.properties.
-tasks.matching { it.name == "processMutatedMainResources" }.configureEach {
-    dependsOn("bootBuildInfo")
-}

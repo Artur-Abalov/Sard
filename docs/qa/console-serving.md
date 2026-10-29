@@ -194,16 +194,16 @@ Network, «Preserve log» включён.
 
 32. `[Р1]` `env PATH=$(echo $PATH | tr : '\n' | grep -v -e node -e npm | paste -sd:) LC_ALL=C.UTF-8 ./gradlew :server:test`
     (убедиться, что `command -v node` в этом окружении пусто) → успешно.
-33. `./gradlew -q :server:bootJar && unzip -l server/build/libs/sard-server.jar | grep -c 'console/index.html'` → `0`.
+33. `./gradlew -q :server-app:bootJar && unzip -p server-app/build/libs/sard-server.jar 'BOOT-INF/lib/sard-server-console-*.jar' > $QA/console.jar && unzip -l $QA/console.jar | grep -c 'console/index.html'` → `0`.
 34. `[Р3]` Запустить этот jar в сети compose рядом с базой, на порту 8081:
-    `docker run -d --name sard-nc --network sard_default -p 127.0.0.1:8081:8080 -v $PWD/server/build/libs:/app:ro -e SARD_DB_URL=jdbc:postgresql://postgres:5432/sard -e SARD_DB_USER=sard_app -e SARD_DB_PASSWORD="$(docker compose -f deploy/docker-compose.yml exec -T server cat /run/sard-db/password)" -v sard_sard-pki:/pki -e SARD_PKI_DIR=/pki eclipse-temurin:25-jre java -jar /app/sard-server.jar; sleep 30`
+    `docker run -d --name sard-nc --network sard_default -p 127.0.0.1:8081:8080 -v $PWD/server-app/build/libs:/app:ro -e SARD_DB_URL=jdbc:postgresql://postgres:5432/sard -e SARD_DB_USER=sard_app -e SARD_DB_PASSWORD="$(docker compose -f deploy/docker-compose.yml exec -T server cat /run/sard-db/password)" -v sard_sard-pki:/pki -e SARD_PKI_DIR=/pki eclipse-temurin:25-jre java -jar /app/sard-server.jar; sleep 30`
     → `code localhost:8081/` и `code localhost:8081/agents` — `404`, тип не `text/html`;
     `code localhost:8081/api/v1/status` — `200`;
     `docker logs sard-nc 2>&1 | grep -i console` → ровно одна запись INFO о том,
     что консоль не включена в сборку. `docker rm -f sard-nc`.
-35. `mkdir -p $QA/empty; ./gradlew -q :server:bootJar -PsardConsoleDist=$QA/empty`
+35. `mkdir -p $QA/empty; ./gradlew -q :server-app:bootJar -PsardConsoleDist=$QA/empty`
     → ошибка сборки; сообщение называет `sardConsoleDist` и `$QA/empty`.
-36. `make build VERSION=$V && unzip -p server/build/libs/sard-server.jar BOOT-INF/classes/console/index.html | grep -o 'sard-version" content="[^"]*"'`
+36. `make build VERSION=$V && unzip -p server-app/build/libs/sard-server.jar "BOOT-INF/lib/sard-server-console-$V.jar" > $QA/console.jar && unzip -p $QA/console.jar console/index.html | grep -o 'sard-version" content="[^"]*"'`
     → `sard-version" content="0.0.0-qa"`.
 37. `cd web && npm run dev` → консоль на `http://localhost:5173` работает как
     прежде, против сервера `make up` и с `VITE_API_MOCKS=1` (поведение

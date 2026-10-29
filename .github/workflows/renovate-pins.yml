@@ -33,6 +33,8 @@ env:
     buildscript-gradle.lockfile
     proto/jvm/gradle.lockfile
     server/gradle.lockfile
+    server-app/gradle.lockfile
+    server-console/gradle.lockfile
     test/e2e/gradle.lockfile
     gradle/verification-metadata.xml
     agent/internal/restic/restic-version
