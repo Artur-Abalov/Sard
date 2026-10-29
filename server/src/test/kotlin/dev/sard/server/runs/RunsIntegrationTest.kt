@@ -113,6 +113,8 @@ class RunsIntegrationTest(
                 null,
                 requestedBy = "admin",
                 agentWaitUntil = RUNS_NOW.plusSeconds(24 * 3600),
+                // the tenant's agent has no stream here: the start says so, as a read does
+                agentOnline = false,
             ),
             run.copy(steps = emptyList()),
         )
