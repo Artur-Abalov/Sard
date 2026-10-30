@@ -325,20 +325,8 @@ class SelfBackups internal constructor(
         location: String?,
     ): Boolean {
         val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
-        if (record == null) {
-            session.persist(SelfBackupRecord(ids.next(), now, now).also { it.location = location })
-            return true
-        }
-        val relocated = location != null && location != record.location
-        if (moved) {
-            record.boundAt = now
-            record.updatedAt = now
-            record.location = location
-        } else if (relocated) {
-            record.location = location
-            record.updatedAt = now
-        }
-        return moved || relocated
+        if (record == null) session.persist(SelfBackupRecord(ids.next(), now, now).also { it.location = location })
+        return record == null || record.rebound(moved, now, location)
     }
 
     private fun viewIn(
@@ -454,4 +442,19 @@ private fun viewOf(
         recoveryKeyCommand = recoveryKeyCommand(repository.name),
         location = record.location,
     )
+}
+
+/** A move binds the record again [now]; a move or a new address takes the new [location]. True if it changed. */
+private fun SelfBackupRecord.rebound(
+    moved: Boolean,
+    now: Instant,
+    location: String?,
+): Boolean {
+    val changed = moved || (location != null && location != this.location)
+    if (changed) {
+        this.location = location
+        updatedAt = now
+    }
+    if (moved) boundAt = now
+    return changed
 }
