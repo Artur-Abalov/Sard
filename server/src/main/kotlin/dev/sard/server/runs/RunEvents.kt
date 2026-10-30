@@ -149,20 +149,23 @@ class RunEvents(
         session: Session,
         action: () -> Unit,
     ) {
-        session.transaction.registerSynchronization(
-            object : Synchronization {
-                override fun beforeCompletion() = Unit
-
-                override fun afterCompletion(status: Int) {
-                    if (status == Status.STATUS_COMMITTED) action()
-                }
-            },
-        )
+        session.transaction.registerSynchronization(AfterCommit(action))
     }
 
     companion object {
         /** Tells nobody; for the code that is built without a context. */
         val NONE = RunEvents(SardEventPublisher.NONE, Clock.systemUTC(), ActorSource.NONE)
+    }
+}
+
+/** Runs [action] when the transaction has committed, and not on a rollback (CORE1 Р21). */
+internal class AfterCommit(
+    private val action: () -> Unit,
+) : Synchronization {
+    override fun beforeCompletion() = Unit
+
+    override fun afterCompletion(status: Int) {
+        if (status == Status.STATUS_COMMITTED) action()
     }
 }
 

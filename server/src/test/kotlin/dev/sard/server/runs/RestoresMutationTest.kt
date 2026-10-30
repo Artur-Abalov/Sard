@@ -4,6 +4,8 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.events.ActorSource
+import dev.sard.server.events.SardEventMulticaster
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
@@ -48,8 +50,16 @@ private const val REQUIRED = """violates "required" of the schema"""
  * restore makes.
  */
 @Tag("mutflow-isolated")
-// TenantSessionsTest, RunEventsMutationTest and EventDeliveryTest mutate these
-@MutFlowTest(excludeTargets = [TenantSessions::class, RunEvents::class, SardEventPublisher::class])
+// TenantSessionsTest, RunEventsMutationTest and EventDeliveryTest mutate these; the empty publisher is not under test
+@MutFlowTest(
+    excludeTargets = [
+        TenantSessions::class,
+        RunEvents::class,
+        AfterCommit::class,
+        SardEventPublisher::class,
+        SardEventMulticaster::class,
+    ],
+)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0"],
@@ -467,7 +477,7 @@ class RestoresMutationTest(
                 queued,
                 Duration.ofHours(24),
                 { false },
-                RunEvents.NONE,
+                RunEvents(SardEventPublisher { }, clock, ActorSource.NONE),
             )
 
         val run = MutFlow.underTest { offline.start(tenant.id, s, SF, draft(a)) }
