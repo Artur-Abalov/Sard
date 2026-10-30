@@ -91,10 +91,11 @@ code() { curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' "$@"; }
 
 1. `[Р2]` `docker run --rm --entrypoint bash sard-server:$V -c 'ls -A /app; command -v node || echo no-node'`
    → `sard-server.jar` и `no-node`.
-2. `[Р1]` `docker run --rm --entrypoint bash sard-server:$V -c 'cat /app/sard-server.jar' > $QA/s.jar; unzip -l $QA/s.jar | grep -E 'console/(index.html|assets/)' | head`
-   → есть `BOOT-INF/classes/console/index.html` и файлы `console/assets/…`;
-   `unzip -l $QA/s.jar | grep -c mockServiceWorker` → `0`.
-3. `[Р7]` `unzip -p $QA/s.jar BOOT-INF/classes/console/index.html | grep -o '<meta name="sard-version"[^>]*>'`
+2. `[Р1]` `docker run --rm --entrypoint bash sard-server:$V -c 'cat /app/sard-server.jar' > $QA/s.jar; unzip -p $QA/s.jar "BOOT-INF/lib/sard-server-console-$V.jar" > $QA/c.jar; unzip -l $QA/c.jar | grep -E 'console/(index.html|assets/)' | head`
+   → есть `console/index.html` и файлы `console/assets/…` (набор консоли — вложенный jar
+   `BOOT-INF/lib/sard-server-console-<версия>.jar`, CORE1);
+   `unzip -l $QA/c.jar | grep -c mockServiceWorker` → `0`.
+3. `[Р7]` `unzip -p $QA/c.jar console/index.html | grep -o '<meta name="sard-version"[^>]*>'`
    → `content="0.0.0-qa"`; `curl -sS $H/api/v1/status | jq -r .version` → `0.0.0-qa`.
 4. `[Р9]` Мультиархитектура (нужен QEMU, в облачной среде Claude Code не
    проверить — тогда смотреть результат задания `image` в CI):
