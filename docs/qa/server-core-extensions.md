@@ -40,7 +40,7 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
   `sard.sample.listener`) задаются переменными окружения сервера образца
   (`SARD_SAMPLE_LICENCE`, `SARD_SAMPLE_DENY`, `SARD_SAMPLE_LISTENER`).
   **Каждое изменение применяется только перезапуском сервера образца**
-  (`docker compose up -d --force-recreate sard-server`); после перезапуска
+  (`docker compose up -d --force-recreate server`); после перезапуска
   дождаться `GET /actuator/health` = `UP` и войти заново. `AGENT` и `SRC` при
   перезапуске не меняются.
 - `psql` везде запускается так:
@@ -119,7 +119,7 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
     `curl -s -b $J $S/api/v1/server -o /tmp/body -w '%{http_code}\n'; jq -r .licence.state /tmp/body`
     → `200` и `unavailable`;
     `curl -s $S/api/v1/status -o /tmp/body -w '%{http_code}\n'; jq -r .edition.id /tmp/body`
-    → `200` и `sample`; в `docker compose logs sard-server` одна строка
+    → `200` и `sample`; в `docker compose logs server` одна строка
     `WARN` о недоступной лицензии.
 
 ## D. Политика доступа расширения
@@ -201,7 +201,7 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
 24. Новый стенд образца на чистых томах, но служба `migrate` — из образа
     ядра (без образца на classpath); затем запустить сервер образца.
     Ожидается: сервер не стартует; первая строка исключения в
-    `docker compose logs sard-server` начинается с
+    `docker compose logs server` начинается с
     `Database startup refused: EXTENSION_MIGRATIONS_NOT_APPLIED:` и называет
     `sard.flyway_schema_history_extensions`, службу `migrate` и
     `docs/operator/16-postgresql.md`.
