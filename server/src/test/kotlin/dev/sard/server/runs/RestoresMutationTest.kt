@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.auth.CoreSubjectSource
 import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventMulticaster
 import dev.sard.server.events.SardEventPublisher
@@ -50,7 +51,8 @@ private const val REQUIRED = """violates "required" of the schema"""
  * restore makes.
  */
 @Tag("mutflow-isolated")
-// TenantSessionsTest, RunEventsMutationTest and EventDeliveryTest mutate these; the empty publisher is not under test
+// TenantSessionsTest, RunEventsMutationTest, EventDeliveryTest and CoreSubjectSourceTest mutate these;
+// the empty publisher is not under test
 @MutFlowTest(
     excludeTargets = [
         TenantSessions::class,
@@ -58,6 +60,7 @@ private const val REQUIRED = """violates "required" of the schema"""
         AfterCommit::class,
         SardEventPublisher::class,
         SardEventMulticaster::class,
+        CoreSubjectSource::class,
     ],
 )
 @SpringBootTest(
