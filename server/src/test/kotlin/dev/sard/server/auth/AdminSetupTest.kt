@@ -3,6 +3,12 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.events.ActorSource
+import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SettingsEvents
+import dev.sard.server.extension.SardEvent
+import dev.sard.server.extension.SettingsChanged
+import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.MovableClock
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -18,7 +24,12 @@ import kotlin.test.assertTrue
 class AdminSetupTest {
     private val administrators = FakeAdministrators()
     private val hasher = PasswordHasher()
-    private val setup = StoredAdminSetup(administrators, hasher, MovableClock(Instant.parse("2026-10-09T12:00:00Z")))
+    private val clock = MovableClock(Instant.parse("2026-10-09T12:00:00Z"))
+    private val events = mutableListOf<SardEvent>()
+    private val publisher = SardEventPublisher { events += it as SardEvent }
+    private val tenant = TenantResolver.DEFAULT_TENANT_ID
+    private val setup =
+        StoredAdminSetup(administrators, hasher, clock, SettingsEvents(publisher, ActorSource.NONE, clock) { tenant })
 
     @Test
     fun `Шаг admin открыт, пока администратора нет`() {
@@ -56,5 +67,13 @@ class AdminSetupTest {
         assertTrue(ExternalAdminSetup.done())
         assertTrue(ExternalAdminSetup.external)
         assertFalse(ExternalAdminSetup.create("correct-horse-battery"))
+    }
+
+    @Test
+    fun `Пароль в мастере первого запуска даёт settings changed без субъекта и без входа`() {
+        setup.create("correct-horse-battery")
+        setup.create("another-password-1")
+
+        assertEquals(listOf<SardEvent>(SettingsChanged(clock.instant(), tenant, null, "password", null)), events)
     }
 }

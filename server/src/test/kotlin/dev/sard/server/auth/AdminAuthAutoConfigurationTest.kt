@@ -7,6 +7,7 @@ import dev.sard.server.ClockAutoConfiguration
 import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
+import dev.sard.server.events.EventsAutoConfiguration
 import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.TenancyAutoConfiguration
 import jakarta.servlet.Filter
@@ -100,6 +101,7 @@ class AdminAuthAutoConfigurationTest {
                     ClockAutoConfiguration::class.java,
                     TenancyAutoConfiguration::class.java,
                     AccessPolicyAutoConfiguration::class.java,
+                    EventsAutoConfiguration::class.java,
                     AdminAuthAutoConfiguration::class.java,
                 ),
             ).withBean(ObjectMapper::class.java, { ObjectMapper() })

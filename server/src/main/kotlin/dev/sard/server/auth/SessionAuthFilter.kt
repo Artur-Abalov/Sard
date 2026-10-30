@@ -72,7 +72,7 @@ class SessionAuthFilter(
     /** The session the request carries, touched; null when it carries none or one that is no longer valid. */
     private fun sessionOf(request: HttpServletRequest): AdminSession? {
         val sessionId = request.cookie(SESSION_COOKIE)
-        return sessionId?.let { sessionStore.touch(it) }
+        return sessionId?.let { sessionStore.touch(it, clientAddress(request)) }
     }
 
     /** Р12: DELETE /api/v1/session with an invalid or missing session also clears the cookie. */

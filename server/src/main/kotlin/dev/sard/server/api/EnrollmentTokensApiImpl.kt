@@ -9,6 +9,7 @@ import dev.sard.server.enrollment.EnrollmentTokenSummary
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.enrollment.RevokeRejection
 import dev.sard.server.enrollment.RevokeResult
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import org.springframework.stereotype.Component
@@ -22,11 +23,13 @@ class EnrollmentTokensApiImpl(
     private val tokens: EnrollmentTokens,
     private val tenants: TenantResolver,
     private val clock: Clock,
+    private val events: SettingsEvents,
 ) : EnrollmentTokensApi {
     override fun createEnrollmentToken(request: CreateEnrollmentTokenRequest): CreatedEnrollmentToken {
         val ttl = request.ttlSeconds?.let(Duration::ofSeconds) ?: DEFAULT_TTL
         val role = (request.role ?: AgentRole.SOURCE).toDomain()
         val issued = tokens.create(tenants.currentTenantId(), ttl, request.label.orEmpty(), role)
+        events.changed("token_created", issued.id)
         return CreatedEnrollmentToken(
             issued.id,
             issued.reveal(),
@@ -56,10 +59,20 @@ class EnrollmentTokensApiImpl(
 
     override fun revokeEnrollmentToken(tokenId: UUID): EnrollmentToken {
         val tenant = tenants.currentTenantId()
+        val wasRevoked = tokens.get(tenant, tokenId)?.revokedAt != null
         return when (val result = tokens.revoke(tenant, tokenId, clock.instant())) {
-            is RevokeResult.Revoked -> card(tenant, tokenId)
-            is RevokeResult.Rejected -> throw conflict(result.reason, tokens.get(tenant, tokenId))
-            RevokeResult.NotFound -> throw ResourceNotFound()
+            is RevokeResult.Revoked -> {
+                if (!wasRevoked) events.changed("token_revoked", tokenId)
+                card(tenant, tokenId)
+            }
+
+            is RevokeResult.Rejected -> {
+                throw conflict(result.reason, tokens.get(tenant, tokenId))
+            }
+
+            RevokeResult.NotFound -> {
+                throw ResourceNotFound()
+            }
         }
     }
 

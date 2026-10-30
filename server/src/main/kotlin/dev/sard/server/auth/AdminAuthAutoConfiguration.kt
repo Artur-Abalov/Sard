@@ -4,18 +4,26 @@
 package dev.sard.server.auth
 
 import dev.sard.server.ClockAutoConfiguration
+import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.SessionApi
+import dev.sard.server.events.ActorSource
+import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.AccessPolicy
 import dev.sard.server.extension.AccessPolicyAutoConfiguration
+import dev.sard.server.extension.SessionExpired
 import dev.sard.server.extension.TenancyAutoConfiguration
 import dev.sard.server.extension.TenantResolver
 import jakarta.servlet.Filter
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import tools.jackson.databind.ObjectMapper
@@ -33,6 +41,7 @@ private const val API_PATTERN = "/api/v1/*"
  * [OriginGuardFilter] (CSRF, К1/Р5) runs before [SessionAuthFilter] (rule 5): a request
  * with a foreign Origin is refused before authentication is even considered.
  */
+@EnableConfigurationProperties(SessionProperties::class)
 @AutoConfiguration(
     after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class, AccessPolicyAutoConfiguration::class],
 )
@@ -52,15 +61,37 @@ class AdminAuthAutoConfiguration {
         administrators: Administrators,
         passwordHasher: PasswordHasher,
         clock: Clock,
-    ): AdminSetup = StoredAdminSetup(administrators, passwordHasher, clock)
+        settings: SettingsEvents,
+    ): AdminSetup = StoredAdminSetup(administrators, passwordHasher, clock, settings)
 
     @Bean
     @ConditionalOnMissingBean(AdminSetup::class)
     fun externalAdminSetup(): AdminSetup = ExternalAdminSetup
 
+    /** The subject of the session of the request on this thread; none on the server's own threads (Р18). */
     @Bean
     @ConditionalOnMissingBean
-    fun sessionStore(clock: Clock) = SessionStore(clock)
+    fun actorSource(): ActorSource =
+        ActorSource {
+            val request = (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)?.request
+            (request?.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession)?.subject
+        }
+
+    @Bean
+    @ConditionalOnMissingBean
+    fun sessionStore(
+        clock: Clock,
+        publisher: SardEventPublisher,
+    ) = SessionStore(clock) { session, reason ->
+        publisher.publish(SessionExpired(clock.instant(), session.tenantId, session.subject, session.clientAddress, reason))
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    fun sessionSweep(
+        properties: SessionProperties,
+        sessionStore: SessionStore,
+    ) = SessionSweep(properties.interval(), sessionStore)
 
     @Bean
     @ConditionalOnMissingBean
@@ -75,7 +106,19 @@ class AdminAuthAutoConfiguration {
         attemptTracker: LoginAttemptTracker,
         tenantResolver: TenantResolver,
         clock: Clock,
-    ): SessionApi = SessionApiImpl(administrators, passwordHasher, sessionStore, attemptTracker, tenantResolver, clock)
+        publisher: SardEventPublisher,
+        settings: SettingsEvents,
+    ): SessionApi =
+        SessionApiImpl(
+            administrators,
+            passwordHasher,
+            sessionStore,
+            attemptTracker,
+            tenantResolver,
+            clock,
+            publisher,
+            settings,
+        )
 
     @Bean
     @ConditionalOnMissingBean(name = ["originGuardFilterRegistration"])

@@ -45,6 +45,7 @@ import java.util.UUID
         "sard.scheduler.interval=1h",
         "sard.freshness.interval=1h",
         "sard.verification.interval=1h",
+        "sard.session.sweep-interval=1h",
     ],
 )
 @Import(TestcontainersConfiguration::class, RestApiTestConfiguration::class)

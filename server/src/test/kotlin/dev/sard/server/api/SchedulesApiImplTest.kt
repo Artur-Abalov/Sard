@@ -4,6 +4,7 @@
 package dev.sard.server.api
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
@@ -53,7 +54,7 @@ class SchedulesApiImplTest(
 ) {
     private val tenant = RunsTenant(jdbc)
     private val tables = ScheduleTables(jdbc, tenant)
-    private val api = SchedulesApiImpl(schedules, TenantResolver { tenant.id })
+    private val api = SchedulesApiImpl(schedules, TenantResolver { tenant.id }, SettingsEvents.NONE)
 
     @BeforeTest
     fun `a tenant with an agent`() {

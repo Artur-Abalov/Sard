@@ -6,6 +6,15 @@ package dev.sard.server.auth
 import ch.qos.logback.classic.Level
 import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SignInResult
+import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SettingsEvents
+import dev.sard.server.extension.SardEvent
+import dev.sard.server.extension.SettingsChanged
+import dev.sard.server.extension.SignInFailed
+import dev.sard.server.extension.SignInLocked
+import dev.sard.server.extension.SignInSucceeded
+import dev.sard.server.extension.SignedOut
+import dev.sard.server.extension.Subject
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.selfagent.captureEvents
@@ -37,7 +46,19 @@ class SessionApiImplTest {
     private val administrators = FakeAdministrators()
     private val store = SessionStore(clock)
     private val tracker = LoginAttemptTracker(clock)
-    private val api = SessionApiImpl(administrators, hasher, store, tracker, { TENANT }, clock)
+    private val events = mutableListOf<SardEvent>()
+    private val publisher = SardEventPublisher { events += it as SardEvent }
+    private val api =
+        SessionApiImpl(
+            administrators,
+            hasher,
+            store,
+            tracker,
+            { TENANT },
+            clock,
+            publisher,
+            SettingsEvents(publisher, { Subject.ADMINISTRATOR }, clock) { TENANT },
+        )
 
     private fun withAdministrator(password: String = PASSWORD) {
         administrators.stored = hasher.hash(password)
@@ -403,5 +424,60 @@ class SessionApiImplTest {
         signIn(PASSWORD)
 
         assertEquals(1, store.trackedSessions())
+    }
+
+    @Test
+    fun `Успешный вход даёт событие вход удался с адресом клиента и субъектом сессии`() {
+        withAdministrator()
+
+        signIn(PASSWORD)
+
+        assertEquals(listOf<SardEvent>(SignInSucceeded(T0, TENANT, Subject.ADMINISTRATOR, ADDRESS)), events)
+    }
+
+    @Test
+    fun `Неверный пароль даёт событие вход не удался без пароля`() {
+        withAdministrator()
+
+        signIn("wrong-password-123")
+
+        assertEquals(listOf<SardEvent>(SignInFailed(T0, TENANT, null, ADDRESS)), events)
+        assertTrue("wrong-password-123" !in events.toString())
+    }
+
+    @Test
+    fun `Пятая неудача даёт одно событие вход заблокирован`() {
+        withAdministrator()
+
+        repeat(7) { signIn("wrong-password-123") }
+
+        assertEquals(5, events.filterIsInstance<SignInFailed>().size)
+        assertEquals(
+            listOf(SignInLocked(T0, TENANT, null, ADDRESS, T0.plus(Duration.ofMinutes(15)))),
+            events.filterIsInstance<SignInLocked>(),
+        )
+    }
+
+    @Test
+    fun `Выход даёт событие выход с субъектом этой сессии`() {
+        withAdministrator()
+        val id = (signIn(PASSWORD) as SignInResult.SignedIn).sessionId
+        events.clear()
+
+        MutFlow.underTest { api.deleteSession(id, ADDRESS) }
+
+        assertEquals(listOf<SardEvent>(SignedOut(T0, TENANT, Subject.ADMINISTRATOR, ADDRESS)), events)
+    }
+
+    @Test
+    fun `Событие смены пароля не несёт ни старого ни нового пароля`() {
+        withAdministrator()
+        val id = (signIn(PASSWORD) as SignInResult.SignedIn).sessionId
+        events.clear()
+
+        change(id, PASSWORD, "new-horse-battery-2")
+
+        assertEquals(listOf<SardEvent>(SettingsChanged(T0, TENANT, Subject.ADMINISTRATOR, "password", null)), events)
+        assertTrue(PASSWORD !in events.toString() && "new-horse-battery-2" !in events.toString())
     }
 }

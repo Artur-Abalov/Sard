@@ -7,6 +7,12 @@ import dev.sard.server.api.NoSuchSessionException
 import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
+import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SettingsEvents
+import dev.sard.server.extension.SignInFailed
+import dev.sard.server.extension.SignInLocked
+import dev.sard.server.extension.SignInSucceeded
+import dev.sard.server.extension.SignedOut
 import dev.sard.server.extension.TenantResolver
 import org.slf4j.LoggerFactory
 import java.time.Clock
@@ -30,6 +36,8 @@ class SessionApiImpl(
     private val attemptTracker: LoginAttemptTracker,
     private val tenantResolver: TenantResolver,
     private val clock: Clock,
+    private val publisher: SardEventPublisher = SardEventPublisher.NONE,
+    private val settings: SettingsEvents = SettingsEvents.NONE,
 ) : SessionApi {
     override fun createSession(
         password: String,
@@ -61,8 +69,10 @@ class SessionApiImpl(
         sessionId: String,
         clientAddress: String,
     ) {
+        val session = sessionStore.find(sessionId)
         if (!sessionStore.remove(sessionId)) throw NoSuchSessionException()
         log.info("Signed out from {}", clientAddress)
+        session?.let { publisher.publish(SignedOut(clock.instant(), it.tenantId, it.subject, clientAddress)) }
     }
 
     /** Р9: the rules of the fields first (not an attempt), then the lock of the address, then the current password. */
@@ -112,7 +122,8 @@ class SessionApiImpl(
         val tenantId = sessionStore.find(sessionId)?.tenantId ?: tenantResolver.currentTenantId()
         sessionStore.removeAll()
         log.info("Password changed from {}", clientAddress)
-        return PasswordChangeResult.Changed(sessionStore.create(tenantId).id)
+        settings.changed("password")
+        return PasswordChangeResult.Changed(sessionStore.create(tenantId, clientAddress).id)
     }
 
     /** True when [current] is the password and the hash of [new] took its place, unless another change came first. */
@@ -136,13 +147,21 @@ class SessionApiImpl(
     ): SignInResult.SignedIn {
         attemptTracker.recordSuccess(clientAddress)
         previousSessionId?.let { sessionStore.remove(it) }
-        val session = sessionStore.create(tenantResolver.currentTenantId())
+        val session = sessionStore.create(tenantResolver.currentTenantId(), clientAddress)
         log.info("Sign-in succeeded from {}", clientAddress)
+        publisher.publish(SignInSucceeded(clock.instant(), session.tenantId, session.subject, clientAddress))
         return SignInResult.SignedIn(session.id)
     }
 
     private fun wrongPassword(clientAddress: String): SignInResult.WrongPassword {
-        lockWarning(attemptTracker.recordFailure(clientAddress), clientAddress)
+        val justLocked = attemptTracker.recordFailure(clientAddress)
+        val tenantId = tenantResolver.currentTenantId()
+        publisher.publish(SignInFailed(clock.instant(), tenantId, null, clientAddress))
+        if (justLocked) {
+            val until = clock.instant() + attemptTracker.lockDuration
+            publisher.publish(SignInLocked(clock.instant(), tenantId, null, clientAddress, until))
+        }
+        lockWarning(justLocked, clientAddress)
         log.info("Sign-in failed from {}", clientAddress)
         return SignInResult.WrongPassword
     }

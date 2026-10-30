@@ -83,3 +83,25 @@ class FixturePolicyConfiguration {
     @Bean
     fun fixturePolicy(): FixturePolicy = FixturePolicy()
 }
+
+/** Every event of the core that reached a listener, as the sample's recording listener sees them. */
+class EventLog {
+    val events = java.util.concurrent.CopyOnWriteArrayList<SardEvent>()
+
+    @org.springframework.context.event.EventListener
+    fun on(event: SardEvent) {
+        events += event
+    }
+
+    fun clear() = events.clear()
+
+    inline fun <reified T : SardEvent> of(): List<T> = events.filterIsInstance<T>()
+
+    fun settings(setting: String): List<SettingsChanged> = of<SettingsChanged>().filter { it.setting == setting }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+class RecordingConfiguration {
+    @Bean
+    fun eventLog(): EventLog = EventLog()
+}
