@@ -108,6 +108,19 @@ class SampleExtensionIntegrationTest(
     }
 
     @Test
+    fun `Без свойства субъекта образец даёт actor субъекта сессии ядра`() {
+        val session = admin()
+        jdbc.update("delete from sample_events")
+
+        val body = """{"backupTimeoutMinutes":481,"restoreTimeoutMinutes":601}"""
+        assertEquals(200, client.send("PUT", "/api/v1/run-defaults", session, body).status)
+
+        val detail =
+            jdbc.queryForList("select detail from sample_events where type = 'settings.changed'", String::class.java).single().orEmpty()
+        assertTrue("actor=administrator:admin" in detail, detail)
+    }
+
+    @Test
     fun `Лицензия, что бы в ней ни было, не останавливает работу сервера`() {
         assertEquals(200, client.send("GET", "/api/v1/sources", admin()).status)
     }

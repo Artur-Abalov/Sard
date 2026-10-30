@@ -26,8 +26,10 @@ class SampleEventListener(
             "throw" -> error("the sample listener throws on ${event.type}")
             "slow" -> Thread.sleep(SLOW_MILLIS)
         }
-        jdbc.update("insert into sample_events (type, detail) values (?, ?)", event.type, detailOf(event))
+        jdbc.update("insert into sample_events (type, detail) values (?, ?)", event.type, detailOf(event) + actorOf(event))
     }
+
+    private fun actorOf(event: SardEvent) = " actor=" + (event.actor?.let { "${it.kind}:${it.id}" } ?: "none")
 
     /** The fields that identify the event, as text; never a secret, because an event carries none. */
     private fun detailOf(event: SardEvent): String =
