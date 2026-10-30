@@ -20,10 +20,12 @@ private const val SETTING = "SARD_MIGRATE_EXTENSION_LOCATIONS"
 
 /** Rule "Сервер не стартует, пока не применены миграции расширений": the start check reads the migrate setting. */
 class ExtensionLocationsWiringTest {
+    private val build = BuildProperties(Properties().apply { setProperty("version", "0.1.0") })
+
     private val runner =
         ApplicationContextRunner()
             .withUserConfiguration(DatabaseVersionConfiguration::class.java)
-            .withBean(BuildProperties::class.java, { BuildProperties(Properties().apply { setProperty("version", "0.1.0") }) })
+            .withBean(BuildProperties::class.java, { build })
             .withBean(DatabaseMismatchListener::class.java, { DatabaseMismatchListener { } })
             .withBean(RoleExcessListener::class.java, { RoleExcessListener { } })
 
@@ -41,7 +43,8 @@ class ExtensionLocationsWiringTest {
     ): Throwable? {
         var failure: Throwable? = null
         runner.withPropertyValues(*properties).run { ctx ->
-            failure = runCatching { ctx.getBean(FlywayMigrationStrategy::class.java).migrate(flyway(database)) }.exceptionOrNull()
+            val strategy = ctx.getBean(FlywayMigrationStrategy::class.java)
+            failure = runCatching { strategy.migrate(flyway(database)) }.exceptionOrNull()
         }
         return failure
     }
