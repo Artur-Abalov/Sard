@@ -40,6 +40,10 @@ kotlin {
             include {
                 byNames.add("dev.sard.server.extension.**")
             }
+            // What has to be public for Spring but is no API (the @Bean methods of the auto-configurations).
+            exclude {
+                annotatedWith.add("dev.sard.server.extension.InternalSardApi")
+            }
         }
     }
 }

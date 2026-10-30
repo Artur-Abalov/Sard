@@ -17,6 +17,7 @@ class EditionAutoConfiguration {
         /** Two extensions replacing the seam refuse the start (Р22). */
         @Bean
         @JvmStatic
+        @InternalSardApi
         fun editionSeamCheck() = singleImplementationOf(EditionProvider::class.java)
     }
 
@@ -30,6 +31,7 @@ class EditionAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @InternalSardApi
     fun editionProvider(): EditionProvider =
         object : EditionProvider {
             override fun edition() = Edition.FREE
