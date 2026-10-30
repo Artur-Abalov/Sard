@@ -44,12 +44,16 @@ class AccessPolicyInterceptor(
     }
 
     /** The session and the operation the policy is asked about; null when it is not asked (Р17). */
-    private fun askedAbout(request: HttpServletRequest): Pair<AdminSession, Operation>? {
-        val session = request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession
-        val template = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String
-        val operation = template?.let { Operation(request.method, it) }?.takeUnless(::exempt)
-        return if (session == null || operation == null) null else session to operation
-    }
+    private fun askedAbout(request: HttpServletRequest): Pair<AdminSession, Operation>? =
+        (request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession)?.let { session ->
+            operationOf(request)?.let { session to it }
+        }
+
+    /** The operation by its path template; null when there is none or it is exempt. */
+    private fun operationOf(request: HttpServletRequest): Operation? =
+        (request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String)
+            ?.let { Operation(request.method, it) }
+            ?.takeUnless(::exempt)
 
     private fun exempt(operation: Operation) = operation.toString().let { it in PUBLIC_OPERATIONS || it in EXEMPT }
 
