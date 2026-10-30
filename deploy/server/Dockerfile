@@ -91,12 +91,17 @@ RUN --mount=type=cache,target=/root/.gradle \
       [ "$attempt" -eq 5 ] && exit 1; \
       echo "Gradle download failed, retrying in $((attempt * 5))s" >&2; sleep $((attempt * 5)); \
     done && \
-    ./gradlew --no-daemon :server-app:bootJar -PsardVersion="${SARD_VERSION}" -PsardConsoleDist=/src/console-dist
+    ./gradlew --no-daemon :server-app:bootJar \
+      :server:publishMavenPublicationToReleaseRepository :proto-jvm:publishMavenPublicationToReleaseRepository \
+      :server-console:publishMavenPublicationToReleaseRepository \
+      -PsardVersion="${SARD_VERSION}" -PsardConsoleDist=/src/console-dist
 
-# The jar alone: the export target of `make server-jar`, and the stage a named build
+# The jar and the libraries of the same build: the export target of `make server-jar`, and the stage a named build
 # context replaces with that export.
 FROM scratch AS server-jar
 COPY --from=build /src/server-app/build/libs/sard-server.jar /sard-server.jar
+# server-core, the protocol and the console as Maven artifacts of this same build (CORE1, release job "maven").
+COPY --from=build /src/build/maven-repo /maven/
 
 FROM eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f
 ARG SARD_VERSION=dev

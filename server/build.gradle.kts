@@ -323,6 +323,11 @@ mutflow {
 
 // What an enterprise build and the extension sample compile against (CORE1 phase 3, Р1): the version is the
 // build's X.Y.Z and the public API is dev.sard.server.extension.**. No remote repository yet; the release workflow adds it.
+// The POM carries the resolved versions (versionMapping below), not the Spring BOM the plugin would import into it.
+dependencyManagement {
+    generatedPomCustomization { enabled(false) }
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
