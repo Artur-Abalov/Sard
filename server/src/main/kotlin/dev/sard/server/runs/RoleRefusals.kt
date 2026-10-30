@@ -63,11 +63,7 @@ class RoleRefusals(
         val moved =
             sessions.inTenant(tenantId) { session ->
                 val ended = session.execute(REFUSE, values) == 1
-                if (ended) {
-                    val watch = events.watchStep(session, tenantId, stepId)
-                    session.execute(RUN_FINISHED, values)
-                    events.settled(session, listOfNotNull(watch))
-                }
+                if (ended) events.movingStep(session, tenantId, stepId) { session.execute(RUN_FINISHED, values) }
                 ended
             }
         if (moved) announcer.announce(tenantId, stepId)

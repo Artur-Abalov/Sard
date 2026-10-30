@@ -77,9 +77,9 @@ class AgentWaits(
                     val values = mapOf("tenant" to step.tenantId, "step" to step.stepId, "agent" to step.agentId)
                     val closed = session.execute(CLOSE_STEP, values + ("now" to now)) == 1
                     if (closed) {
-                        val watch = events.watchStep(session, step.tenantId, step.stepId)
-                        session.execute(CLOSE_RUN, values + ("now" to now))
-                        events.settled(session, listOfNotNull(watch))
+                        events.movingStep(session, step.tenantId, step.stepId) {
+                            session.execute(CLOSE_RUN, values + ("now" to now))
+                        }
                     }
                     closed
                 }

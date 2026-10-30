@@ -275,11 +275,7 @@ class StepTransitions(
                 "cancelResult" to cancelResultOf(to),
             ) + extra
         val moved = execute(step, values) == 1
-        if (moved && run != null) {
-            val watch = events.watchStep(this, tenantId, stepId)
-            execute(run, values)
-            events.settled(this, listOfNotNull(watch))
-        }
+        if (moved && run != null) events.movingStep(this, tenantId, stepId) { execute(run, values) }
         return moved
     }
 }

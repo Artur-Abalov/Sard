@@ -77,6 +77,28 @@ class RunEvents(
         runId: UUID,
     ): Watch? = statusOf(session, tenantId, runId)?.let { Watch(tenantId, runId, it) }
 
+    /** Runs [move], which moves the run of [stepId], between [watchStep] and [settled]; what [move] returns. */
+    fun <T> movingStep(
+        session: Session,
+        tenantId: UUID,
+        stepId: UUID,
+        move: () -> T,
+    ): T {
+        val watch = watchStep(session, tenantId, stepId)
+        return move().also { settled(session, listOfNotNull(watch)) }
+    }
+
+    /** Runs [move], which moves the run [runId], between [watchRun] and [settled]; what [move] returns. */
+    fun <T> movingRun(
+        session: Session,
+        tenantId: UUID,
+        runId: UUID,
+        move: () -> T,
+    ): T {
+        val watch = watchRun(session, tenantId, runId)
+        return move().also { settled(session, listOfNotNull(watch)) }
+    }
+
     /** [watches] have been moved in [session]'s transaction: publishes what changed once it commits. */
     fun settled(
         session: Session,

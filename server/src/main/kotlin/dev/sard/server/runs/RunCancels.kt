@@ -85,9 +85,9 @@ class CancelMarks(
         values: Map<String, Any?>,
     ): CancelDone? {
         if (session.execute(CANCEL_QUEUED_STEP, values) != 1) return null
-        val watch = events.watchRun(session, values["tenant"] as UUID, values["run"] as UUID)
-        session.execute(CANCEL_QUEUED_RUN, values)
-        events.settled(session, listOfNotNull(watch))
+        events.movingRun(session, values["tenant"] as UUID, values["run"] as UUID) {
+            session.execute(CANCEL_QUEUED_RUN, values)
+        }
         return CancelDone.CLOSED
     }
 
