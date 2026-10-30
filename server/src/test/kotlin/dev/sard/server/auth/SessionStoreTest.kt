@@ -23,7 +23,7 @@ private val TENANT: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001
 @MutFlowTest
 class SessionStoreTest {
     private val clock = MovableClock(LOGIN)
-    private val store = SessionStore(clock)
+    private val store = SessionStore(clock, onExpired = { _, _ -> })
 
     private fun touch(id: String) = MutFlow.underTest { store.touch(id) }
 
@@ -51,7 +51,8 @@ class SessionStoreTest {
 
     @Test
     fun `a session id carries at least 128 bits of randomness by its length and alphabet`() {
-        val id = store.create(TENANT).id
+        val id = MutFlow.underTest { store.create(TENANT) }.id
+        assertTrue(Regex("[0-9a-f]{64}").matches(id), id)
         val alphabetSize = id.toSet().let { chars -> maxOf(chars.size, 16) }
         val bits = id.length * (Math.log(alphabetSize.toDouble()) / Math.log(2.0))
         assertTrue(bits >= 128, "only $bits bits in '$id'")
@@ -155,5 +156,108 @@ class SessionStoreTest {
         assertNotEquals(a.id, b.id)
         assertNotNull(touch(a.id))
         assertNotNull(touch(b.id))
+    }
+
+    private val told = mutableListOf<Pair<AdminSession, String>>()
+    private val telling = SessionStore(clock, onExpired = { session, reason -> told += session to reason })
+
+    @Test
+    fun `a session that ran out idle is told once as idle when it is used`() {
+        val session = telling.create(TENANT, "10.0.0.1")
+        clock.now = LOGIN + Duration.ofHours(1)
+
+        assertNull(MutFlow.underTest { telling.touch(session.id, "10.0.0.2") })
+        assertNull(telling.touch(session.id))
+
+        assertEquals(listOf(session to IDLE), told)
+    }
+
+    @Test
+    fun `a session that reached 8 hours from login is told as absolute`() {
+        val session = telling.create(TENANT)
+        var now = LOGIN
+        var last = session
+        while (now + Duration.ofMinutes(30) < LOGIN + Duration.ofHours(8)) {
+            now += Duration.ofMinutes(30)
+            clock.now = now
+            last = assertNotNull(telling.touch(session.id))
+        }
+        clock.now = LOGIN + Duration.ofHours(8)
+
+        assertNull(MutFlow.underTest { telling.touch(session.id) })
+
+        assertEquals(listOf(last to ABSOLUTE), told)
+    }
+
+    @Test
+    fun `when the idle and the absolute deadline coincide the session is told as idle`() {
+        val session = telling.create(TENANT)
+        var last = session
+        for (half in 1..14) {
+            clock.now = LOGIN + Duration.ofMinutes(30L * half)
+            last = assertNotNull(telling.touch(session.id))
+        }
+        // 1 hour idle after 7 hours is exactly 8 hours from login: nothing tells which came first, idle does.
+        clock.now = LOGIN + Duration.ofHours(8)
+
+        assertNull(MutFlow.underTest { telling.touch(session.id) })
+
+        assertEquals(listOf(last to IDLE), told)
+    }
+
+    @Test
+    fun `sweep removes the sessions that ran out, tells of each once and leaves the valid ones`() {
+        val gone = telling.create(TENANT)
+        clock.now = LOGIN + Duration.ofMinutes(30)
+        val stays = telling.create(TENANT)
+        clock.now = LOGIN + Duration.ofHours(1)
+
+        MutFlow.underTest { telling.sweep() }
+        MutFlow.underTest { telling.sweep() }
+
+        assertEquals(listOf(gone to IDLE), told)
+        assertEquals(1, telling.trackedSessions())
+        assertNotNull(telling.find(stays.id))
+    }
+
+    @Test
+    fun `creating a session tells of the ones that ran out`() {
+        val gone = telling.create(TENANT)
+        clock.now = LOGIN + Duration.ofHours(1)
+
+        MutFlow.underTest { telling.create(TENANT) }
+
+        assertEquals(listOf(gone to IDLE), told)
+    }
+
+    @Test
+    fun `signing out is not an expiry`() {
+        val session = telling.create(TENANT)
+
+        assertTrue(MutFlow.underTest { telling.remove(session.id) })
+        clock.now = LOGIN + Duration.ofHours(2)
+        telling.sweep()
+
+        assertEquals(emptyList(), told)
+    }
+
+    @Test
+    fun `a listener that throws does not break the expiry`() {
+        val failing = SessionStore(clock, onExpired = { _, _ -> error("boom") })
+        val session = failing.create(TENANT)
+        clock.now = LOGIN + Duration.ofHours(1)
+
+        assertNull(MutFlow.underTest { failing.touch(session.id) })
+        assertEquals(0, failing.trackedSessions())
+    }
+
+    @Test
+    fun `the address of the sign-in stays until a request brings another`() {
+        val session = store.create(TENANT, "10.0.0.1")
+        assertEquals("10.0.0.1", session.clientAddress)
+
+        assertEquals("10.0.0.1", MutFlow.underTest { store.touch(session.id) }?.clientAddress)
+        assertEquals("10.0.0.2", MutFlow.underTest { store.touch(session.id, "10.0.0.2") }?.clientAddress)
+        assertEquals("10.0.0.2", MutFlow.underTest { store.touch(session.id) }?.clientAddress)
     }
 }

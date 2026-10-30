@@ -39,7 +39,7 @@ private const val ADDRESS = "203.0.113.10"
 private val TENANT = TenantResolver.DEFAULT_TENANT_ID
 
 /** Sign-in and password change against a stored Argon2id hash (F4a); the hasher is the real one. */
-@MutFlowTest
+@MutFlowTest(excludeTargets = [SessionStore::class]) // SessionStoreTest mutates it
 class SessionApiImplTest {
     private val hasher = PasswordHasher()
     private val clock = MovableClock(T0)

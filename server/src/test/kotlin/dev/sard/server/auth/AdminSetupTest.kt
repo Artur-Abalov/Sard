@@ -71,8 +71,9 @@ class AdminSetupTest {
 
     @Test
     fun `Пароль в мастере первого запуска даёт settings changed без субъекта и без входа`() {
-        setup.create("correct-horse-battery")
-        setup.create("another-password-1")
+        assertTrue(MutFlow.underTest { setup.create("correct-horse-battery") })
+        assertEquals(1, events.size)
+        assertFalse(MutFlow.underTest { setup.create("another-password-1") })
 
         assertEquals(listOf<SardEvent>(SettingsChanged(clock.instant(), tenant, null, "password", null)), events)
     }
