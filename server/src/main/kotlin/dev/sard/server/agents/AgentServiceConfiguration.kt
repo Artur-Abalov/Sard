@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.fleet.AgentPresence
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.MachineAgents
@@ -37,7 +38,8 @@ class AgentServiceConfiguration {
         announcer: RunAnnouncer,
         events: RunEvents,
         clock: Clock,
-    ) = Agents(sessions, presence, announcer, events, clock)
+        settings: SettingsEvents,
+    ) = Agents(sessions, presence, announcer, events, clock, settings)
 
     @Bean
     fun repositories(sessions: TenantSessions) = Repositories(sessions, ::recoveryKeyCommand)

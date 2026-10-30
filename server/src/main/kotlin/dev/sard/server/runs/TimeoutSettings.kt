@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.TenantSessions
 import org.hibernate.Session
 import java.time.Clock
@@ -15,11 +16,18 @@ private const val RESTORE_DEFAULT_MINUTES = 720
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8).
 private const val READ =
     "select backup_timeout_minutes, restore_timeout_minutes from run_defaults where tenant_id = :tenant"
-private const val WRITE = """
+
+// The row of a tenant starts as the initial defaults, so the write is a plain update: it takes the row lock, a
+// concurrent save is re-checked against the committed row, and the count of rows tells whether this save changed the
+// stored value (CORE1 Р28).
+private const val SEED = """
     insert into run_defaults (tenant_id, backup_timeout_minutes, restore_timeout_minutes, updated_at)
-    values (:tenant, :backup, :restore, :now)
-    on conflict (tenant_id) do update set backup_timeout_minutes = excluded.backup_timeout_minutes,
-        restore_timeout_minutes = excluded.restore_timeout_minutes, updated_at = excluded.updated_at"""
+    values (:tenant, $BACKUP_DEFAULT_MINUTES, $RESTORE_DEFAULT_MINUTES, :now)
+    on conflict (tenant_id) do nothing"""
+private const val WRITE = """
+    update run_defaults set backup_timeout_minutes = :backup, restore_timeout_minutes = :restore, updated_at = :now
+    where tenant_id = :tenant
+        and (backup_timeout_minutes, restore_timeout_minutes) is distinct from (:backup, :restore)"""
 
 /** The default step timeouts of a tenant in minutes, for the sources that name none. */
 data class TimeoutDefaults(
@@ -38,21 +46,31 @@ data class TimeoutDefaults(
 class TimeoutSettings(
     private val sessions: TenantSessions,
     private val clock: Clock,
+    private val events: SettingsEvents = SettingsEvents.NONE,
 ) {
     fun get(tenantId: UUID): TimeoutDefaults = sessions.inTenant(tenantId) { read(it, tenantId) }
 
+    /** Saves [defaults]; the listeners hear of it, once committed, when it differed from what the tenant had. */
     fun set(
         tenantId: UUID,
         defaults: TimeoutDefaults,
     ): TimeoutDefaults {
         sessions.inTenant(tenantId) { session ->
+            val now = clock.instant()
             session
-                .createNativeMutationQuery(WRITE.trimIndent())
+                .createNativeMutationQuery(SEED.trimIndent())
                 .setParameter("tenant", tenantId)
-                .setParameter("backup", defaults.backupMinutes)
-                .setParameter("restore", defaults.restoreMinutes)
-                .setParameter("now", clock.instant())
+                .setParameter("now", now)
                 .executeUpdate()
+            val changed =
+                session
+                    .createNativeMutationQuery(WRITE.trimIndent())
+                    .setParameter("tenant", tenantId)
+                    .setParameter("backup", defaults.backupMinutes)
+                    .setParameter("restore", defaults.restoreMinutes)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            events.changedRows(changed, session, tenantId, "run_defaults")
         }
         return defaults
     }

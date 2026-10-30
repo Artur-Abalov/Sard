@@ -3,6 +3,7 @@
 
 package dev.sard.server.scheduler
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.loop.PeriodicTask
 import dev.sard.server.loop.Timing
 import dev.sard.server.metrics.SardMetricNames
@@ -106,7 +107,8 @@ class SchedulerConfiguration {
     fun schedules(
         sessions: TenantSessions,
         clock: Clock,
-    ) = Schedules(sessions, clock, UuidV7(clock, SecureRandom()))
+        settings: SettingsEvents,
+    ) = Schedules(sessions, clock, UuidV7(clock, SecureRandom()), settings)
 
     @Bean
     fun catchUpPeriods(sessions: TenantSessions) = CatchUpPeriods(sessions)

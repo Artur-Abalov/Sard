@@ -3,7 +3,6 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.AgentCard
 import dev.sard.server.fleet.AgentCertificates
@@ -35,7 +34,6 @@ class AgentsApiImpl(
     private val certificates: AgentCertificates,
     private val clock: Clock,
     private val repositories: Repositories,
-    private val events: SettingsEvents,
 ) : AgentsApi {
     override fun listAgents(
         status: AgentStatus?,
@@ -61,10 +59,8 @@ class AgentsApiImpl(
     override fun revokeAgent(
         agentId: UUID,
         confirm: String?,
-    ): AgentDetails {
-        val tenant = tenants.currentTenantId()
-        val revokedBefore = { agents.get(tenant, agentId)?.row?.revokedAt }
-        return when (val revocation = revoked(tenant, agentId, confirm, revokedBefore)) {
+    ): AgentDetails =
+        when (val revocation = agents.revoke(tenants.currentTenantId(), agentId, confirm)) {
             is AgentRevocation.Revoked -> {
                 detailsOf(revocation.card)
             }
@@ -77,20 +73,6 @@ class AgentsApiImpl(
                 throw SelfAgentConfirmationRequired()
             }
         }
-    }
-
-    /** Revokes, and tells the listeners when the agent was not revoked before (a repeat changes nothing). */
-    private fun revoked(
-        tenant: UUID,
-        agentId: UUID,
-        confirm: String?,
-        revokedBefore: () -> Any?,
-    ): AgentRevocation {
-        val was = revokedBefore() != null
-        val revocation = agents.revoke(tenant, agentId, confirm)
-        if (revocation is AgentRevocation.Revoked && !was) events.changed("agent_revoked", agentId)
-        return revocation
-    }
 
     private fun connectivityOf(status: AgentStatus): Connectivity =
         when (status) {

@@ -5,6 +5,10 @@ package dev.sard.server.enrollment
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.completeOnboarding
+import dev.sard.server.events.CommitPublication
+import dev.sard.server.events.SardEventMulticaster
+import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
@@ -38,7 +42,15 @@ private val MARGIN: Duration = Duration.ofMinutes(10)
  * "Проверка выпускает встроенный токен..." (the token side) of docs/specs/server/self-agent.feature.
  */
 @Tag("mutflow-isolated")
-@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
+@MutFlowTest(
+    excludeTargets = [
+        TenantSessions::class, // TenantSessionsTest mutates it
+        SettingsEvents::class, // the events of a setting: SettingsEventsDomainMutationTest mutates them
+        CommitPublication::class,
+        SardEventPublisher::class,
+        SardEventMulticaster::class,
+    ],
+)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0"],

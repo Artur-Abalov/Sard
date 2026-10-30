@@ -4,6 +4,7 @@
 package dev.sard.server.verify
 
 import dev.sard.server.agents.stream.AgentConnections
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.CancelMarks
@@ -69,15 +70,6 @@ class VerificationConfiguration {
     )
 
     @Bean
-    fun verifications(
-        sessions: TenantSessions,
-        clock: Clock,
-        cycles: VerificationCycles,
-        pool: VerifierPool,
-        settings: VerificationSettings,
-    ) = Verifications(sessions, clock, cycles, pool, VerificationSchedule(settings))
-
-    @Bean
     fun verificationReads(
         sessions: TenantSessions,
         clock: Clock,
@@ -114,4 +106,28 @@ class VerificationCancelConfiguration {
         settlement: VerificationSettlement,
         history: VerificationHistory,
     ) = VerificationCancels(sessions, clock, runs, marks, settlement, history)
+}
+
+/** The writes REST makes to restore verification, and the events of them (CORE1 Р28). */
+@Configuration(proxyBeanMethods = false)
+class VerificationWritesConfiguration {
+    /** The installation's cycle: REST sets it, and the listeners hear of a change (CORE1 Р28). */
+    @Bean
+    fun verificationSchedule(
+        settings: VerificationSettings,
+        events: SettingsEvents,
+    ) = VerificationSchedule(settings, events)
+
+    @Bean
+    fun verifications(
+        sessions: TenantSessions,
+        clock: Clock,
+        cycles: VerificationCycles,
+        pool: VerifierPool,
+        schedule: VerificationSchedule,
+        switch: VerificationSwitch,
+    ) = Verifications(sessions, clock, cycles, pool, schedule, switch)
+
+    @Bean
+    fun verificationSwitch(events: SettingsEvents) = VerificationSwitch(events)
 }

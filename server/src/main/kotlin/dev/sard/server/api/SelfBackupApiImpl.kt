@@ -3,7 +3,6 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.runs.AgentRevoked
@@ -31,16 +30,12 @@ class SelfBackupApiImpl(
     private val ca: CertificateAuthority,
     private val build: BuildProperties,
     private val clock: Clock,
-    private val events: SettingsEvents,
 ) : SelfBackupApi {
     override fun getSelfBackup(): SelfBackup = selfBackupOf(selfBackups.get(tenants.currentTenantId()))
 
     override fun bindSelfBackupRepository(input: SelfBackupRepositoryInput): SelfBackup {
         val tenant = tenants.currentTenantId()
-        val binding = { selfBackups.get(tenant).let { listOf(it.agentId, it.repository) } }
-        return events.whenChanged("self_backup_repository", null, binding) {
-            selfBackupOf(selfBackups.bind(tenant, input.repositoryName, input.confirmLocalStorage, input.location))
-        }
+        return selfBackupOf(selfBackups.bind(tenant, input.repositoryName, input.confirmLocalStorage, input.location))
     }
 
     override fun confirmKeys(
