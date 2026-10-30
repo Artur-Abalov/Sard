@@ -36,6 +36,11 @@ dependencies {
     api("io.grpc:grpc-kotlin-stub")
     api("com.google.protobuf:protobuf-java")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+    constraints {
+        // gRPC still asks for 33.6.0; GHSA-xxph-c9ww-hj94 is fixed in 33.7.2. The constraint reaches
+        // every project that depends on this one (server, e2e).
+        api("com.google.guava:guava:33.7.2-jre")
+    }
 }
 
 sourceSets {
