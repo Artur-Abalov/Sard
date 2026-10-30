@@ -80,3 +80,25 @@ class PackageDependencyTest {
         assertTrue("prometheus" !in importedBy("metrics"))
     }
 }
+
+private val LICENCE_SEAM = Regex("""^import\s+dev\.sard\.server\.extension\.(Edition|EditionProvider|Licence\w*)\b""")
+
+/** Rule "Лицензия никогда не блокирует бэкап, восстановление и проверку" (server-core-extensions.feature). */
+class LicenceNeverBlocksTest {
+    @Test
+    fun `Запуски, отправка, проверка, планировщик и восстановление не зависят от шва лицензии`() {
+        val slices = listOf("runs", "agents", "verify", "scheduler", "selfbackup", "freshness", "retention", "fleet")
+        val offenders =
+            slices.flatMap { slice ->
+                val files =
+                    MAIN
+                        .resolve(slice)
+                        .walkTopDown()
+                        .filter { it.isFile && it.extension == "kt" }
+                        .toList()
+                assertTrue(files.isNotEmpty(), "the scan found no files of $slice")
+                files.filter { file -> file.readLines().any { LICENCE_SEAM.containsMatchIn(it) } }.map { it.path }
+            }
+        assertEquals(emptyList(), offenders)
+    }
+}
