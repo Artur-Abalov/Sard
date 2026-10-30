@@ -168,8 +168,9 @@ data class SessionExpired(
 /**
  * `settings.changed`: a request changed the stored state (Р20). [setting] is one of password, run_defaults,
  * source_created, source_updated, source_deleted, source_schedule, source_verification, verification_schedule,
- * self_backup_repository, token_created, token_revoked, agent_revoked; [objectId] is null for the settings of the
- * installation. Never carries a secret.
+ * self_backup_repository, token_created, token_revoked, agent_revoked, admin_password (the command admin-reset ran
+ * while the server was stopped: published once at the next start, with no actor, Р32); [objectId] is null for the
+ * settings of the installation. Never carries a secret.
  */
 data class SettingsChanged(
     override val occurredAt: Instant,
