@@ -7,6 +7,7 @@ import dev.sard.server.api.NoSuchSessionException
 import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
+import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.SignInFailed
@@ -38,6 +39,7 @@ class SessionApiImpl(
     private val clock: Clock,
     private val publisher: SardEventPublisher = SardEventPublisher.NONE,
     private val settings: SettingsEvents = SettingsEvents.NONE,
+    private val actors: ActorSource = ActorSource.NONE,
 ) : SessionApi {
     override fun createSession(
         password: String,
@@ -72,7 +74,7 @@ class SessionApiImpl(
         val session = sessionStore.find(sessionId)
         if (!sessionStore.remove(sessionId)) throw NoSuchSessionException()
         log.info("Signed out from {}", clientAddress)
-        session?.let { publisher.publish(SignedOut(clock.instant(), it.tenantId, it.subject, clientAddress)) }
+        session?.let { publisher.publish(SignedOut(clock.instant(), it.tenantId, actors.current(), clientAddress)) }
     }
 
     /** Р9: the rules of the fields first (not an attempt), then the lock of the address, then the current password. */

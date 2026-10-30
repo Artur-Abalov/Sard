@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.auth.CoreSubjectSource
 import dev.sard.server.events.SardEventMulticaster
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.persistence.HibernateTenantBridge
@@ -44,7 +45,7 @@ private val SQ_AT: Instant = Instant.parse("2026-10-11T03:00:00Z")
  * a plugin.
  */
 @Tag("mutflow-isolated")
-// TenantSessionsTest, RunEventsMutationTest and EventDeliveryTest mutate these
+// TenantSessionsTest, RunEventsMutationTest, EventDeliveryTest and CoreSubjectSourceTest mutate these
 @MutFlowTest(
     excludeTargets = [
         TenantSessions::class,
@@ -52,6 +53,7 @@ private val SQ_AT: Instant = Instant.parse("2026-10-11T03:00:00Z")
         AfterCommit::class,
         SardEventPublisher::class,
         SardEventMulticaster::class,
+        CoreSubjectSource::class,
     ],
 )
 @SpringBootTest(

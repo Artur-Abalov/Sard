@@ -5,7 +5,9 @@ package dev.sard.server.events
 
 import dev.sard.server.ClockAutoConfiguration
 import dev.sard.server.api.captureLogs
+import dev.sard.server.auth.CoreSubjectSourceAutoConfiguration
 import dev.sard.server.extension.SettingsChanged
+import dev.sard.server.extension.SubjectSourceAutoConfiguration
 import dev.sard.server.extension.TenancyAutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.TestConfiguration
@@ -50,6 +52,8 @@ class SardEventPublisherTest {
             .withConfiguration(
                 AutoConfigurations.of(
                     EventsAutoConfiguration::class.java,
+                    SubjectSourceAutoConfiguration::class.java,
+                    CoreSubjectSourceAutoConfiguration::class.java,
                     TenancyAutoConfiguration::class.java,
                     ClockAutoConfiguration::class.java,
                 ),
@@ -69,7 +73,7 @@ class SardEventPublisherTest {
     }
 
     @Test
-    fun `Без слушателей и без ActorSource ядра актор не известен`() {
+    fun `Вне запроса актор события не известен`() {
         runner.run { ctx -> assertNull(ctx.getBean(ActorSource::class.java).current()) }
     }
 }

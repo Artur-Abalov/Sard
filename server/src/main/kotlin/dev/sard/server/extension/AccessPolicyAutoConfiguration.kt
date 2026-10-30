@@ -16,10 +16,12 @@ class AccessPolicyAutoConfiguration {
     companion object {
         @Bean
         @JvmStatic
+        @InternalSardApi
         fun accessPolicySeamCheck() = singleImplementationOf(AccessPolicy::class.java)
     }
 
     @Bean
     @ConditionalOnMissingBean
+    @InternalSardApi
     fun accessPolicy(): AccessPolicy = AccessPolicy { _, _ -> true }
 }

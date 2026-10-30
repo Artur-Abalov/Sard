@@ -80,7 +80,9 @@ class RunEventsMutationTest(
         status: String,
     ) = session
         .createNativeQuery(
-            "update runs set status = :status, finished_at = " +
+            "update runs set status = :status, " +
+                "started_at = case when :status = 'running' then coalesce(started_at, now()) else started_at end, " +
+                "finished_at = " +
                 "case when :status in ('queued', 'dispatched', 'running') then null else now() end where id = :run",
         ).setParameter("status", status)
         .setParameter("run", run)
@@ -89,7 +91,7 @@ class RunEventsMutationTest(
     private fun <T> inTenant(work: (Session) -> T) = sessions.inTenant(tenant.id, work)
 
     @Test
-    fun `A manual run is created by the administrator, with the fields of the run`() {
+    fun `A manual run is created with the actor the subject source names, and the fields of the run`() {
         val run = startedRun()
         clock.now = RUNS_NOW + LATER
 
@@ -98,7 +100,7 @@ class RunEventsMutationTest(
         val created = published.single() as RunCreated
         assertEquals(RUNS_NOW + LATER, created.occurredAt)
         assertEquals(tenant.id, created.tenantId)
-        assertEquals(Subject.ADMINISTRATOR, created.actor)
+        assertEquals(SCHEDULER, created.actor)
         assertEquals(run.id, created.runId)
         assertEquals("backup", created.kind)
         assertEquals("manual", created.trigger)
@@ -188,6 +190,59 @@ class RunEventsMutationTest(
         assertEquals("backup", started.kind)
         assertEquals(changed.sourceId, started.sourceId)
     }
+
+    @Test
+    fun `Returning to running gives a change of status each time and run started only once`() {
+        val run = startedRun()
+
+        for (status in listOf("running", "dispatched", "running")) {
+            inTenant { session ->
+                val move = { setStatus(session, run.id, status) }
+                MutFlow.underTest { events.movingRun(session, tenant.id, run.id, move) }
+            }
+        }
+
+        assertEquals(
+            listOf("run.status_changed", "run.started", "run.status_changed", "run.status_changed"),
+            published.map { it.type },
+        )
+        assertEquals(listOf("queued" to "running", "running" to "dispatched", "dispatched" to "running"), changes())
+    }
+
+    @Test
+    fun `Run started comes when the run gets its start moment, even when the status does not change`() {
+        val run = startedRun()
+        jdbc.update("update runs set status = 'running' where id = ?", run.id)
+
+        inTenant { session ->
+            val stamp = { session.createNativeQuery("update runs set started_at = now() where id = :run") }
+            MutFlow.underTest {
+                events.movingRun(session, tenant.id, run.id) { stamp().setParameter("run", run.id).executeUpdate() }
+            }
+        }
+
+        val started = published.single() as RunStarted
+        assertEquals(run.id, started.runId)
+    }
+
+    @Test
+    fun `Running without a start moment gives the change of status and no run started`() {
+        val run = startedRun()
+
+        inTenant { session ->
+            val move = {
+                session
+                    .createNativeQuery("update runs set status = 'running' where id = :run")
+                    .setParameter("run", run.id)
+                    .executeUpdate()
+            }
+            MutFlow.underTest { events.movingRun(session, tenant.id, run.id, move) }
+        }
+
+        assertEquals(listOf("run.status_changed"), published.map { it.type })
+    }
+
+    private fun changes() = published.filterIsInstance<RunStatusChanged>().map { it.from to it.to }
 
     @Test
     fun `Every status other than running gives one change, terminal exactly when the run is no longer active`() {

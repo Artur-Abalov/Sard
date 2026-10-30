@@ -19,6 +19,8 @@
 | Расширение `sample`, «Sard Sample Extension» | `SampleAutoConfiguration` (`META-INF/spring/…AutoConfiguration.imports`) |
 | Шов редакции и лицензии: редакция `sample` | `SampleEdition`, свойство `sard.sample.licence` |
 | Шов политики доступа | `SamplePolicy`, свойства `sard.sample.deny`, `sard.sample.policy-failing` |
+| Источник субъекта (шов `SubjectSource`), только при заданном свойстве | `SampleSubjectSource`, свойство `sard.sample.subject` |
+| Лишний контроллер `GET /sample/stray` в пакете ядра, только при свойстве | `dev.sard.server.sample.StrayController`, свойство `sard.sample.stray-controller` |
 | Слушатель событий ядра, пишет строку в `sample_events` | `SampleEventListener`, свойство `sard.sample.listener` |
 | Своя миграция `V1__sample_events.sql` | `db/migration-extensions` |
 | Свои эндпоинты `GET /api/v1/sample/events`, `POST /api/v1/sample/notes` | `SampleController` |
@@ -31,6 +33,11 @@
 - `sard.sample.deny` — операции, которые политика запрещает: `METHOD /шаблон/пути` через
   запятую, например `DELETE /api/v1/sources/{sourceId}`.
 - `sard.sample.policy-failing` — `true`: политика бросает исключение (доступ закрывается).
+- `sard.sample.subject` — `<вид>:<id>` (например `sso-user:alice`): образец заменяет `SubjectSource`,
+  и каждый запрос сообщает этого субъекта (политика и `actor` событий видят его), вне запроса —
+  никого. Шов не аутентифицирует: без сессии ядра по-прежнему 401. Не задано — субъект как у ядра.
+- `sard.sample.stray-controller` — `true`: образец добавляет контроллер `GET /sample/stray` в пакете
+  `dev.sard.server.sample`, вне `/api/v1`; ядро видит, что он не его, и отказывается стартовать.
 - `sard.sample.listener` — `record` (по умолчанию), `throw` или `slow` (три секунды, затем запись).
 
 ## Сборка и тесты

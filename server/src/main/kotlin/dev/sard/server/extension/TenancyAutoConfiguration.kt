@@ -18,10 +18,12 @@ class TenancyAutoConfiguration {
         /** Two extensions replacing the seam refuse the start, like the other seams (Р22). */
         @Bean
         @JvmStatic
+        @InternalSardApi
         fun tenantResolverSeamCheck() = singleImplementationOf(TenantResolver::class.java)
     }
 
     @Bean
     @ConditionalOnMissingBean
+    @InternalSardApi
     fun tenantResolver() = TenantResolver { DEFAULT_TENANT_ID }
 }

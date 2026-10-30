@@ -8,7 +8,10 @@ import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.EditionAutoConfiguration
 import dev.sard.server.extension.EditionProvider
 import dev.sard.server.extension.SardExtension
+import dev.sard.server.extension.SubjectSource
+import dev.sard.server.extension.SubjectSourceAutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfiguration
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
@@ -18,7 +21,9 @@ import org.springframework.jdbc.core.JdbcTemplate
  * events, its own endpoints and, in db/migration-extensions, its own migration. Ordered before the core's defaults,
  * as ADR 0013 and 0021 ask of a starter that replaces one.
  */
-@AutoConfiguration(before = [EditionAutoConfiguration::class, AccessPolicyAutoConfiguration::class])
+@AutoConfiguration(
+    before = [EditionAutoConfiguration::class, AccessPolicyAutoConfiguration::class, SubjectSourceAutoConfiguration::class],
+)
 @EnableConfigurationProperties(SampleProperties::class)
 class SampleAutoConfiguration {
     @Bean
@@ -34,6 +39,12 @@ class SampleAutoConfiguration {
     @Bean("sample-policy")
     fun samplePolicy(properties: SampleProperties): AccessPolicy =
         SamplePolicy(properties.deny.map { it.trim() }.toSet(), properties.policyFailing)
+
+    /** Replaces the subject source of the core only when `sard.sample.subject` is set. */
+    @Bean("sample-subject")
+    @ConditionalOnProperty("sard.sample.subject")
+    fun sampleSubject(properties: SampleProperties): SubjectSource =
+        SampleSubjectSource(SampleSubjectSource.parse(checkNotNull(properties.subject)))
 
     @Bean
     fun sampleEventListener(

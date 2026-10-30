@@ -4,7 +4,7 @@
 package dev.sard.server.extension
 
 /** The extensions present on the classpath; empty in the open core. */
-class ExtensionRegistry(
+class ExtensionRegistry internal constructor(
     extensions: List<SardExtension>,
 ) {
     /** Extensions ordered by id. */

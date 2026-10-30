@@ -5,12 +5,9 @@ public abstract interface class dev/sard/server/extension/AccessPolicy {
 public class dev/sard/server/extension/AccessPolicyAutoConfiguration {
 	public static final field Companion Ldev/sard/server/extension/AccessPolicyAutoConfiguration$Companion;
 	public fun <init> ()V
-	public fun accessPolicy ()Ldev/sard/server/extension/AccessPolicy;
-	public static final fun accessPolicySeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public final class dev/sard/server/extension/AccessPolicyAutoConfiguration$Companion {
-	public final fun accessPolicySeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public final class dev/sard/server/extension/AccessPolicyKt {
@@ -38,12 +35,9 @@ public final class dev/sard/server/extension/Edition$Companion {
 public class dev/sard/server/extension/EditionAutoConfiguration {
 	public static final field Companion Ldev/sard/server/extension/EditionAutoConfiguration$Companion;
 	public fun <init> ()V
-	public fun editionProvider ()Ldev/sard/server/extension/EditionProvider;
-	public static final fun editionSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public final class dev/sard/server/extension/EditionAutoConfiguration$Companion {
-	public final fun editionSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public abstract interface class dev/sard/server/extension/EditionProvider {
@@ -52,9 +46,11 @@ public abstract interface class dev/sard/server/extension/EditionProvider {
 }
 
 public final class dev/sard/server/extension/ExtensionRegistry {
-	public fun <init> (Ljava/util/List;)V
 	public final fun getExtensions ()Ljava/util/List;
 	public final fun ids ()Ljava/util/List;
+}
+
+public abstract interface annotation class dev/sard/server/extension/InternalSardApi : java/lang/annotation/Annotation {
 }
 
 public final class dev/sard/server/extension/LicenceItem {
@@ -226,7 +222,6 @@ public abstract interface class dev/sard/server/extension/SardExtension {
 
 public class dev/sard/server/extension/SardExtensionsAutoConfiguration {
 	public fun <init> ()V
-	public fun sardExtensionRegistry (Lorg/springframework/beans/factory/ObjectProvider;)Ldev/sard/server/extension/ExtensionRegistry;
 }
 
 public abstract interface class dev/sard/server/extension/SessionEvent : dev/sard/server/extension/SardEvent {
@@ -395,15 +390,20 @@ public final class dev/sard/server/extension/Subject$Companion {
 	public final fun getADMINISTRATOR ()Ldev/sard/server/extension/Subject;
 }
 
+public abstract interface class dev/sard/server/extension/SubjectSource {
+	public abstract fun current ()Ldev/sard/server/extension/Subject;
+}
+
+public class dev/sard/server/extension/SubjectSourceAutoConfiguration {
+	public fun <init> ()V
+}
+
 public class dev/sard/server/extension/TenancyAutoConfiguration {
 	public static final field Companion Ldev/sard/server/extension/TenancyAutoConfiguration$Companion;
 	public fun <init> ()V
-	public fun tenantResolver ()Ldev/sard/server/extension/TenantResolver;
-	public static final fun tenantResolverSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public final class dev/sard/server/extension/TenancyAutoConfiguration$Companion {
-	public final fun tenantResolverSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public abstract interface class dev/sard/server/extension/TenantResolver {

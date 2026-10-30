@@ -38,6 +38,8 @@ private const val PASSWORD = "correct-horse-battery"
 private const val ADDRESS = "203.0.113.10"
 private val TENANT = TenantResolver.DEFAULT_TENANT_ID
 
+private val ROBOT = Subject("svc", "robot")
+
 /** Sign-in and password change against a stored Argon2id hash (F4a); the hasher is the real one. */
 @MutFlowTest(excludeTargets = [SessionStore::class]) // SessionStoreTest mutates it
 class SessionApiImplTest {
@@ -58,6 +60,7 @@ class SessionApiImplTest {
             clock,
             publisher,
             SettingsEvents(publisher, { Subject.ADMINISTRATOR }, clock) { TENANT },
+            { ROBOT },
         )
 
     private fun withAdministrator(password: String = PASSWORD) {
@@ -459,14 +462,14 @@ class SessionApiImplTest {
     }
 
     @Test
-    fun `Выход даёт событие выход с субъектом этой сессии`() {
+    fun `Выход даёт событие выход с субъектом из шва SubjectSource`() {
         withAdministrator()
         val id = (signIn(PASSWORD) as SignInResult.SignedIn).sessionId
         events.clear()
 
         MutFlow.underTest { api.deleteSession(id, ADDRESS) }
 
-        assertEquals(listOf<SardEvent>(SignedOut(T0, TENANT, Subject.ADMINISTRATOR, ADDRESS)), events)
+        assertEquals(listOf<SardEvent>(SignedOut(T0, TENANT, ROBOT, ADDRESS)), events)
     }
 
     @Test
