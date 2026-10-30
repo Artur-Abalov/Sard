@@ -3,6 +3,9 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.loop.Mode
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.Timing
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
@@ -21,9 +24,6 @@ import java.security.SecureRandom
 import java.security.cert.CertificateFactory
 import java.time.Clock
 import java.time.Duration
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 import javax.net.ssl.KeyManager
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.KeyManagerFactorySpi
@@ -149,30 +149,11 @@ private class FixedKeyManagerFactory(
 
 /** Asks the CA to renew the server certificate every [interval]. */
 class ServerCertificateRenewal(
-    private val ca: CertificateAuthority,
-    private val interval: Duration,
-) : SmartLifecycle {
-    private var executor: ScheduledExecutorService? = null
-
-    override fun start() {
-        val scheduler = Executors.newSingleThreadScheduledExecutor(::daemon)
-        scheduler.scheduleAtFixedRate(::renew, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS)
-        executor = scheduler
-    }
-
-    override fun stop() {
-        executor?.shutdownNow()
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
-
-    private fun daemon(task: Runnable) = Thread(task, "sard-server-cert-renewal").apply { isDaemon = true }
-
-    /** Never throws: a thrown exception would cancel every later run of the periodic task. */
-    private fun renew() {
-        runCatching { ca.renewServerCertificate() }
-            .onSuccess { renewed -> if (renewed) log.info("Server certificate renewed") }
-            .onFailure { log.warn("Server certificate renewal failed; retrying at the next check", it) }
-    }
-}
+    ca: CertificateAuthority,
+    interval: Duration,
+) : SmartLifecycle by PeriodicTask(
+        name = "sard-server-cert-renewal",
+        timing = Timing(interval, mode = Mode.FIXED_RATE),
+        onFailure = { log.warn("Server certificate renewal failed; retrying at the next check", it) },
+        action = { if (ca.renewServerCertificate()) log.info("Server certificate renewed") },
+    )

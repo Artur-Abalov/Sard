@@ -6,15 +6,14 @@ package dev.sard.server.selfagent
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.Agents
+import dev.sard.server.loop.daemonScheduler
 import dev.sard.server.onboarding.OnboardingSteps
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Duration
-import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ThreadFactory
 
 /** A built-in token with less than this left is replaced: the agent must have time to use it (Р1). */
 private val EXPIRY_MARGIN: Duration = Duration.ofMinutes(10)
@@ -64,8 +63,5 @@ class SelfAgentConfiguration {
         check: SelfAgentCheck,
     ) = SelfAgentLoop(checkNotNull(properties.settings()).checkInterval, ::scheduler, check::run)
 
-    private fun scheduler(): ScheduledExecutorService {
-        val daemon = ThreadFactory { Thread(it, "sard-self-agent").apply { isDaemon = true } }
-        return Executors.newSingleThreadScheduledExecutor(daemon)
-    }
+    private fun scheduler(): ScheduledExecutorService = daemonScheduler("sard-self-agent")
 }

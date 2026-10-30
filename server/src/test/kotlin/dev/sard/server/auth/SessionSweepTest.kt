@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.api.captureLogs
+import dev.sard.server.loop.PeriodicTask
 import dev.sard.server.pki.MovableClock
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -25,7 +26,7 @@ private val LOGIN_AT = Instant.parse("2026-10-30T12:00:00Z")
 private val SOME_TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
 /** Rule "Сессия, которой никто не пользуется, заканчивается заметно: событие приходит не позже интервала" (Р23). */
-@MutFlowTest
+@MutFlowTest(excludeTargets = [PeriodicTask::class]) // PeriodicTaskTest mutates it
 class SessionSweepTest {
     private val clock = MovableClock(LOGIN_AT)
     private val expired = mutableListOf<String>()

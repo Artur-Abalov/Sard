@@ -3,12 +3,12 @@
 
 package dev.sard.server.prometheus
 
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.StopWait
+import dev.sard.server.loop.Timing
 import org.slf4j.LoggerFactory
 import org.springframework.context.SmartLifecycle
 import java.time.Duration
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 private const val STOP_PATIENCE_SECONDS = 10L
 
@@ -20,40 +20,15 @@ private val log = LoggerFactory.getLogger(StateLoop::class.java)
  * in the background, so a database that is slow to answer does not delay the readiness of the server.
  */
 class StateLoop(
-    private val interval: Duration,
-    private val stopPatience: Duration = Duration.ofSeconds(STOP_PATIENCE_SECONDS),
-    private val tick: () -> Unit,
-) : SmartLifecycle {
-    @Volatile
-    private var executor: ScheduledExecutorService? = null
-
-    override fun start() {
-        val scheduler = Executors.newSingleThreadScheduledExecutor(::daemon)
-        scheduler.scheduleWithFixedDelay(::safeTick, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
-        executor = scheduler
-    }
-
-    private fun daemon(task: Runnable) = Thread(task, "sard-metrics-state").apply { isDaemon = true }
-
-    /**
-     * Interrupts a tick that is running and waits for it for [stopPatience] at most, so that when this returns no tick
-     * starts anew and, as a rule, none runs. A tick that ignores the interrupt (a JDBC call may) for longer than that
-     * is left to finish on its own and one warning says so; stopping does not wait for it any longer.
-     */
-    override fun stop() {
-        executor?.let {
-            it.shutdownNow()
-            if (!it.awaitTermination(stopPatience.toMillis(), TimeUnit.MILLISECONDS)) {
+    interval: Duration,
+    stopPatience: Duration = Duration.ofSeconds(STOP_PATIENCE_SECONDS),
+    tick: () -> Unit,
+) : SmartLifecycle by PeriodicTask(
+        name = "sard-metrics-state",
+        timing = Timing(interval, initialDelay = Duration.ZERO),
+        stopWait =
+            StopWait(stopPatience) {
                 log.warn("The state tick was still running {} s after stop", stopPatience.toSeconds())
-            }
-        }
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
-
-    /** Never throws: a thrown exception would cancel every later run of the periodic task. */
-    private fun safeTick() {
-        runCatching(tick)
-    }
-}
+            },
+        action = tick,
+    )

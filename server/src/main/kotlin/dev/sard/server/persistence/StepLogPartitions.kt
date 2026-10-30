@@ -3,6 +3,8 @@
 
 package dev.sard.server.persistence
 
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.Timing
 import org.slf4j.LoggerFactory
 import org.springframework.context.SmartLifecycle
 import org.springframework.jdbc.core.JdbcTemplate
@@ -12,9 +14,6 @@ import java.time.Duration
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneOffset
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 private val log = LoggerFactory.getLogger(StepLogPartitions::class.java)
 
@@ -31,7 +30,13 @@ class StepLogPartitions(
     private val monthsAhead: Int,
     private val interval: Duration,
 ) : SmartLifecycle {
-    private var executor: ScheduledExecutorService? = null
+    private val task =
+        PeriodicTask(
+            name = "sard-log-partitions",
+            timing = Timing(interval),
+            onFailure = ::warnNotChecked,
+            action = ::check,
+        )
 
     /** Creates the missing partitions from [now]'s month on; returns their names. */
     fun ensure(
@@ -44,25 +49,22 @@ class StepLogPartitions(
 
     override fun start() {
         ensure(clock.instant(), monthsAhead).forEach { log.info("created log partition {}", it) }
-        val scheduler = Executors.newSingleThreadScheduledExecutor(::daemon)
-        scheduler.scheduleWithFixedDelay(::check, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS)
-        executor = scheduler
+        task.start()
     }
 
-    private fun daemon(task: Runnable) = Thread(task, "sard-log-partitions").apply { isDaemon = true }
+    override fun stop() = task.stop()
 
-    override fun stop() {
-        executor?.shutdownNow()
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
+    override fun isRunning() = task.isRunning
 
     /** The periodic check. Never throws: a thrown exception would cancel every later run of the periodic task. */
     fun check() {
         runCatching { ensure(clock.instant(), monthsAhead) }
             .onSuccess { created -> created.forEach { log.info("created log partition {}", it) } }
-            .onFailure { log.warn("Log partitions not checked; retrying at the next check", it) }
+            .onFailure(::warnNotChecked)
+    }
+
+    private fun warnNotChecked(failure: Throwable) {
+        log.warn("Log partitions not checked; retrying at the next check", failure)
     }
 
     /**
