@@ -28,6 +28,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private const val BAD_SCHEDULE = """{"cron":"not a cron","timezone":"UTC","enabled":true}"""
 private const val SCHEDULE = """{"cron":"0 4 * * *","timezone":"UTC","enabled":true}"""
 
 /** Rule "Изменения настроек публикуют событие с видом настройки" (server-core-extensions.feature). */
@@ -78,11 +79,16 @@ class SettingsEventsApiIntegrationTest(
         return found.single()
     }
 
+    private fun defaults(
+        backup: Int,
+        restore: Int,
+    ) = """{"backupTimeoutMinutes":$backup,"restoreTimeoutMinutes":$restore}"""
+
     private fun ok(response: ApiResponse) = assertTrue(response.status in 200..299, response.toString())
 
     @Test
     fun `Изменение сроков по умолчанию даёт событие run_defaults`() {
-        ok(api.send("PUT", "/api/v1/run-defaults", admin, """{"backupTimeoutMinutes":481,"restoreTimeoutMinutes":601}"""))
+        ok(api.send("PUT", "/api/v1/run-defaults", admin, defaults(481, 601)))
 
         assertNull(only("run_defaults").objectId)
     }
@@ -200,7 +206,7 @@ class SettingsEventsApiIntegrationTest(
         val id = source()
         log.clear()
 
-        val response = api.send("PUT", "/api/v1/sources/$id/schedule", admin, """{"cron":"not a cron","timezone":"UTC","enabled":true}""")
+        val response = api.send("PUT", "/api/v1/sources/$id/schedule", admin, BAD_SCHEDULE)
 
         assertEquals(422, response.status)
         assertEquals(emptyList(), log.of<SettingsChanged>())
@@ -218,7 +224,7 @@ class SettingsEventsApiIntegrationTest(
     fun `Запрещённое изменение настроек не даёт события`() {
         policy.denied = setOf("PUT /api/v1/run-defaults")
 
-        val response = api.send("PUT", "/api/v1/run-defaults", admin, """{"backupTimeoutMinutes":483,"restoreTimeoutMinutes":603}""")
+        val response = api.send("PUT", "/api/v1/run-defaults", admin, defaults(483, 603))
 
         assertEquals(403, response.status)
         assertEquals(emptyList(), log.of<SettingsChanged>())

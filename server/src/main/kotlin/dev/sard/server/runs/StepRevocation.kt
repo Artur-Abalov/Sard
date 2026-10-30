@@ -33,6 +33,7 @@ object StepRevocation {
         tenantId: UUID,
         agentId: UUID,
         now: Instant,
+        events: RunEvents = RunEvents.NONE,
     ): List<UUID> {
         val lost =
             session
@@ -42,12 +43,15 @@ object StepRevocation {
                 .setParameter("now", now)
                 .resultList
         if (lost.isEmpty()) return emptyList()
+        val runIds = lost.map { it[1] as UUID }.distinct()
+        val watches = runIds.mapNotNull { events.watchRun(session, tenantId, it) }
         session
             .createNativeMutationQuery(REVOKE_RUNS)
             .setParameter("tenant", tenantId)
-            .setParameterList("runs", lost.map { it[1] as UUID })
+            .setParameterList("runs", runIds)
             .setParameter("now", now)
             .executeUpdate()
+        events.settled(session, watches)
         return lost.map { it[0] as UUID }
     }
 }

@@ -56,7 +56,7 @@ class SessionStore(
     ): AdminSession {
         val now = clock.instant()
         sweepExpired(now)
-        val session = AdminSession(newId(), tenantId, now, now, clientAddress)
+        val session = AdminSession(newId(random), tenantId, now, now, clientAddress)
         sessions[session.id] = session
         return session
     }
@@ -122,17 +122,17 @@ class SessionStore(
         val idleFirst = session.lastActivityAt + IDLE_TIMEOUT <= session.createdAt + ABSOLUTE_TIMEOUT
         runCatching { onExpired(session, if (idleFirst) IDLE else ABSOLUTE) }
     }
+}
 
-    /** 32 random bytes (256 bits, well over the 128-bit floor) as lowercase hex. */
-    private fun newId(): String {
-        val bytes = ByteArray(ID_BYTES)
-        random.nextBytes(bytes)
-        val chars = CharArray(bytes.size * HEX_CHARS_PER_BYTE)
-        for (i in bytes.indices) {
-            val b = bytes[i].toInt() and BYTE_MASK
-            chars[i * HEX_CHARS_PER_BYTE] = HEX[b ushr NIBBLE_BITS]
-            chars[i * HEX_CHARS_PER_BYTE + 1] = HEX[b and LOW_NIBBLE_MASK]
-        }
-        return String(chars)
+/** 32 random bytes (256 bits, well over the 128-bit floor) as lowercase hex. */
+private fun newId(random: SecureRandom): String {
+    val bytes = ByteArray(ID_BYTES)
+    random.nextBytes(bytes)
+    val chars = CharArray(bytes.size * HEX_CHARS_PER_BYTE)
+    for (i in bytes.indices) {
+        val b = bytes[i].toInt() and BYTE_MASK
+        chars[i * HEX_CHARS_PER_BYTE] = HEX[b ushr NIBBLE_BITS]
+        chars[i * HEX_CHARS_PER_BYTE + 1] = HEX[b and LOW_NIBBLE_MASK]
     }
+    return String(chars)
 }

@@ -105,3 +105,41 @@ class RecordingConfiguration {
     @Bean
     fun eventLog(): EventLog = EventLog()
 }
+
+/** A listener that fails on every event, and counts how often it was called. */
+class ThrowingListener {
+    val calls =
+        java.util.concurrent.atomic
+            .AtomicInteger()
+
+    @org.springframework.context.event.EventListener
+    fun on(event: SardEvent) {
+        calls.incrementAndGet()
+        error("listener boom on ${event.type}")
+    }
+}
+
+/** What a listener finds in the database when it gets a source_created event. */
+class CommittedListener(
+    private val jdbc: org.springframework.jdbc.core.JdbcTemplate,
+) {
+    val found = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+
+    @org.springframework.context.event.EventListener
+    fun on(event: SettingsChanged) {
+        if (event.setting == "source_created") {
+            val sql = "select count(*) from sources where id = ?"
+            val count = jdbc.queryForObject(sql, Int::class.java, event.objectId)
+            found += (count == 1)
+        }
+    }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+class FailingListenersConfiguration {
+    @Bean
+    fun throwingListener(): ThrowingListener = ThrowingListener()
+
+    @Bean
+    fun committedListener(jdbc: org.springframework.jdbc.core.JdbcTemplate): CommittedListener = CommittedListener(jdbc)
+}

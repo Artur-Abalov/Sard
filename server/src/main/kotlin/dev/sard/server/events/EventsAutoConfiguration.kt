@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean
 import java.time.Clock
 
 /** The events of the core (CORE1 Р5): the multicaster that isolates listeners, and the publisher the core uses. */
-@AutoConfiguration(afterName = ["dev.sard.server.auth.AdminAuthAutoConfiguration"])
+@AutoConfiguration(afterName = ["dev.sard.server.auth.AdminAuthSupportAutoConfiguration"])
 class EventsAutoConfiguration {
     @Bean(name = ["applicationEventMulticaster"])
     @ConditionalOnMissingBean(name = ["applicationEventMulticaster"])

@@ -259,7 +259,7 @@ class Agents(
             .setParameter("now", now)
             .setParameter("agent", agent.id)
             .executeUpdate()
-        return StepRevocation.loseSteps(session, tenantId, agent.id, now)
+        return StepRevocation.loseSteps(session, tenantId, agent.id, now, announcer.events)
     }
 
     /** Records a confirmed duplicate session of [agentId] at the clock's time (ADR 0026, rule 2). */

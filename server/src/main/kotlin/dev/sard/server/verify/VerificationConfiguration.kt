@@ -7,6 +7,7 @@ import dev.sard.server.agents.stream.AgentConnections
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.CancelMarks
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepsQueued
 import dev.sard.server.runs.VerificationRuns
@@ -42,7 +43,8 @@ class VerificationConfiguration {
         settings: VerificationSettings,
         pool: VerifierPool,
         history: VerificationHistory,
-    ) = VerificationQueue(settings, pool, VerificationRuns(UuidV7(clock, SecureRandom())), history)
+        events: RunEvents,
+    ) = VerificationQueue(settings, pool, VerificationRuns(UuidV7(clock, SecureRandom()), events), history)
 
     @Bean
     fun verificationLoop(

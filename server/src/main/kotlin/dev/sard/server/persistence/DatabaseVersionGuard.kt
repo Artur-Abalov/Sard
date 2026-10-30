@@ -3,6 +3,7 @@
 
 package dev.sard.server.persistence
 
+import dev.sard.server.database.DEFAULT_EXTENSION_LOCATION
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationInfo
 import org.flywaydb.core.api.MigrationState
@@ -11,6 +12,9 @@ import org.springframework.boot.info.BuildProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.datasource.SingleConnectionDataSource
+
+/** The history of the migrations of extensions, written by the migrate step (the same name as its). */
+private const val EXTENSION_HISTORY_TABLE = "flyway_schema_history_extensions"
 
 /** A migration as the refusal names it; [failed] when the database records it as not applied. */
 data class MigrationRef(
@@ -93,6 +97,19 @@ fun requireMigrated(flyway: Flyway) {
     throw MigrationsNotApplied(MigrationRef(first.version.version, first.description), missing.size)
 }
 
+/** The extensions on the classpath, with the history of their own (ADR 0069 п. 6): read like the core's, after it. */
+private fun extensionReader(
+    core: Flyway,
+    connection: java.sql.Connection,
+): Flyway =
+    Flyway
+        .configure()
+        .configuration(core.configuration)
+        .dataSource(SingleConnectionDataSource(connection, true))
+        .locations(DEFAULT_EXTENSION_LOCATION)
+        .table(EXTENSION_HISTORY_TABLE)
+        .load()
+
 /**
  * Before the server uses the database: its PostgreSQL and initdb parameters (DB1), whether its role is more than the
  * server needs (DB2), its Sard version (ADR 0060) and that the migrate step has run. Nothing is migrated here.
@@ -118,8 +135,39 @@ class DatabaseVersionConfiguration {
                     .load()
             refuseNewerDatabase(reader, build.version ?: "unknown")
             requireMigrated(reader)
+            requireExtensionsMigrated(extensionReader(reader, connection))
             // What migrate would refuse to go on from: an applied migration this build lacks, a changed checksum.
             reader.validate()
         }
     }
+}
+
+/**
+ * The server does not start: a migration of an extension on the classpath is not applied, or the database records it
+ * as failed (CORE1 Р24). The extensions' history is a table of its own, written by the migrate step after the core's.
+ * The message starts with "Database startup refused: EXTENSION_MIGRATIONS_NOT_APPLIED:" and names the first one.
+ */
+class ExtensionMigrationsNotApplied(
+    first: MigrationRef,
+    script: String,
+    count: Int,
+) : IllegalStateException(
+        "Database startup refused: EXTENSION_MIGRATIONS_NOT_APPLIED: $count migration(s) of the extensions on the " +
+            "classpath are not applied in sard.flyway_schema_history_extensions, the first is ${first.version} " +
+            "(${first.description}, $script); run the migrate service (docker compose up migrate) before the " +
+            "server (docs/operator/16-postgresql.md)",
+    )
+
+/**
+ * Throws [ExtensionMigrationsNotApplied] when [flyway], configured with the extensions' locations and history, has a
+ * migration the database lacks. No migrations on the classpath, no check, and no table of history is wanted.
+ */
+fun requireExtensionsMigrated(flyway: Flyway) {
+    val missing = notApplied(flyway)
+    val first = missing.firstOrNull() ?: return
+    throw ExtensionMigrationsNotApplied(
+        MigrationRef(first.version.version, first.description),
+        first.script,
+        missing.size,
+    )
 }

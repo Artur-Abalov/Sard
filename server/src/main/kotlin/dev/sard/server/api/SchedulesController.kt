@@ -236,8 +236,12 @@ class SchedulesApiImpl(
     ): Schedule {
         val draft = ScheduleDraft(schedule.cron, schedule.timezone, schedule.enabled, schedule.notifyOnSuccess)
         val tenant = tenants.currentTenantId()
-        val timing = { schedules.get(tenant, sourceId)?.let { listOf(it.cron, it.timezone, it.enabled, it.notifyOnSuccess) } }
-        return events.whenChanged("source_schedule", sourceId, timing) { scheduleOf(schedules.set(tenant, sourceId, draft)) }
+        val timing = {
+            schedules.get(tenant, sourceId)?.let { listOf(it.cron, it.timezone, it.enabled, it.notifyOnSuccess) }
+        }
+        return events.whenChanged("source_schedule", sourceId, timing) {
+            scheduleOf(schedules.set(tenant, sourceId, draft))
+        }
     }
 
     override fun listScheduleFires(

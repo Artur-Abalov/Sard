@@ -53,7 +53,7 @@ class SelfAgentApiIntegrationTest(
     private val world = RestWorld(ca, enrollment, tokens, registration, jdbc, clock, mapper, port, grpc)
     private val clock = world.clock
     private val tenant = world.tenant()
-    private val admin = world.admin(tenant)
+    private var admin = world.admin(tenant)
 
     @AfterTest
     fun `drop the tenants`() = world.close()
@@ -221,6 +221,7 @@ class SelfAgentApiIntegrationTest(
         val revokedAt = revoke(builtin.agentId, "?confirm=sard-self").json.path("revokedAt").asString()
         val certificates = certificateRevocations(builtin.agentId)
         clock.now = clock.instant().plus(Duration.ofHours(1))
+        admin = world.admin(tenant)
 
         val response = revoke(builtin.agentId)
 

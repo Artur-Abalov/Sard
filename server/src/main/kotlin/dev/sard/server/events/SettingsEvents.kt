@@ -22,7 +22,10 @@ class SettingsEvents(
     fun changed(
         setting: String,
         objectId: UUID? = null,
-    ) = publisher.publish(SettingsChanged(clock.instant(), tenants.currentTenantId(), actors.current(), setting, objectId))
+    ) {
+        val event = SettingsChanged(clock.instant(), tenants.currentTenantId(), actors.current(), setting, objectId)
+        publisher.publish(event)
+    }
 
     /** Runs [action], and publishes when what [state] shows afterwards differs from what it showed before. */
     fun <T, S> whenChanged(

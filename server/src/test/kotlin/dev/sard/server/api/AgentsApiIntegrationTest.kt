@@ -43,7 +43,7 @@ class AgentsApiIntegrationTest(
     private val world = RestWorld(ca, enrollment, tokens, registration, jdbc, clock, mapper, port, grpc)
     private val clock = world.clock
     private val tenant = world.tenant()
-    private val admin = world.admin(tenant)
+    private var admin = world.admin(tenant)
 
     @AfterTest
     fun `drop the tenants`() = world.close()
@@ -285,6 +285,7 @@ class AgentsApiIntegrationTest(
         clone.ended()
 
         clock.now = T0.plus(Duration.ofHours(1))
+        admin = world.admin(tenant)
         first.progress("alive")
 
         awaitDuplicateMark(agent.agentId, T0.plus(Duration.ofHours(1)))
@@ -383,6 +384,7 @@ class AgentsApiIntegrationTest(
                 agent.agentId,
             )
         clock.now = T0.plus(Duration.ofHours(1))
+        admin = world.admin(tenant)
 
         val response = revoke(agent.agentId)
 

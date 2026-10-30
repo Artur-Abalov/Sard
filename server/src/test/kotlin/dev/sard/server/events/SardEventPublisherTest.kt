@@ -3,8 +3,10 @@
 
 package dev.sard.server.events
 
+import dev.sard.server.ClockAutoConfiguration
 import dev.sard.server.api.captureLogs
 import dev.sard.server.extension.SettingsChanged
+import dev.sard.server.extension.TenancyAutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
@@ -45,10 +47,16 @@ fun interface Listener {
 class SardEventPublisherTest {
     private val runner =
         ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(EventsAutoConfiguration::class.java))
-            .withUserConfiguration(ThrowingThenRecording::class.java)
+            .withConfiguration(
+                AutoConfigurations.of(
+                    EventsAutoConfiguration::class.java,
+                    TenancyAutoConfiguration::class.java,
+                    ClockAutoConfiguration::class.java,
+                ),
+            ).withUserConfiguration(ThrowingThenRecording::class.java)
 
-    private val event = SettingsChanged(Instant.parse("2026-10-30T12:00:00Z"), UUID.randomUUID(), null, "run_defaults", null)
+    private val at = Instant.parse("2026-10-30T12:00:00Z")
+    private val event = SettingsChanged(at, UUID.randomUUID(), null, "run_defaults", null)
 
     @Test
     fun `Исключение одного слушателя не лишает события другого`() {

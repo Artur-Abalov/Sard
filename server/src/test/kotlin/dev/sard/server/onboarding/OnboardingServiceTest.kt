@@ -465,7 +465,7 @@ class OnboardingServiceTest {
     fun `Живая сессия администратора переживает выдачу новой`() {
         h.adminSessions.create(h.tenant)
         val session = readySession()
-        h.clock.now = T0 + Duration.ofHours(1)
+        h.clock.now = T0 + Duration.ofMinutes(30)
 
         MutFlow.underTest { service.completeAdmin(session, PASSWORD, ADDRESS) }
 

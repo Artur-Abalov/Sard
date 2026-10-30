@@ -38,7 +38,7 @@ class SchedulesApiIntegrationTest(
     private val world = RestWorld(ca, enrollment, tokens, registration, jdbc, clock, mapper, port, grpc)
     private val clock = world.clock
     private val tenant = world.tenant()
-    private val admin = world.admin(tenant)
+    private var admin = world.admin(tenant)
     private val agent = world.agent(tenant)
     private val nextHour = T0.truncatedTo(ChronoUnit.HOURS).plus(1, ChronoUnit.HOURS)
 
@@ -128,6 +128,7 @@ class SchedulesApiIntegrationTest(
         val query = "select id from runs where source_id = ?::uuid"
         world.forceRun(checkNotNull(world.jdbc.queryForObject(query, UUID::class.java, source)), "running")
         clock.now = nextHour.plus(1, ChronoUnit.HOURS)
+        admin = world.admin(tenant)
         scheduler.tick()
 
         val all = world.api.get("/api/v1/sources/$source/schedule/fires", admin).json
@@ -253,6 +254,7 @@ class SchedulesApiIntegrationTest(
         assertTrue(created.path("lastRun").isNull)
 
         clock.now = T0.plus(1, ChronoUnit.HOURS)
+        admin = world.admin(tenant)
         val body = """{"cron":"0 * * * *","timezone":"UTC","enabled":true,"notifyOnSuccess":true}"""
         val saved = world.api.send("PUT", "/api/v1/sources/$source/schedule", admin, body).json
 
@@ -285,6 +287,7 @@ class SchedulesApiIntegrationTest(
 
         world.forceRun(java.util.UUID.fromString(run.path("id").asString()), "succeeded")
         clock.now = nextHour.plus(3, ChronoUnit.HOURS).plusSeconds(1800)
+        admin = world.admin(tenant)
         scheduler.tick()
         scheduler.tick()
         val catchUp =

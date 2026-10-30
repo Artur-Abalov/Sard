@@ -3,6 +3,7 @@
 
 package dev.sard.server.extension
 
+import dev.sard.server.api.ExtensionWebAutoConfiguration
 import dev.sard.testext.outside.InsideController
 import dev.sard.testext.outside.OutsideController
 import org.springframework.boot.autoconfigure.AutoConfigurations

@@ -2,10 +2,11 @@ dev.sard.server.extension.SardExtensionsAutoConfiguration
 dev.sard.server.extension.TenancyAutoConfiguration
 dev.sard.server.extension.EditionAutoConfiguration
 dev.sard.server.extension.AccessPolicyAutoConfiguration
-dev.sard.server.extension.ExtensionWebAutoConfiguration
+dev.sard.server.api.ExtensionWebAutoConfiguration
 dev.sard.server.events.EventsAutoConfiguration
 dev.sard.server.pki.PkiAutoConfiguration
 dev.sard.server.ClockAutoConfiguration
 dev.sard.server.auth.AdminAuthAutoConfiguration
+dev.sard.server.auth.AdminAuthSupportAutoConfiguration
 dev.sard.server.console.ConsoleAutoConfiguration
 dev.sard.server.onboarding.OnboardingAutoConfiguration

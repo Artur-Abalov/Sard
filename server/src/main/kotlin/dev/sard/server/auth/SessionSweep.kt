@@ -34,7 +34,7 @@ class SessionSweep(
     private var executor: ScheduledExecutorService? = null
 
     override fun start() {
-        val scheduler = Executors.newSingleThreadScheduledExecutor { Thread(it, "sard-session-sweep").apply { isDaemon = true } }
+        val scheduler = Executors.newSingleThreadScheduledExecutor(::daemon)
         scheduler.scheduleWithFixedDelay(::safeSweep, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS)
         executor = scheduler
     }
@@ -45,6 +45,8 @@ class SessionSweep(
     }
 
     override fun isRunning() = executor != null
+
+    private fun daemon(task: Runnable) = Thread(task, "sard-session-sweep").apply { isDaemon = true }
 
     /** Never throws: a thrown exception would cancel every later run of the periodic task. */
     private fun safeSweep() {

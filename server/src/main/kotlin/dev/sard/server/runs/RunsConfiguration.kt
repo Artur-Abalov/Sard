@@ -85,7 +85,8 @@ class RunsConfiguration {
     fun runAnnouncer(
         sessions: TenantSessions,
         listeners: ObjectProvider<RunFinishedListener>,
-    ) = RunAnnouncer(sessions, RunFinishedPublisher(listeners.orderedStream().toList()))
+        events: RunEvents,
+    ) = RunAnnouncer(sessions, RunFinishedPublisher(listeners.orderedStream().toList()), events)
 
     @Bean
     fun stepTransitions(
@@ -141,6 +142,7 @@ class RunsConfiguration {
         queued: ObjectProvider<StepsQueued>,
         waiting: AgentWaitProperties,
         presence: ObjectProvider<AgentOnline>,
+        events: RunEvents,
     ) = Runs(
         sessions,
         clock,
@@ -148,6 +150,7 @@ class RunsConfiguration {
         queued.getIfUnique { StepsQueued.NONE },
         waiting.limit(),
         presence.getIfUnique { AgentOnline.ALWAYS },
+        events,
     )
 }
 
@@ -190,6 +193,7 @@ class RestoresConfiguration {
         queued: ObjectProvider<StepsQueued>,
         waiting: AgentWaitProperties,
         presence: ObjectProvider<AgentOnline>,
+        events: RunEvents,
     ) = Restores(
         sessions,
         clock,
@@ -197,5 +201,6 @@ class RestoresConfiguration {
         queued.getIfUnique { StepsQueued.NONE },
         waiting.limit(),
         presence.getIfUnique { AgentOnline.ALWAYS },
+        events,
     )
 }
