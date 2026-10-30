@@ -36,6 +36,7 @@ public class dev/sard/server/extension/EditionAutoConfiguration {
 	public fun <init> ()V
 	public fun editionProvider ()Ldev/sard/server/extension/EditionProvider;
 	public static final fun editionSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
+	public fun editionStartupCheck (Lorg/springframework/beans/factory/ObjectProvider;)Lorg/springframework/beans/factory/SmartInitializingSingleton;
 }
 
 public final class dev/sard/server/extension/EditionAutoConfiguration$Companion {

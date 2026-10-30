@@ -43,6 +43,17 @@ class TwoEditionExtensions {
     fun b(): EditionProvider = edition("b")
 }
 
+@TestConfiguration(proxyBeanMethods = false)
+class BrokenEditionExtension {
+    @Bean("broken-edition")
+    fun broken(): EditionProvider =
+        object : EditionProvider {
+            override fun edition(): Edition = error("edition broken")
+
+            override fun licence(): LicenceSummary? = null
+        }
+}
+
 /** Rule "Реестр расширений и заменяемые швы проверяются при старте" (spec, @startup). */
 class SeamUniquenessTest {
     private val runner =
@@ -71,6 +82,15 @@ class SeamUniquenessTest {
             val text = messages(ctx.startupFailure)
             assertNotNull(ctx.startupFailure)
             assertTrue("lic-a" in text && "lic-b" in text, text)
+        }
+    }
+
+    @Test
+    fun `Сбой шва редакции останавливает старт`() {
+        runner.withUserConfiguration(BrokenEditionExtension::class.java).run { ctx ->
+            assertNotNull(ctx.startupFailure)
+            val text = messages(ctx.startupFailure)
+            assertTrue("Edition unavailable: edition broken" in text, text)
         }
     }
 

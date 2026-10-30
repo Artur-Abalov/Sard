@@ -3,6 +3,8 @@
 
 package dev.sard.server.extension
 
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.SmartInitializingSingleton
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
@@ -19,6 +21,14 @@ class EditionAutoConfiguration {
         @JvmStatic
         fun editionSeamCheck() = singleImplementationOf(EditionProvider::class.java)
     }
+
+    /** The edition is read once at start: a seam that throws refuses the start, not every status request. */
+    @Bean
+    fun editionStartupCheck(provider: ObjectProvider<EditionProvider>) =
+        SmartInitializingSingleton {
+            runCatching { provider.getObject().edition() }
+                .onFailure { throw IllegalStateException("Edition unavailable: ${it.message}", it) }
+        }
 
     @Bean
     @ConditionalOnMissingBean

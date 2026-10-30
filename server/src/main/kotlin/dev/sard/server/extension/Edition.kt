@@ -46,6 +46,7 @@ data class LicenceSummary(
  * calls this seam only to tell what it was told, and no run, dispatch, scheduler or verification code depends on it.
  */
 interface EditionProvider {
+    /** Read once at start; throwing refuses the start. */
     fun edition(): Edition
 
     /** null in the free edition. May throw: the core then reports the state UNAVAILABLE. */
