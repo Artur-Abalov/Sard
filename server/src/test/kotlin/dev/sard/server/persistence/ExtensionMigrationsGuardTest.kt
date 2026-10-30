@@ -56,7 +56,9 @@ class ExtensionMigrationsGuardTest {
 
     private val sample = "V1__sample_events.sql" to "create table sample_events (id int);"
 
-    private fun refusal(flyway: Flyway): ExtensionMigrationsNotApplied = assertFailsWith { requireExtensionsMigrated(flyway) }
+    private fun refusal(flyway: Flyway) = assertFailsWith<ExtensionMigrationsNotApplied> { check(flyway) }
+
+    private fun check(flyway: Flyway) = requireExtensionsMigrated(flyway)
 
     @Test
     fun `Неприменённая миграция расширения останавливает старт`() {
