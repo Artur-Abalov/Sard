@@ -17,10 +17,19 @@ private const val SCHEMA = "sard"
 private const val OWNER = "sard_owner"
 private const val CORE_LOCATION = "classpath:db/migration"
 private const val CORE_TABLE = "flyway_schema_history"
-private const val EXTENSION_TABLE = "flyway_schema_history_extensions"
+
+/** The history of the migrations of extensions: written by the migrate step, read by the server's start check. */
+const val EXTENSION_HISTORY_TABLE = "flyway_schema_history_extensions"
+
+/** The setting of where the migrations of extensions are, for the migrate step and the start check alike. */
+const val EXTENSION_LOCATIONS_SETTING = "SARD_MIGRATE_EXTENSION_LOCATIONS"
 
 /** Where the migrations of enterprise extensions are looked for when nothing else is set (ADR 0013, DB2). */
 const val DEFAULT_EXTENSION_LOCATION = "classpath:db/migration-extensions"
+
+/** The comma-separated locations in [value] of [EXTENSION_LOCATIONS_SETTING]; the default one when it is unset. */
+fun extensionLocations(value: String?): List<String> =
+    value?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: listOf(DEFAULT_EXTENSION_LOCATION)
 
 /**
  * What the migrate command needs (DB2): the database, the role that migrates and its password, where the migrations
@@ -59,7 +68,7 @@ class Migrator(
     fun run(): MigrationOutcome {
         requirePrepared()
         val core = migrate(listOf(CORE_LOCATION), CORE_TABLE)
-        val extensions = migrate(settings.extensionLocations, EXTENSION_TABLE, onlyIfAny = true)
+        val extensions = migrate(settings.extensionLocations, EXTENSION_HISTORY_TABLE, onlyIfAny = true)
         out.println("migrate: $core migration(s) of the core and $extensions of extensions applied")
         return MigrationOutcome(core, extensions)
     }

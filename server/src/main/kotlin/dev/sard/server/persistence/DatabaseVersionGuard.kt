@@ -3,7 +3,9 @@
 
 package dev.sard.server.persistence
 
-import dev.sard.server.database.DEFAULT_EXTENSION_LOCATION
+import dev.sard.server.database.EXTENSION_HISTORY_TABLE
+import dev.sard.server.database.EXTENSION_LOCATIONS_SETTING
+import dev.sard.server.database.extensionLocations
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationInfo
 import org.flywaydb.core.api.MigrationState
@@ -11,10 +13,8 @@ import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy
 import org.springframework.boot.info.BuildProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
 import org.springframework.jdbc.datasource.SingleConnectionDataSource
-
-/** The history of the migrations of extensions, written by the migrate step (the same name as its). */
-private const val EXTENSION_HISTORY_TABLE = "flyway_schema_history_extensions"
 
 /** A migration as the refusal names it; [failed] when the database records it as not applied. */
 data class MigrationRef(
@@ -98,15 +98,16 @@ fun requireMigrated(flyway: Flyway) {
 }
 
 /** The extensions on the classpath, with the history of their own (ADR 0069 п. 6): read like the core's, after it. */
-private fun extensionReader(
+internal fun extensionReader(
     core: Flyway,
     connection: java.sql.Connection,
+    locations: List<String>,
 ): Flyway =
     Flyway
         .configure()
         .configuration(core.configuration)
         .dataSource(SingleConnectionDataSource(connection, true))
-        .locations(DEFAULT_EXTENSION_LOCATION)
+        .locations(*locations.toTypedArray())
         .table(EXTENSION_HISTORY_TABLE)
         .load()
 
@@ -121,6 +122,7 @@ class DatabaseVersionConfiguration {
         build: BuildProperties,
         mismatches: DatabaseMismatchListener,
         excess: RoleExcessListener,
+        environment: Environment,
     ) = FlywayMigrationStrategy { flyway ->
         // One connection of the pool for all of it: Flyway asks for a second one to inform its callbacks, and a pool
         // of one connection (ADR 0013, a request holds one connection at a time) would wait for it for good.
@@ -135,7 +137,8 @@ class DatabaseVersionConfiguration {
                     .load()
             refuseNewerDatabase(reader, build.version ?: "unknown")
             requireMigrated(reader)
-            requireExtensionsMigrated(extensionReader(reader, connection))
+            val locations = extensionLocations(environment.getProperty(EXTENSION_LOCATIONS_SETTING))
+            requireExtensionsMigrated(extensionReader(reader, connection, locations))
             // What migrate would refuse to go on from: an applied migration this build lacks, a changed checksum.
             reader.validate()
         }

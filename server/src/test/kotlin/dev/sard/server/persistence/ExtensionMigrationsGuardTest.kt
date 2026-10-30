@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -115,5 +116,23 @@ class ExtensionMigrationsGuardTest {
         val tables =
             JdbcTemplate(DriverManagerDataSource(database.url, database.user, database.password)).queryForList(query)
         assertEquals(emptyList(), tables)
+    }
+
+    @Test
+    fun `Расположение миграций расширений берётся из настройки migrate, а не из умолчания`() {
+        val database = TestPostgres.newDatabase()
+        val custom = extensionDir(sample)
+        val core = flyway(database, extensionDir())
+
+        val reader =
+            DriverManager.getConnection(database.url, database.user, database.password).use { connection ->
+                val refusal =
+                    assertFailsWith<ExtensionMigrationsNotApplied> {
+                        requireExtensionsMigrated(extensionReader(core, connection, listOf("filesystem:$custom")))
+                    }
+                refusal.message
+            }
+
+        assertEquals(true, assertNotNull(reader).startsWith(PREFIX), reader)
     }
 }
