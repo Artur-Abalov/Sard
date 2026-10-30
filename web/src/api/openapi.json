@@ -48,6 +48,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -107,7 +117,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -176,6 +186,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -276,7 +296,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -354,7 +374,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -413,6 +433,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -499,7 +529,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -569,6 +599,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -655,7 +695,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -766,7 +806,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -836,7 +876,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -877,6 +917,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -944,7 +994,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1037,7 +1087,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1125,6 +1175,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -1184,7 +1244,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1292,6 +1352,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -1384,7 +1454,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1494,7 +1564,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1604,7 +1674,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1691,7 +1761,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1732,6 +1802,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1862,7 +1942,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1922,7 +2002,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1995,7 +2075,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -2078,7 +2158,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -2388,6 +2468,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -2447,7 +2537,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -2540,7 +2630,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -2631,7 +2721,7 @@
             }
           },
           "403" : {
-            "description" : "Origin does not match the request (CSRF)",
+            "description" : "Origin does not match the request (CSRF), or the access policy refuses it",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -2702,6 +2792,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -2760,6 +2860,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -2792,6 +2902,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -2916,6 +3036,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3005,6 +3135,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3063,6 +3203,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3160,6 +3310,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3200,6 +3360,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3231,6 +3401,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3380,6 +3560,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3422,6 +3612,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3495,6 +3695,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3626,6 +3836,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3676,6 +3896,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3783,6 +4013,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3823,6 +4063,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3855,6 +4105,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3952,6 +4212,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -3984,6 +4254,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -4070,6 +4350,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -4120,6 +4410,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "The access policy refuses the operation",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -4213,6 +4513,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -4288,6 +4598,16 @@
               }
             }
           },
+          "403" : {
+            "description" : "The access policy refuses the operation",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
             "content" : {
@@ -4329,7 +4649,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable", "run_finished" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "access_denied", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable", "run_finished" ]
       },
       "FieldError" : {
         "type" : "object",
@@ -6517,7 +6837,7 @@
           },
           "edition" : {
             "$ref" : "#/components/schemas/EditionInfo",
-            "description" : "The edition of this build; \"free\" in the open core"
+            "description" : "The edition of this build"
           }
         },
         "required" : [ "edition", "lastVerifiedRestoreAt", "version" ]

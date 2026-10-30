@@ -5,14 +5,19 @@ package dev.sard.server.auth
 
 import dev.sard.server.ClockAutoConfiguration
 import dev.sard.server.api.SessionApi
+import dev.sard.server.extension.AccessPolicy
+import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.TenancyAutoConfiguration
 import dev.sard.server.extension.TenantResolver
 import jakarta.servlet.Filter
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 
@@ -28,7 +33,9 @@ private const val API_PATTERN = "/api/v1/*"
  * [OriginGuardFilter] (CSRF, К1/Р5) runs before [SessionAuthFilter] (rule 5): a request
  * with a foreign Origin is refused before authentication is even considered.
  */
-@AutoConfiguration(after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class])
+@AutoConfiguration(
+    after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class, AccessPolicyAutoConfiguration::class],
+)
 class AdminAuthAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(SessionApi::class)
@@ -81,6 +88,18 @@ class AdminAuthAutoConfiguration {
         sessionStore: SessionStore,
         objectMapper: ObjectMapper,
     ): FilterRegistrationBean<Filter> = registration(SessionAuthFilter(sessionStore, objectMapper), order = 2)
+
+    /** The access policy seam (CORE1 Р4): asked for every /api/v1 operation but the public ones, after the filters. */
+    @Bean
+    fun accessPolicyInterceptorConfigurer(
+        policy: ObjectProvider<AccessPolicy>,
+        objectMapper: ObjectProvider<ObjectMapper>,
+    ): WebMvcConfigurer =
+        object : WebMvcConfigurer {
+            override fun addInterceptors(registry: InterceptorRegistry) {
+                registry.addInterceptor(AccessPolicyInterceptor(policy, objectMapper)).addPathPatterns("/api/v1/**")
+            }
+        }
 
     private fun registration(
         filter: Filter,

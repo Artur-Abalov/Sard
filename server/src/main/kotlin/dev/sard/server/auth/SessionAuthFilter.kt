@@ -37,7 +37,7 @@ private val SESSIONLESS_OPERATIONS =
  * a setup session, which the controller checks because the filter does not know setup sessions. All three pass
  * the filter with or without an administrator session; a valid one is attached to the request.
  */
-private val WIZARD_OPERATIONS =
+internal val WIZARD_OPERATIONS =
     setOf("GET /api/v1/onboarding", "POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
 private const val HTTP_UNAUTHORIZED = 401
 

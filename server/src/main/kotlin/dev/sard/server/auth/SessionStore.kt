@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.extension.Subject
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
@@ -25,6 +26,8 @@ data class AdminSession(
     val tenantId: UUID,
     val createdAt: Instant,
     val lastActivityAt: Instant,
+    /** Who the session stands for; the access policy is asked about it (CORE1 Р4). */
+    val subject: Subject = Subject.ADMINISTRATOR,
 )
 
 /**

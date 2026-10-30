@@ -51,3 +51,35 @@ class SecondExtensionConfiguration {
     @Bean
     fun aaaExtension(): SardExtension = FixtureExtension("aaa-test", "Test extension")
 }
+
+/** The access policy of the fixture: refuses what [denied] lists, optionally everything, optionally throws. */
+class FixturePolicy : AccessPolicy {
+    @Volatile var denied: Set<String> = emptySet()
+
+    @Volatile var denyAll = false
+
+    @Volatile var failing = false
+    val calls = java.util.concurrent.CopyOnWriteArrayList<Pair<Subject, Operation>>()
+
+    override fun permits(
+        subject: Subject,
+        operation: Operation,
+    ): Boolean {
+        calls += subject to operation
+        check(!failing) { "policy store unreachable" }
+        return !denyAll && operation.toString() !in denied
+    }
+
+    fun reset() {
+        denied = emptySet()
+        denyAll = false
+        failing = false
+        calls.clear()
+    }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+class FixturePolicyConfiguration {
+    @Bean
+    fun fixturePolicy(): FixturePolicy = FixturePolicy()
+}
