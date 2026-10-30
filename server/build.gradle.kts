@@ -31,6 +31,17 @@ kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
     }
+    // The public API of server-core is dev.sard.server.extension.** and nothing else (CORE1 phase 3, Р1): its ABI is
+    // dumped to server/api/ and `check` fails when a change of it is not in the dump. A deliberate change is made
+    // visible with `./gradlew :server:updateLegacyAbi` and shows up in the diff of the pull request.
+    @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
+    abiValidation {
+        filters {
+            include {
+                byNames.add("dev.sard.server.extension.**")
+            }
+        }
+    }
 }
 
 // mutflow's "mutatedMain" source set is a separate Kotlin compilation, so by default it
