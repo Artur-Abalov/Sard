@@ -122,3 +122,10 @@
 ### Окружение (локально, не в репозитории)
 - `~/.gradle/init.d/mirror.init.gradle.kts` — Maven Central через зеркало Google (429); `org.gradle.workers.max=1`;
   `dockerd` с `registry-mirrors: mirror.gcr.io`.
+
+## Контрольная точка 2 — ответы владельца
+- `CLAUDE.md:92` — путь jar `server-app/build/libs/sard-server.jar`: владелец разрешил, но файл защищён
+  `guard-edit.sh`; правку вносит владелец.
+- Версии: LIC1 получает ядро через пре-релизные теги (`X.Y.Z-alpha.N` и т. п.), публикуемые в GitHub Packages;
+  публичный API заморожен внутри одного `X.Y.Z` — все `X.Y.Z-*` ABI-совместимы между собой.
+- Фаза 2 уходит в PR, полные ворота, образ и e2e проверяет CI.
