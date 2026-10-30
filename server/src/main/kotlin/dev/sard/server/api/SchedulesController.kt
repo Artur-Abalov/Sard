@@ -4,7 +4,6 @@
 package dev.sard.server.api
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.scheduler.FireView
@@ -225,7 +224,6 @@ class SchedulesController(
 class SchedulesApiImpl(
     private val schedules: Schedules,
     private val tenants: TenantResolver,
-    private val events: SettingsEvents,
 ) : SchedulesApi {
     override fun getSchedule(sourceId: UUID): Schedule =
         schedules.get(tenants.currentTenantId(), sourceId)?.let(::scheduleOf) ?: throw ResourceNotFound()
@@ -235,10 +233,7 @@ class SchedulesApiImpl(
         schedule: ScheduleInput,
     ): Schedule {
         val draft = ScheduleDraft(schedule.cron, schedule.timezone, schedule.enabled, schedule.notifyOnSuccess)
-        val tenant = tenants.currentTenantId()
-        return events.whenChanged("source_schedule", sourceId, { schedules.get(tenant, sourceId)?.draft }) {
-            scheduleOf(schedules.set(tenant, sourceId, draft))
-        }
+        return scheduleOf(schedules.set(tenants.currentTenantId(), sourceId, draft))
     }
 
     override fun listScheduleFires(

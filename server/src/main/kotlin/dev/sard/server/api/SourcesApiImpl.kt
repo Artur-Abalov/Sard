@@ -3,7 +3,6 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.runs.AgentRevoked
@@ -41,7 +40,6 @@ class SourcesApiImpl(
     private val mapper: ObjectMapper,
     private val verifications: Verifications,
     private val warnings: SourceWarnings,
-    private val events: SettingsEvents,
 ) : SourcesApi {
     override fun listSources(
         agentId: UUID?,
@@ -61,7 +59,6 @@ class SourcesApiImpl(
 
     override fun createSource(source: SourceInput): Source {
         val created = sources.create(tenants.currentTenantId(), draftOf(source))
-        events.changed("source_created", created.id)
         return sourceOf(created)
     }
 
@@ -70,18 +67,9 @@ class SourcesApiImpl(
     override fun replaceSource(
         sourceId: UUID,
         source: SourceInput,
-    ): Source {
-        val tenant = tenants.currentTenantId()
-        val before = sourceOf(sources.get(tenant, sourceId))
-        val after = sourceOf(sources.replace(tenant, sourceId, draftOf(source)))
-        if (after.copy(updatedAt = before.updatedAt) != before) events.changed("source_updated", sourceId)
-        return after
-    }
+    ): Source = sourceOf(sources.replace(tenants.currentTenantId(), sourceId, draftOf(source)))
 
-    override fun deleteSource(sourceId: UUID) {
-        sources.delete(tenants.currentTenantId(), sourceId)
-        events.changed("source_deleted", sourceId)
-    }
+    override fun deleteSource(sourceId: UUID) = sources.delete(tenants.currentTenantId(), sourceId)
 
     /** A run cannot start for an agent that is revoked or no longer offers the plugin or repository (S8b В6): 409. */
     override fun startRun(sourceId: UUID): Run =

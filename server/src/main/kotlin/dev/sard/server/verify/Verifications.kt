@@ -16,9 +16,6 @@ import java.util.UUID
 private const val SOURCE =
     "select plugin, cast(config as text), true from sources where tenant_id = :tenant and id = :id and deleted_at is null"
 
-private const val ENABLE =
-    "update sources set verification_enabled = :enabled where tenant_id = :tenant and id = :id and deleted_at is null"
-
 // The last record of each source, and its last pass: the state the console shows (V4, for V6). A cancelled record
 // proves nothing and is looked through (J1f, ВJf2): the status is the last one that was not cancelled.
 private const val SUMMARY_COLUMNS = """
@@ -135,6 +132,7 @@ class Verifications(
     private val cycles: VerificationCycles,
     private val pool: VerifierPool,
     private val schedule: VerificationSchedule,
+    private val switch: VerificationSwitch = VerificationSwitch(),
 ) {
     fun state(
         tenantId: UUID,
@@ -162,16 +160,7 @@ class Verifications(
         sourceId: UUID,
         enabled: Boolean,
     ): SourceVerification {
-        val changed =
-            sessions.inTenant(tenantId) { session ->
-                session
-                    .createNativeMutationQuery(ENABLE)
-                    .setParameter("enabled", enabled)
-                    .setParameter("tenant", tenantId)
-                    .setParameter("id", sourceId)
-                    .executeUpdate()
-            }
-        if (changed == 0) throw SourceNotFound(sourceId)
+        sessions.inTenant(tenantId) { switch.set(it, tenantId, sourceId, enabled) }
         return state(tenantId, sourceId)
     }
 

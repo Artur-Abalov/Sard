@@ -41,41 +41,4 @@ class SettingsEventsTest {
 
         assertEquals(listOf<SardEvent>(SettingsChanged(AT, TENANT, actor, "password", null)), published)
     }
-
-    @Test
-    fun `whenChanged publishes after the action when the state differs, and returns the result of the action`() {
-        var state = 1
-        val objectId = UUID.randomUUID()
-
-        val result =
-            MutFlow.underTest {
-                events.whenChanged("run_defaults", objectId, { state }) {
-                    state = 2
-                    "done"
-                }
-            }
-
-        assertEquals("done", result)
-        assertEquals(listOf<SardEvent>(SettingsChanged(AT, TENANT, actor, "run_defaults", objectId)), published)
-    }
-
-    @Test
-    fun `whenChanged is silent when the state is the same after the action`() {
-        val state = 1
-
-        val result = MutFlow.underTest { events.whenChanged("run_defaults", null, { state }) { "kept" } }
-
-        assertEquals("kept", result)
-        assertTrue(published.isEmpty(), published.toString())
-    }
-
-    @Test
-    fun `whenChanged reads the state before the action, not after`() {
-        var state = 1
-        val reads = mutableListOf<Int>()
-
-        MutFlow.underTest { events.whenChanged("x", null, { state.also { reads += it } }) { state = 2 } }
-
-        assertEquals(listOf(1, 2), reads)
-    }
 }

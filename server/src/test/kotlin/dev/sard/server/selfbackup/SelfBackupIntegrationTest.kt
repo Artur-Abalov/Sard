@@ -5,6 +5,8 @@ package dev.sard.server.selfbackup
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.completeOnboarding
+import dev.sard.server.extension.EventLog
+import dev.sard.server.extension.RecordingConfiguration
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.InvalidConfig
@@ -50,7 +52,7 @@ import kotlin.test.assertTrue
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0"],
 )
-@Import(TestcontainersConfiguration::class, RunsTestConfiguration::class)
+@Import(TestcontainersConfiguration::class, RunsTestConfiguration::class, RecordingConfiguration::class)
 class SelfBackupIntegrationTest(
     @Autowired private val selfBackups: SelfBackups,
     @Autowired private val sources: Sources,
@@ -60,6 +62,7 @@ class SelfBackupIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val mapper: ObjectMapper,
     @Autowired private val settings: SelfBackupSettings,
+    @Autowired private val log: EventLog,
 ) {
     @MockitoSpyBean
     lateinit var sessions: TenantSessions
@@ -205,6 +208,30 @@ class SelfBackupIntegrationTest(
         clock.now = later
         assertEquals("s3:acme-sard/other", rebind("s3:acme-sard/other").location)
         assertEquals(later, updatedAt())
+    }
+
+    // Сценарий: Два одновременных одинаковых изменения дают одно событие (self_backup_repository, Р28)
+    @Test
+    fun `Привязка публикует self_backup_repository, когда меняет состояние, и молчит, когда не меняет`() {
+        fun heard() = log.settings("self_backup_repository").filter { it.tenantId == tenant.id }.size
+
+        fun rebind(
+            repository: String,
+            where: String?,
+        ) = MutFlow.underTest { selfBackups.bind(tenant.id, repository, false, where) }
+        log.clear()
+
+        rebind(S3_REPOSITORY, null)
+        assertEquals(1, heard())
+        rebind(S3_REPOSITORY, null)
+        assertEquals(1, heard())
+        rebind(S3_REPOSITORY, "s3:acme-sard/prod")
+        assertEquals(2, heard())
+        rebind(S3_REPOSITORY, "s3:acme-sard/prod")
+        assertEquals(2, heard())
+        rebind(SFTP_REPOSITORY, null)
+        assertEquals(3, heard())
+        assertEquals(null, log.settings("self_backup_repository").first().objectId)
     }
 
     @Test

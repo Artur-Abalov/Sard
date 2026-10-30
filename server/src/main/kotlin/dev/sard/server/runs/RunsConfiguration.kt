@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
@@ -78,7 +79,8 @@ class RunsConfiguration {
     fun sources(
         sessions: TenantSessions,
         clock: Clock,
-    ) = Sources(sessions, clock, UuidV7(clock, SecureRandom()))
+        settings: SettingsEvents,
+    ) = Sources(sessions, clock, UuidV7(clock, SecureRandom()), settings)
 
     /** Every [RunFinishedListener] bean (S9) hears each finished run. */
     @Bean
@@ -161,7 +163,8 @@ class TimeoutSettingsConfiguration {
     fun timeoutSettings(
         sessions: TenantSessions,
         clock: Clock,
-    ) = TimeoutSettings(sessions, clock)
+        events: SettingsEvents,
+    ) = TimeoutSettings(sessions, clock, events)
 }
 
 /** Cancel of a run (J1a): the endpoint's service; the dispatcher, if there is one, sends the agent its CancelStep. */

@@ -3,6 +3,7 @@
 
 package dev.sard.server.fleet
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentCertificateRecord
 import dev.sard.server.persistence.AgentPluginRecord
@@ -152,6 +153,7 @@ class Agents(
     private val announcer: RunAnnouncer,
     private val events: RunEvents,
     private val clock: Clock,
+    private val settings: SettingsEvents = SettingsEvents.NONE,
 ) {
     /** Online: the stream manager has a live session of a not revoked agent. */
     fun online(row: AgentRow): Boolean = row.revokedAt == null && presence.online(row.id)
@@ -256,6 +258,7 @@ class Agents(
         if (agent.revokedAt != null) return emptyList()
         val now = clock.instant()
         agent.revokedAt = now
+        settings.changed(session, tenantId, "agent_revoked", agent.id)
         session
             .createMutationQuery(REVOKE_CERTIFICATES)
             .setParameter("now", now)

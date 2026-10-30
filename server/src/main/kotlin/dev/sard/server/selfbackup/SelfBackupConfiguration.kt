@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfbackup
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
@@ -44,6 +45,7 @@ class SelfBackupConfiguration {
         runs: Runs,
         mapper: ObjectMapper,
         onboarding: OnboardingCompletion,
+        events: SettingsEvents,
     ) = SelfBackups(
         sessions,
         clock,
@@ -54,5 +56,6 @@ class SelfBackupConfiguration {
         runs,
         mapper,
         onboarding::complete,
+        events,
     )
 }
