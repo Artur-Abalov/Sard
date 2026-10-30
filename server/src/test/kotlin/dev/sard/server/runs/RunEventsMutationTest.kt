@@ -34,6 +34,9 @@ import kotlin.test.assertTrue
 
 private val SCHEDULER = Subject("service", "scheduler")
 private val LATER = Duration.ofSeconds(5)
+private const val RESTORE =
+    """{"snapshotId":"s1","snapshotCreatedAt":"2026-09-30T09:00:00Z","repositoryName":"main",""" +
+        """"config":{"destination":"x"},"target":"/r/x"}"""
 
 /**
  * Mutation tests of the events of a run (CORE1 Р19): created, started and every change of status, published when the
@@ -76,8 +79,10 @@ class RunEventsMutationTest(
         run: UUID,
         status: String,
     ) = session
-        .createNativeQuery("update runs set status = :status where id = :run")
-        .setParameter("status", status)
+        .createNativeQuery(
+            "update runs set status = :status, finished_at = " +
+                "case when :status in ('queued', 'dispatched', 'running') then null else now() end where id = :run",
+        ).setParameter("status", status)
         .setParameter("run", run)
         .executeUpdate()
 
@@ -103,8 +108,9 @@ class RunEventsMutationTest(
     @Test
     fun `A run nobody asked for is created by the actor of the thread, a verification run has the kind verification`() {
         val run = startedRun()
-        val unasked = "update runs set requested_by = null, trigger = 'verification', kind = 'restore' where id = ?"
-        jdbc.update(unasked, run.id)
+        val unasked =
+            "update runs set requested_by = null, trigger = 'verification', kind = 'restore', restore = ?::jsonb where id = ?"
+        jdbc.update(unasked, RESTORE, run.id)
 
         inTenant { MutFlow.underTest { events.created(it, checkNotNull(it.find(RunRecord::class.java, run.id))) } }
 
@@ -117,7 +123,7 @@ class RunEventsMutationTest(
     @Test
     fun `A restore run has the kind restore`() {
         val run = startedRun()
-        jdbc.update("update runs set kind = 'restore' where id = ?", run.id)
+        jdbc.update("update runs set kind = 'restore', restore = ?::jsonb where id = ?", RESTORE, run.id)
 
         inTenant { MutFlow.underTest { events.created(it, checkNotNull(it.find(RunRecord::class.java, run.id))) } }
 
