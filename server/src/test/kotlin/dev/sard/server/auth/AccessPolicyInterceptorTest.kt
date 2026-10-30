@@ -4,10 +4,12 @@
 package dev.sard.server.auth
 
 import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
+import dev.sard.server.api.captureLogs
 import dev.sard.server.extension.AccessPolicy
 import dev.sard.server.extension.Operation
 import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.Subject
+import dev.sard.server.extension.SubjectSource
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.beans.factory.ObjectProvider
@@ -32,9 +34,16 @@ private fun <T : Any> providerOf(
 
 @MutFlowTest
 class AccessPolicyInterceptorTest {
-    private fun interceptor(policy: AccessPolicy): AccessPolicyInterceptor {
+    private fun interceptor(
+        policy: AccessPolicy,
+        subjects: SubjectSource,
+    ): AccessPolicyInterceptor {
         val mapper = providerOf(ObjectMapper::class.java, ObjectMapper())
-        return AccessPolicyInterceptor(providerOf(AccessPolicy::class.java, policy), mapper)
+        return AccessPolicyInterceptor(
+            providerOf(AccessPolicy::class.java, policy),
+            providerOf(SubjectSource::class.java, subjects),
+            mapper,
+        )
     }
 
     private fun request(
@@ -52,9 +61,10 @@ class AccessPolicyInterceptorTest {
     private fun handled(
         policy: AccessPolicy,
         request: MockHttpServletRequest,
+        subjects: SubjectSource = SubjectSource { Subject.ADMINISTRATOR },
     ): Pair<Boolean, MockHttpServletResponse> {
         val response = MockHttpServletResponse()
-        val allowed = MutFlow.underTest { interceptor(policy).preHandle(request, response, Any()) }
+        val allowed = MutFlow.underTest { interceptor(policy, subjects).preHandle(request, response, Any()) }
         return allowed to response
     }
 
@@ -66,11 +76,67 @@ class AccessPolicyInterceptorTest {
                 setAttribute(SUBJECT_REQUEST_ATTRIBUTE, Subject("sso-user", "alice"))
             }
 
-        val (allowed, response) = handled({ subject, operation -> asked.add(subject to operation) }, request)
+        val alice = SubjectSource { Subject("sso-user", "alice") }
+        val (allowed, response) = handled({ subject, operation -> asked.add(subject to operation) }, request, alice)
 
         assertTrue(allowed)
         assertEquals(200, response.status)
         assertEquals(listOf(Subject("sso-user", "alice") to Operation("GET", PROTECTED)), asked)
+    }
+
+    @Test
+    fun `the policy is asked about the subject the source names, not the one of the session`() {
+        val asked = mutableListOf<Subject>()
+        val robot = SubjectSource { Subject("svc", "robot") }
+
+        val request = request("GET", PROTECTED, session = true)
+
+        val (allowed, _) = handled({ subject, _ -> asked.add(subject) }, request, robot)
+
+        assertTrue(allowed)
+        assertEquals(listOf(Subject("svc", "robot")), asked)
+    }
+
+    @Test
+    fun `a source that names a subject does not authenticate a request without a core session`() {
+        val asked = mutableListOf<Subject>()
+        val robot = SubjectSource { Subject("svc", "robot") }
+
+        val (allowed, response) =
+            handled({ subject, _ -> asked.add(subject) }, request("GET", PROTECTED, session = false), robot)
+
+        assertFalse(allowed)
+        assertEquals(401, response.status)
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `a source that names nobody closes the operation with 401`() {
+        val (allowed, response) =
+            handled({ _, _ -> true }, request("GET", PROTECTED, session = true), SubjectSource { null })
+
+        assertFalse(allowed)
+        assertEquals(401, response.status)
+        assertTrue("unauthenticated" in response.contentAsString, response.contentAsString)
+    }
+
+    @Test
+    fun `a source that throws closes the operation with 403 access_denied and one WARN, the policy is not asked`() {
+        val asked = mutableListOf<Subject>()
+        val broken = SubjectSource { error("sso unreachable") }
+        lateinit var outcome: Pair<Boolean, MockHttpServletResponse>
+
+        val logs =
+            captureLogs {
+                val request = request("GET", PROTECTED, session = true)
+                outcome = handled({ subject, _ -> asked.add(subject) }, request, broken)
+            }
+
+        assertFalse(outcome.first)
+        assertEquals(403, outcome.second.status)
+        assertTrue("access_denied" in outcome.second.contentAsString, outcome.second.contentAsString)
+        assertTrue(asked.isEmpty())
+        assertEquals(1, logs.count { "subject source failed" in it }, logs.toString())
     }
 
     @Test

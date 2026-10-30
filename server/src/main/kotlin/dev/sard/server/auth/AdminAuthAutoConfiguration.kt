@@ -6,11 +6,13 @@ package dev.sard.server.auth
 import dev.sard.server.ClockAutoConfiguration
 import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.SessionApi
+import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.AccessPolicy
 import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.SessionExpired
+import dev.sard.server.extension.SubjectSource
 import dev.sard.server.extension.TenancyAutoConfiguration
 import dev.sard.server.extension.TenantResolver
 import jakarta.servlet.Filter
@@ -88,6 +90,7 @@ class AdminAuthAutoConfiguration {
         clock: Clock,
         publisher: SardEventPublisher,
         settings: SettingsEvents,
+        actors: ActorSource,
     ): SessionApi =
         SessionApiImpl(
             administrators,
@@ -98,6 +101,7 @@ class AdminAuthAutoConfiguration {
             clock,
             publisher,
             settings,
+            actors,
         )
 
     @Bean
@@ -116,11 +120,13 @@ class AdminAuthAutoConfiguration {
     @Bean
     fun accessPolicyInterceptorConfigurer(
         policy: ObjectProvider<AccessPolicy>,
+        subjects: ObjectProvider<SubjectSource>,
         objectMapper: ObjectProvider<ObjectMapper>,
     ): WebMvcConfigurer =
         object : WebMvcConfigurer {
             override fun addInterceptors(registry: InterceptorRegistry) {
-                registry.addInterceptor(AccessPolicyInterceptor(policy, objectMapper)).addPathPatterns("/api/v1/**")
+                val interceptor = AccessPolicyInterceptor(policy, subjects, objectMapper)
+                registry.addInterceptor(interceptor).addPathPatterns("/api/v1/**")
             }
         }
 

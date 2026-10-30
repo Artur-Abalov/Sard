@@ -14,7 +14,10 @@ import org.springframework.context.event.SimpleApplicationEventMulticaster
 
 private val log = LoggerFactory.getLogger(SardEventPublisher::class.java)
 
-/** Who the request on this thread acts as; null on a thread of the server itself. Replaced by an SSO starter. */
+/**
+ * Who the events of the core name as their actor. Not a seam: [SubjectActors] reads the public
+ * [dev.sard.server.extension.SubjectSource], which is what an extension replaces (CORE1 Р26).
+ */
 fun interface ActorSource {
     fun current(): Subject?
 

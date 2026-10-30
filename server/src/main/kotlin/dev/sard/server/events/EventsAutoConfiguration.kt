@@ -3,6 +3,7 @@
 
 package dev.sard.server.events
 
+import dev.sard.server.extension.SubjectSource
 import dev.sard.server.extension.TenantResolver
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -23,7 +24,7 @@ class EventsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    fun actorSource(): ActorSource = ActorSource.NONE
+    fun actorSource(subjects: SubjectSource): ActorSource = SubjectActors(subjects)
 
     @Bean
     @ConditionalOnMissingBean
