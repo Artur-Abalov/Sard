@@ -37,8 +37,10 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
   Ожидается: два UUID через пробел. Пустое значение — стенд не подготовлен,
   дальше не идти.
 - Свойства образца (`sard.sample.licence`, `sard.sample.deny`,
-  `sard.sample.listener`) задаются переменными окружения сервера образца
-  (`SARD_SAMPLE_LICENCE`, `SARD_SAMPLE_DENY`, `SARD_SAMPLE_LISTENER`).
+  `sard.sample.listener`, `sard.sample.subject`,
+  `sard.sample.stray-controller`) задаются переменными окружения сервера
+  образца (`SARD_SAMPLE_LICENCE`, `SARD_SAMPLE_DENY`, `SARD_SAMPLE_LISTENER`,
+  `SARD_SAMPLE_SUBJECT`, `SARD_SAMPLE_STRAY_CONTROLLER`).
   **Каждое изменение применяется только перезапуском сервера образца**
   (`docker compose up -d --force-recreate server`); после перезапуска
   дождаться `GET /actuator/health` = `UP` и войти заново. `AGENT` и `SRC` при
@@ -211,6 +213,81 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
       выводит `t`;
     - `psql` с `select count(*) from sard.flyway_schema_history where description = 'sample events'`
       выводит `0`.
+
+## H. Один источник субъекта для политики и событий (Р26)
+
+26. Стенд образца из шага 25: `SARD_SAMPLE_LISTENER=record`,
+    `SARD_SAMPLE_SUBJECT=sso-user:alice`, `SARD_SAMPLE_DENY` пусто,
+    перезапуск, вход паролем `$P`. Изменить сроки шагов по умолчанию:
+    `curl -s -b $J -X PUT $S/api/v1/run-defaults -H 'Content-Type: application/json' -d '{"backupTimeoutMinutes":400,"restoreTimeoutMinutes":720}' -o /dev/null -w '%{http_code}\n'`
+    → `200`. Затем
+    `curl -s -b $J $S/api/v1/sample/events | jq -c '[.[] | select(.type == "settings.changed" and .setting == "run_defaults")][-1].actor'`.
+    Ожидается: `{"kind":"sso-user","id":"alice"}`.
+27. Запустить бэкап: `RUN6=$(curl -s -b $J -X POST $S/api/v1/sources/$SRC/runs | jq -r .id); echo $RUN6`,
+    затем
+    `curl -s -b $J $S/api/v1/sample/events | jq -c --arg r "$RUN6" '[.[] | select(.runId == $r and .type == "run.created")] | map(.actor)'`.
+    Ожидается: `[{"kind":"sso-user","id":"alice"}]`.
+28. Выйти: `curl -s -b $J -X DELETE $S/api/v1/session -o /dev/null -w '%{http_code}\n'`
+    → `204`. Войти заново и выполнить
+    `curl -s -b $J $S/api/v1/sample/events | jq -c '[.[] | select(.type == "signout")][-1].actor'`.
+    Ожидается: `{"kind":"sso-user","id":"alice"}`.
+29. Убрать `SARD_SAMPLE_SUBJECT`, перезапуск, вход, повторить запрос шага 26
+    с `"backupTimeoutMinutes":360` и тот же `jq`.
+    Ожидается: `{"kind":"administrator","id":"admin"}` — без свойства
+    субъект берётся из сессии ядра.
+
+## I. Контроллер вне /api/v1 из пакета ядра (Р27)
+
+30. На стенде ядра (`make up`, без расширений)
+    `curl -s $S/actuator/health | jq -r .status`.
+    Ожидается: `UP` — ядро проходит проверку контроллеров.
+31. На стенде образца задать `SARD_SAMPLE_STRAY_CONTROLLER=true` и
+    перезапустить сервер образца.
+    Ожидается: сервер не стартует; в `docker compose logs server` ошибка
+    старта называет расширение `sample` и путь `/sample/stray`.
+32. Убрать `SARD_SAMPLE_STRAY_CONTROLLER`, перезапустить.
+    Ожидается: `/actuator/health` = `UP`.
+
+## J. Событие настроек решается при записи (Р28)
+
+33. Стенд образца, `SARD_SAMPLE_LISTENER=record`, `SARD_SAMPLE_SUBJECT`
+    пусто, вход. Запомнить число событий `run_defaults`:
+
+    ```bash
+    count() { curl -s -b $J $S/api/v1/sample/events | jq '[.[] | select(.type == "settings.changed" and .setting == "run_defaults")] | length'; }
+    N0=$(count); echo $N0
+    ```
+
+    Затем два одинаковых изменения на новое значение одновременно:
+
+    ```bash
+    B='{"backupTimeoutMinutes":420,"restoreTimeoutMinutes":720}'
+    for i in 1 2; do curl -s -b $J -X PUT $S/api/v1/run-defaults -H 'Content-Type: application/json' -d "$B" -o /dev/null -w '%{http_code}\n' & done; wait
+    echo $(( $(count) - N0 ))
+    ```
+
+    Ожидается: два кода `200` и разница `1`. Одновременность вручную не
+    гарантирована; гонку закрывает автоматический сценарий «Два
+    одновременных одинаковых изменения дают одно событие».
+34. Тот же `PUT` с `$B` ещё раз, затем `echo $(( $(count) - N0 ))`.
+    Ожидается: `200` и по-прежнему `1` — повтор без изменений события не
+    даёт.
+
+## K. Сброс пароля командой admin-reset (Р32)
+
+35. Стенд образца, `SARD_SAMPLE_LISTENER=record`. Остановить сервер и
+    выполнить сброс:
+    `docker compose stop server && docker compose run --rm server admin-reset; echo $?`.
+    Ожидается: `0`. Запустить сервер (`docker compose up -d server`),
+    дождаться `UP`, пройти шаг admin мастера с кодом из лога сервера (как в
+    `docs/qa/onboarding-setup.md`), задав пароль `$P`, войти. Затем
+    `curl -s -b $J $S/api/v1/sample/events | jq -c '[.[] | select(.type == "settings.changed" and .setting == "admin_password") | {actor, objectId}]'`.
+    Ожидается: `[{"actor":null,"objectId":null}]` — ровно одно событие.
+36. Перезапустить сервер образца, войти, повторить `jq` шага 35.
+    Ожидается: по-прежнему один элемент.
+37. Повторить шаг 35, но выполнить `admin-reset` два раза подряд до
+    запуска сервера. Ожидается: событий `admin_password` стало на одно
+    больше, чем после шага 36 (два элемента всего).
 
 ## Итог
 
