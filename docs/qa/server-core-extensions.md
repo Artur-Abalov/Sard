@@ -27,11 +27,13 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
   → `204`.
 - Идентификаторы стенда — после первого входа на каждом стенде, без ручной
   подстановки:
+
   ```bash
   AGENT=$(curl -s -b $J "$S/api/v1/agents" | jq -r '.items[] | select(.hostname == "qa") | .id')
   SRC=$(curl -s -b $J "$S/api/v1/sources" | jq -r '.items[] | select(.name == "qa-files") | .id')
   echo "$AGENT $SRC"
   ```
+
   Ожидается: два UUID через пробел. Пустое значение — стенд не подготовлен,
   дальше не идти.
 - Свойства образца (`sard.sample.licence`, `sard.sample.deny`,
@@ -58,10 +60,12 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
 4. `psql` с запросом `select to_regclass('sard.flyway_schema_history_extensions') is null`.
    Ожидается: `t` (таблицы нет).
 5. Создать временный источник и сохранить его id:
+
    ```bash
    TMP=$(curl -s -b $J -X POST $S/api/v1/sources -H 'Content-Type: application/json' \
      -d "{\"name\":\"qa-tmp\",\"agentId\":\"$AGENT\",\"plugin\":\"files\",\"repositoryName\":\"qa\",\"config\":{\"paths\":[\"/etc/hostname\"]}}" | jq -r .id); echo $TMP
    ```
+
    Ожидается: UUID. Удалить его:
    `curl -s -b $J -X DELETE $S/api/v1/sources/$TMP -o /dev/null -w '%{http_code}\n'`.
    Ожидается: успешный код `2xx` (не `403`) — политика ядра разрешает
@@ -86,19 +90,23 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
 ## C. Лицензия не блокирует бэкап, восстановление и проверку
 
 9. `SARD_SAMPLE_LICENCE=expired`, перезапуск, вход. Запустить бэкап:
+
    ```bash
    curl -s -b $J -X POST $S/api/v1/sources/$SRC/runs -o /tmp/body -w '%{http_code}\n'
    RUN1=$(jq -r .id /tmp/body); echo $RUN1
    ```
+
    Ожидается: тот же код ответа, что на стенде ядра (запуск создан), и UUID
    запуска; через некоторое время
    `curl -s -b $J $S/api/v1/runs/$RUN1 | jq -r .status` → `succeeded`.
 10. Там же восстановить последний снимок (как в `docs/qa/console-restore.md`):
+
     ```bash
     SNAP=$(curl -s -b $J "$S/api/v1/sources/$SRC/snapshots" | jq -r '.items[0].snapshotId')
     RUN2=$(curl -s -b $J -X POST "$S/api/v1/sources/$SRC/snapshots/$SNAP/restores" -H 'Content-Type: application/json' \
       -d "{\"agentId\":\"$AGENT\",\"config\":{\"destination\":\"qa-ext\"}}" | jq -r .id); echo "$SNAP $RUN2"
     ```
+
     Ожидается: два непустых значения; `GET /api/v1/runs/$RUN2` доходит до
     `status` = `succeeded`.
 11. Там же запросить проверку последнего целого снимка:
@@ -174,6 +182,7 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
 23. Действующая защита каждой операции образца: `security` операции, если он
     задан, иначе корневой `security` документа; пустой массив — операция
     открыта.
+
     ```bash
     curl -s $S/v3/api-docs | jq -c '. as $d
       | [.paths | to_entries[] | select(.key | startswith("/api/v1/sample"))
@@ -183,6 +192,7 @@ HTTP (`curl`, `jq`), `docker compose` и `psql`; консоль не нужна.
             secured: ((.value.security // $d.security // []) | length > 0),
             has401: (.value.responses | has("401"))}]'
     ```
+
     Ожидается:
     `[{"path":"/api/v1/sample/events","method":"get","secured":true,"has401":true},{"path":"/api/v1/sample/notes","method":"post","secured":true,"has401":true}]`.
 
