@@ -36,16 +36,22 @@ class AccessPolicyInterceptor(
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        val session = request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession
-        val template = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String
-        val operation = template?.let { Operation(request.method, it) }
-        val exempt = operation == null || operation.toString().let { it in PUBLIC_OPERATIONS || it in EXEMPT }
-        val allowed = exempt || session == null || permits(session, checkNotNull(operation))
+        val allowed = askedAbout(request)?.let { (session, operation) -> permits(session, operation) } ?: true
         if (!allowed) {
             writeProblem(response, objectMapper.getObject(), HTTP_FORBIDDEN, "Forbidden", ErrorCode.ACCESS_DENIED)
         }
         return allowed
     }
+
+    /** The session and the operation the policy is asked about; null when it is not asked (Р17). */
+    private fun askedAbout(request: HttpServletRequest): Pair<AdminSession, Operation>? {
+        val session = request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession ?: return null
+        val template = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String ?: return null
+        val operation = Operation(request.method, template)
+        return (session to operation).takeUnless { exempt(operation) }
+    }
+
+    private fun exempt(operation: Operation) = operation.toString().let { it in PUBLIC_OPERATIONS || it in EXEMPT }
 
     private fun permits(
         session: AdminSession,

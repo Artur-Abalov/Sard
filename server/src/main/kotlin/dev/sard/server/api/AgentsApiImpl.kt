@@ -63,10 +63,9 @@ class AgentsApiImpl(
         confirm: String?,
     ): AgentDetails {
         val tenant = tenants.currentTenantId()
-        val wasRevoked = agents.get(tenant, agentId)?.row?.revokedAt != null
-        return when (val revocation = agents.revoke(tenant, agentId, confirm)) {
+        val revokedBefore = { agents.get(tenant, agentId)?.row?.revokedAt }
+        return when (val revocation = revoked(tenant, agentId, confirm, revokedBefore)) {
             is AgentRevocation.Revoked -> {
-                if (!wasRevoked) events.changed("agent_revoked", agentId)
                 detailsOf(revocation.card)
             }
 
@@ -78,6 +77,19 @@ class AgentsApiImpl(
                 throw SelfAgentConfirmationRequired()
             }
         }
+    }
+
+    /** Revokes, and tells the listeners when the agent was not revoked before (a repeat changes nothing). */
+    private fun revoked(
+        tenant: UUID,
+        agentId: UUID,
+        confirm: String?,
+        revokedBefore: () -> Any?,
+    ): AgentRevocation {
+        val was = revokedBefore() != null
+        val revocation = agents.revoke(tenant, agentId, confirm)
+        if (revocation is AgentRevocation.Revoked && !was) events.changed("agent_revoked", agentId)
+        return revocation
     }
 
     private fun connectivityOf(status: AgentStatus): Connectivity =
