@@ -13,7 +13,11 @@ const [fireExample] = Object.values(scheduleFires)[0]
 
 export const contractChecks = [
   http.get('/api/v1/status', ({ response }) =>
-    response(200).json({ version: '1.0.0', lastVerifiedRestoreAt: null }),
+    response(200).json({
+      version: '1.0.0',
+      lastVerifiedRestoreAt: null,
+      edition: { id: 'free', displayName: 'Free' },
+    }),
   ),
 
   // @ts-expect-error: /api/v1/nope is not in the schema
