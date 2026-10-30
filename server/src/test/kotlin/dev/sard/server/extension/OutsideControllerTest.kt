@@ -4,6 +4,8 @@
 package dev.sard.server.extension
 
 import dev.sard.server.api.ExtensionWebAutoConfiguration
+import dev.sard.server.x.PkgInsideController
+import dev.sard.server.x.PkgOutsideController
 import dev.sard.testext.outside.InsideController
 import dev.sard.testext.outside.OutsideController
 import org.springframework.boot.autoconfigure.AutoConfigurations
@@ -38,5 +40,24 @@ class OutsideControllerTest {
     @Test
     fun `Контроллер расширения под api v1 стартует`() {
         runner.withBean(InsideController::class.java).run { ctx -> assertNull(ctx.startupFailure) }
+    }
+
+    @Test
+    fun `Контроллер расширения в пакете ядра вне api v1 останавливает старт`() {
+        runner.withBean(PkgOutsideController::class.java).run { ctx ->
+            assertNotNull(ctx.startupFailure)
+            val text = generateSequence(ctx.startupFailure) { it.cause }.map { it.message }.joinToString()
+            assertTrue("PkgOutsideController" in text && "/ext/ping" in text, text)
+        }
+    }
+
+    @Test
+    fun `Контроллер расширения в пакете ядра под api v1 не мешает старту`() {
+        runner.withBean(PkgInsideController::class.java).run { ctx -> assertNull(ctx.startupFailure) }
+    }
+
+    @Test
+    fun `Ядро без расширений проходит проверку контроллеров`() {
+        runner.run { ctx -> assertNull(ctx.startupFailure) }
     }
 }
