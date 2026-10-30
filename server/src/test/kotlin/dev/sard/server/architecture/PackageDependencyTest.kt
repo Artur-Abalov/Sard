@@ -3,29 +3,19 @@
 
 package dev.sard.server.architecture
 
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private const val ROOT = "dev.sard.server"
-private val MAIN = File("src/main/kotlin/dev/sard/server")
-private val PACKAGE = Regex("""^package\s+${Regex.escape(ROOT)}\.(\w+)""")
-private val IMPORT = Regex("""^import\s+${Regex.escape(ROOT)}\.(\w+)\.""")
-
 /** The slices (first package segment below dev.sard.server) a slice imports from, with the file doing it. */
-private fun importsOf(slice: String): List<Pair<String, String>> {
-    check(MAIN.isDirectory) { "expected to run with the server module as the working directory: $MAIN" }
-    return MAIN
-        .walkTopDown()
-        .filter { it.isFile && it.extension == "kt" }
+private fun importsOf(slice: String): List<Pair<String, String>> =
+    kotlinFiles()
         .flatMap { file ->
             val lines = file.readLines()
             val own = lines.firstNotNullOfOrNull { PACKAGE.find(it)?.groupValues?.get(1) }
             val imported = lines.mapNotNull { IMPORT.find(it)?.groupValues?.get(1) }
             if (own == slice) imported.map { file.name to it } else emptyList()
         }.toList()
-}
 
 private val FRAMEWORK_IMPORT =
     Regex(
@@ -97,24 +87,20 @@ private fun closureOf(roots: List<String>): Set<String> {
     return seen
 }
 
-private fun filesOfSlice(slice: String) =
-    MAIN
-        .resolve(slice)
-        .walkTopDown()
-        .filter { it.isFile && it.extension == "kt" }
-        .toList()
+private fun filesOfSlice(slice: String) = kotlinFiles(MAIN.resolve(slice))
+
+private fun filesImportingLicenceSeam(slices: Collection<String>) =
+    slices.flatMap { slice ->
+        val files = filesOfSlice(slice)
+        assertTrue(files.isNotEmpty(), "the scan found no files of $slice")
+        files.filter { file -> file.readLines().any { LICENCE_SEAM.containsMatchIn(it) } }.map { it.path }
+    }
 
 /** Rule "Лицензия никогда не блокирует бэкап, восстановление и проверку" (server-core-extensions.feature). */
 class LicenceNeverBlocksTest {
     @Test
     fun `Запуски, отправка, проверка, планировщик и восстановление не зависят от шва лицензии`() {
-        val offenders =
-            LICENCE_ROOTS.flatMap { slice ->
-                val files = filesOfSlice(slice)
-                assertTrue(files.isNotEmpty(), "the scan found no files of $slice")
-                files.filter { file -> file.readLines().any { LICENCE_SEAM.containsMatchIn(it) } }.map { it.path }
-            }
-        assertEquals(emptyList(), offenders)
+        assertEquals(emptyList(), filesImportingLicenceSeam(LICENCE_ROOTS))
     }
 
     /**
@@ -126,13 +112,7 @@ class LicenceNeverBlocksTest {
         val closure = closureOf(LICENCE_ROOTS) - "extension"
         assertTrue(closure.containsAll(LICENCE_ROOTS), "the closure lost a root: $closure")
         assertTrue(closure.size > LICENCE_ROOTS.size, "the scan followed no import: $closure")
-        val offenders =
-            closure.flatMap { slice ->
-                filesOfSlice(slice)
-                    .filter { file -> file.readLines().any { LICENCE_SEAM.containsMatchIn(it) } }
-                    .map { it.path }
-            }
-        assertEquals(emptyList(), offenders)
+        assertEquals(emptyList(), filesImportingLicenceSeam(closure))
     }
 }
 
@@ -151,7 +131,7 @@ private val EDITION_CALL = Regex("""\.edition\(\)""")
 class EditionReadOnceTest {
     @Test
     fun `Only the edition auto-configuration reads the edition of the seam`() {
-        val files = MAIN.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        val files = kotlinFiles()
         assertTrue(files.size > 50, "the scan found only ${files.size} files")
         val callers =
             files
