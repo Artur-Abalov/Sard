@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
@@ -47,7 +48,8 @@ private const val REQUIRED = """violates "required" of the schema"""
  * restore makes.
  */
 @Tag("mutflow-isolated")
-@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
+// TenantSessionsTest, RunEventsMutationTest and EventDeliveryTest mutate these
+@MutFlowTest(excludeTargets = [TenantSessions::class, RunEvents::class, SardEventPublisher::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0"],

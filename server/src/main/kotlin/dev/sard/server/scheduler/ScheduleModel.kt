@@ -90,7 +90,10 @@ data class ScheduleView(
     val lastRun: LastRun?,
     val createdAt: Instant,
     val updatedAt: Instant,
-)
+) {
+    /** What a caller sets: the parts of the schedule a PUT can change. */
+    val draft: ScheduleDraft get() = ScheduleDraft(cron, timezone, enabled, notifyOnSuccess)
+}
 
 /** One journal row; a downtime row covers [missedCount] fires from [scheduledFor] through [missedUntil]. */
 data class FireView(
