@@ -14,6 +14,13 @@ import org.springframework.context.annotation.Bean
  */
 @AutoConfiguration
 class TenancyAutoConfiguration {
+    companion object {
+        /** Two extensions replacing the seam refuse the start, like the other seams (Р22). */
+        @Bean
+        @JvmStatic
+        fun tenantResolverSeamCheck() = singleImplementationOf(TenantResolver::class.java)
+    }
+
     @Bean
     @ConditionalOnMissingBean
     fun tenantResolver() = TenantResolver { DEFAULT_TENANT_ID }

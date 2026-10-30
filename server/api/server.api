@@ -392,8 +392,14 @@ public final class dev/sard/server/extension/Subject$Companion {
 }
 
 public class dev/sard/server/extension/TenancyAutoConfiguration {
+	public static final field Companion Ldev/sard/server/extension/TenancyAutoConfiguration$Companion;
 	public fun <init> ()V
 	public fun tenantResolver ()Ldev/sard/server/extension/TenantResolver;
+	public static final fun tenantResolverSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
+}
+
+public final class dev/sard/server/extension/TenancyAutoConfiguration$Companion {
+	public final fun tenantResolverSeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
 public abstract interface class dev/sard/server/extension/TenantResolver {

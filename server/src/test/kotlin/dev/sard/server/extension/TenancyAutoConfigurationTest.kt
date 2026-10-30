@@ -5,11 +5,14 @@ package dev.sard.server.extension
 
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfigurations
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Bean
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 private val ACME = UUID.fromString("7f3c1a52-0b4e-4c1d-9a55-2d8e6f0b9c11")
 
@@ -18,6 +21,15 @@ private val ACME = UUID.fromString("7f3c1a52-0b4e-4c1d-9a55-2d8e6f0b9c11")
 class FakeTenantsStarter {
     @Bean
     fun tenantResolver() = TenantResolver { ACME }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+class TwoTenantExtensions {
+    @Bean("ten-a-resolver")
+    fun a() = TenantResolver { ACME }
+
+    @Bean("ten-b-resolver")
+    fun b() = TenantResolver { ACME }
 }
 
 class TenancyAutoConfigurationTest {
@@ -43,5 +55,14 @@ class TenancyAutoConfigurationTest {
     fun `the default tenant id is stable`() {
         // Seeded by Flyway V2; changing it orphans every existing row.
         assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000001"), TenantResolver.DEFAULT_TENANT_ID)
+    }
+
+    @Test
+    fun `two tenant resolvers from different extensions refuse the start`() {
+        runner.withUserConfiguration(TwoTenantExtensions::class.java).run { ctx ->
+            assertNotNull(ctx.startupFailure)
+            val text = generateSequence(ctx.startupFailure) { it.cause }.map { it.message }.joinToString()
+            assertTrue("ten-a" in text && "ten-b" in text, text)
+        }
     }
 }
