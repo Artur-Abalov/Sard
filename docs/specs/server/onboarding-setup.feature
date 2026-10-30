@@ -228,7 +228,8 @@
 #   Р16 (OQ-196). С enterprise-заменой SessionApi код не выдаётся и не
 #       печатается, шаг admin считается выполненным (вход — забота расширения),
 #       POST setup-session — 409 setup_completed, POST admin — 409
-#       setup_completed, PUT /session/password — 501 not_implemented; шаг ca
+#       setup_completed, PUT /session/password — 501 not_implemented (тому,
+#       кто вошёл через расширение; без субъекта — 401, CORE1 2026-10-30); шаг ca
 #       выполняет POST /onboarding/ca с сессией администратора.
 #   Р17. Переписано поправкой 2026-10-09, уточнено 2026-10-09 («Будет верно
 #       после 0.1.0-бета»). Установка версии до 0.1.0-beta (0.0.1-rc1) не

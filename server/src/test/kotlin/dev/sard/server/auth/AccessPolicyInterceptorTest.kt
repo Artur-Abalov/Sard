@@ -5,6 +5,9 @@ package dev.sard.server.auth
 
 import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.AccessPolicy
+import dev.sard.server.extension.Operation
+import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
+import dev.sard.server.extension.Subject
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.beans.factory.ObjectProvider
@@ -53,6 +56,32 @@ class AccessPolicyInterceptorTest {
         val response = MockHttpServletResponse()
         val allowed = MutFlow.underTest { interceptor(policy).preHandle(request, response, Any()) }
         return allowed to response
+    }
+
+    @Test
+    fun `a replaced session filter passes its own subject to the policy`() {
+        val asked = mutableListOf<Pair<Subject, Operation>>()
+        val request =
+            request("GET", PROTECTED, session = false).apply {
+                setAttribute(SUBJECT_REQUEST_ATTRIBUTE, Subject("sso-user", "alice"))
+            }
+
+        val (allowed, response) = handled({ subject, operation -> asked.add(subject to operation) }, request)
+
+        assertTrue(allowed)
+        assertEquals(200, response.status)
+        assertEquals(listOf(Subject("sso-user", "alice") to Operation("GET", PROTECTED)), asked)
+    }
+
+    @Test
+    fun `a subject of another type under the attribute is not a subject`() {
+        val request = request("GET", PROTECTED, session = false)
+        request.setAttribute(SUBJECT_REQUEST_ATTRIBUTE, "alice")
+
+        val (allowed, response) = handled({ _, _ -> true }, request)
+
+        assertFalse(allowed)
+        assertEquals(401, response.status)
     }
 
     @Test

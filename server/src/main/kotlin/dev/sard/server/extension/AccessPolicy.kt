@@ -3,6 +3,13 @@
 
 package dev.sard.server.extension
 
+/**
+ * The request attribute under which an extension that replaces the session filter (Е3) puts the [Subject] of the
+ * signed-in user. The core asks the [AccessPolicy] with it; a protected operation without a subject (neither a core
+ * session nor this attribute) is refused with 401.
+ */
+const val SUBJECT_REQUEST_ATTRIBUTE = "dev.sard.server.subject"
+
 /** Who a session stands for (CORE1 Р4, Р17). The sessions of the open core are all [ADMINISTRATOR]. */
 data class Subject(
     val kind: String,

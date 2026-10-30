@@ -13,6 +13,10 @@ public final class dev/sard/server/extension/AccessPolicyAutoConfiguration$Compa
 	public final fun accessPolicySeamCheck ()Lorg/springframework/beans/factory/config/BeanFactoryPostProcessor;
 }
 
+public final class dev/sard/server/extension/AccessPolicyKt {
+	public static final field SUBJECT_REQUEST_ATTRIBUTE Ljava/lang/String;
+}
+
 public final class dev/sard/server/extension/Edition {
 	public static final field Companion Ldev/sard/server/extension/Edition$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
