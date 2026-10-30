@@ -102,3 +102,19 @@ class LicenceNeverBlocksTest {
         assertEquals(emptyList(), offenders)
     }
 }
+
+private val EDITION_CALL = Regex("""\.edition\(\)""")
+
+/** Rule "Редакция читается один раз при старте" (server-core-extensions.feature). */
+class EditionReadOnceTest {
+    @Test
+    fun `Only the edition auto-configuration reads the edition of the seam`() {
+        val files = MAIN.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        assertTrue(files.size > 50, "the scan found only ${files.size} files")
+        val callers =
+            files
+                .filter { file -> file.readLines().any { EDITION_CALL.containsMatchIn(it) } }
+                .map { it.name }
+        assertEquals(listOf("EditionAutoConfiguration.kt"), callers)
+    }
+}

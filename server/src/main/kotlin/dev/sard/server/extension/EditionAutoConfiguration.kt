@@ -3,8 +3,6 @@
 
 package dev.sard.server.extension
 
-import org.springframework.beans.factory.ObjectProvider
-import org.springframework.beans.factory.SmartInitializingSingleton
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
@@ -23,12 +21,12 @@ class EditionAutoConfiguration {
     }
 
     /** The edition is read once at start: a seam that throws refuses the start, not every status request. */
-    @Bean
-    fun editionStartupCheck(provider: ObjectProvider<EditionProvider>) =
-        SmartInitializingSingleton {
-            runCatching { provider.getObject().edition() }
-                .onFailure { throw IllegalStateException("Edition unavailable: ${it.message}", it) }
-        }
+    @Bean("reportedEdition")
+    internal fun reportedEdition(provider: EditionProvider): ReportedEdition =
+        ReportedEdition(
+            runCatching { provider.edition() }
+                .getOrElse { throw IllegalStateException("Edition unavailable: ${it.message}", it) },
+        )
 
     @Bean
     @ConditionalOnMissingBean
@@ -39,3 +37,8 @@ class EditionAutoConfiguration {
             override fun licence(): LicenceSummary? = null
         }
 }
+
+/** The edition the seam reported at start; what /status and /server tell, for the life of the process. */
+internal class ReportedEdition(
+    val edition: Edition,
+)

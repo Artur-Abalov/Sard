@@ -3,7 +3,7 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.extension.EditionProvider
+import dev.sard.server.extension.ReportedEdition
 import dev.sard.server.verify.RestoreVerifications
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
@@ -32,16 +32,16 @@ data class StatusResponse(
 @RestController
 @RequestMapping("/api/v1")
 @Tag(name = "status")
-class StatusController(
+class StatusController internal constructor(
     private val build: BuildProperties,
     private val verifications: RestoreVerifications,
-    private val editions: EditionProvider,
+    private val reported: ReportedEdition,
 ) {
     @GetMapping("/status", produces = [MediaType.APPLICATION_JSON_VALUE])
     @SecurityRequirements
     @Operation(summary = "Server status", description = "Public: the dashboard shows it before sign-in.")
     fun status(): StatusResponse {
-        val edition = editions.edition().toInfo()
+        val edition = reported.edition.toInfo()
         return StatusResponse(build.serverVersion(), verifications.lastVerifiedAt(), edition)
     }
 }

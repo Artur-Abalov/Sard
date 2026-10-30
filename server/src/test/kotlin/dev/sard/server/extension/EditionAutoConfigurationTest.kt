@@ -47,4 +47,23 @@ class EditionAutoConfigurationTest {
                 assertEquals(LicenceState.VALID, provider.licence()?.state)
             }
     }
+
+    @Test
+    fun `Редакция читается у шва один раз при старте`() {
+        var reads = 0
+        val counting =
+            object : EditionProvider {
+                override fun edition(): Edition {
+                    reads++
+                    return Edition("pro", "Pro")
+                }
+
+                override fun licence(): LicenceSummary? = null
+            }
+        runner.withBean(EditionProvider::class.java, { counting }).run { ctx ->
+            assertEquals(1, reads)
+            assertEquals(Edition("pro", "Pro"), ctx.getBean(ReportedEdition::class.java).edition)
+            assertEquals(1, reads)
+        }
+    }
 }

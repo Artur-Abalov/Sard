@@ -10,6 +10,7 @@ import dev.sard.server.extension.ExtensionRegistry
 import dev.sard.server.extension.LicenceItem
 import dev.sard.server.extension.LicenceState
 import dev.sard.server.extension.LicenceSummary
+import dev.sard.server.extension.ReportedEdition
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -99,7 +100,8 @@ private val UNAVAILABLE_LICENCE = LicenceInfo(LicenceStatus.UNAVAILABLE, null, n
 @RestController
 @RequestMapping("/api/v1")
 @Tag(name = "server")
-class ServerInfoController(
+class ServerInfoController internal constructor(
+    private val reported: ReportedEdition,
     private val editions: EditionProvider,
     private val registry: ExtensionRegistry,
 ) {
@@ -107,7 +109,7 @@ class ServerInfoController(
     @Operation(summary = "Edition, extensions and licence of this server", description = "Needs a session.")
     fun server(): ServerInfo =
         ServerInfo(
-            editions.edition().toInfo(),
+            reported.edition.toInfo(),
             registry.extensions.map { ExtensionInfo(it.id, it.displayName) },
             licence(),
         )

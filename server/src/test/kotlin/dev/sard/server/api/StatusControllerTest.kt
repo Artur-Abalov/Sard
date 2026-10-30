@@ -4,8 +4,7 @@
 package dev.sard.server.api
 
 import dev.sard.server.extension.Edition
-import dev.sard.server.extension.EditionProvider
-import dev.sard.server.extension.LicenceSummary
+import dev.sard.server.extension.ReportedEdition
 import dev.sard.server.verify.RestoreVerifications
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -16,12 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-private val FREE =
-    object : EditionProvider {
-        override fun edition() = Edition.FREE
-
-        override fun licence(): LicenceSummary? = null
-    }
+private val FREE = ReportedEdition(Edition.FREE)
 
 @MutFlowTest
 class StatusControllerTest {
