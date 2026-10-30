@@ -33,9 +33,15 @@ class PackageDependencyTest {
     }
 
     @Test
-    fun `the pki package depends on no other package of the server except the role`() {
-        // The scan finds pki's one import, so an empty result below is not a scan that saw nothing.
-        assertEquals(setOf("role"), importedBy("pki"))
+    fun `the loop package is a leaf of the server`() {
+        assertTrue(MAIN.resolve("loop/PeriodicTask.kt").isFile)
+        assertEquals(emptySet(), importedBy("loop"))
+    }
+
+    @Test
+    fun `the pki package depends on no other package of the server except the role and the loop`() {
+        // The scan finds pki's imports, so an empty result below is not a scan that saw nothing.
+        assertEquals(setOf("role", "loop"), importedBy("pki"))
     }
 
     @Test
@@ -122,6 +128,32 @@ class ExtensionApiLeafTest {
     fun `Публичный API расширений не импортирует другие срезы сервера`() {
         assertTrue(filesOfSlice("extension").size > 5, "the scan found too few files of extension")
         assertEquals(emptySet(), importedBy("extension"))
+    }
+}
+
+private val SCHEDULER_FACTORY = Regex("""\bnewSingleThreadScheduledExecutor\b""")
+
+/** The periodic loops share one implementation, so a thread of their own is made in one place. */
+class SingleSchedulerFactoryTest {
+    @Test
+    fun `only the loop package makes a single thread scheduler`() {
+        val files = kotlinFiles()
+        assertTrue(files.size > 50, "the scan found only ${files.size} files")
+        val makers =
+            files
+                .filter { file -> file.readLines().any { SCHEDULER_FACTORY.containsMatchIn(it) } }
+                .map { it.name }
+        assertEquals(listOf("PeriodicTask.kt"), makers)
+    }
+
+    @Test
+    fun `The scan recognises a call and a reference, and nothing else`() {
+        for (made in listOf("Executors.newSingleThreadScheduledExecutor(f)", "::newSingleThreadScheduledExecutor")) {
+            assertTrue(SCHEDULER_FACTORY.containsMatchIn(made), made)
+        }
+        for (other in listOf("Executors.newSingleThreadExecutor()", "newScheduledThreadPool(2)")) {
+            assertTrue(!SCHEDULER_FACTORY.containsMatchIn(other), other)
+        }
     }
 }
 

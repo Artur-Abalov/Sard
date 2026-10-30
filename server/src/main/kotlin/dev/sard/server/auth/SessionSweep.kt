@@ -3,13 +3,12 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.Timing
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.SmartLifecycle
 import java.time.Duration
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 private val log = LoggerFactory.getLogger(SessionSweep::class.java)
 private const val INTERVAL_SECONDS = 60L
@@ -27,29 +26,11 @@ data class SessionProperties(
 
 /** Runs [SessionStore.sweep] every [interval] on one thread, so a session nobody uses any more still ends visibly. */
 class SessionSweep(
-    private val interval: Duration,
-    private val store: SessionStore,
-) : SmartLifecycle {
-    @Volatile
-    private var executor: ScheduledExecutorService? = null
-
-    override fun start() {
-        val scheduler = Executors.newSingleThreadScheduledExecutor(::daemon)
-        scheduler.scheduleWithFixedDelay(::safeSweep, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS)
-        executor = scheduler
-    }
-
-    override fun stop() {
-        executor?.shutdownNow()
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
-
-    private fun daemon(task: Runnable) = Thread(task, "sard-session-sweep").apply { isDaemon = true }
-
-    /** Never throws: a thrown exception would cancel every later run of the periodic task. */
-    private fun safeSweep() {
-        runCatching(store::sweep).onFailure { log.warn("Session sweep failed; retrying at the next one", it) }
-    }
-}
+    interval: Duration,
+    store: SessionStore,
+) : SmartLifecycle by PeriodicTask(
+        name = "sard-session-sweep",
+        timing = Timing(interval),
+        onFailure = { log.warn("Session sweep failed; retrying at the next one", it) },
+        action = store::sweep,
+    )
