@@ -29,7 +29,7 @@ internal val PUBLIC_OPERATIONS =
     )
 
 /** Operations for which the filter does not even look at a session. */
-private val SESSIONLESS_OPERATIONS =
+internal val SESSIONLESS_OPERATIONS =
     setOf("POST /api/v1/session", "GET /api/v1/status", "POST /api/v1/onboarding/setup-session")
 
 /**

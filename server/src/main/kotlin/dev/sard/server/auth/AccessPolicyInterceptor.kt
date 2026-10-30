@@ -17,12 +17,14 @@ import org.springframework.web.servlet.HandlerMapping
 import tools.jackson.databind.ObjectMapper
 
 private val log = LoggerFactory.getLogger(AccessPolicyInterceptor::class.java)
+private const val HTTP_UNAUTHORIZED = 401
 private const val HTTP_FORBIDDEN = 403
 private const val SIGN_OUT = "DELETE /api/v1/session"
 
 /**
- * Asks the [AccessPolicy] after the session (401) and the Origin (403) have been checked, for a request with an
- * administrator session. It is an interceptor, not a filter, because the operation is named by its path template,
+ * Asks the [AccessPolicy] after the session (401) and the Origin (403) have been checked. A request that is asked
+ * about and carries no core session is refused with 401 too, so a replaced session filter (Е3) cannot open the API
+ * by leaving the session out. It is an interceptor, not a filter, because the operation is named by its path template,
  * which the handler mapping finds. The public operations, the wizard's and sign-out are not subject to it (Р17).
  * A policy that throws refuses: the failure is closed (Р16). The beans come through providers: a configurer that
  * needs them directly makes Spring create them while the MVC configuration is built, before their post-processing.
@@ -36,20 +38,25 @@ class AccessPolicyInterceptor(
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        val allowed = askedAbout(request)?.let { (session, operation) -> permits(session, operation) } ?: true
-        if (!allowed) {
-            writeProblem(response, objectMapper.getObject(), HTTP_FORBIDDEN, "Forbidden", ErrorCode.ACCESS_DENIED)
-        }
-        return allowed
+        val refusal = operationOf(request)?.let { refusalOf(request, it) }
+        refusal?.let { writeProblem(response, objectMapper.getObject(), it.status, it.title, it.code) }
+        return refusal == null
     }
 
-    /** The session and the operation the policy is asked about; null when it is not asked (Р17). */
-    private fun askedAbout(request: HttpServletRequest): Pair<AdminSession, Operation>? =
-        (request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession)?.let { session ->
-            operationOf(request)?.let { session to it }
+    /** Why the request is refused; null when it passes. No core session on an operation that is asked about is 401. */
+    private fun refusalOf(
+        request: HttpServletRequest,
+        operation: Operation,
+    ): Refusal? {
+        val session = request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession
+        return when {
+            session == null -> Refusal.UNAUTHENTICATED
+            permits(session, operation) -> null
+            else -> Refusal.DENIED
         }
+    }
 
-    /** The operation by its path template; null when there is none or it is exempt. */
+    /** The operation by its path template; null when there is none or it is exempt, so the policy is not asked. */
     private fun operationOf(request: HttpServletRequest): Operation? =
         (request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String)
             ?.let { Operation(request.method, it) }
@@ -66,6 +73,15 @@ class AccessPolicyInterceptor(
                 log.warn("The access policy failed on {}, access is denied: {}", operation, it.message)
                 false
             }
+
+    private enum class Refusal(
+        val status: Int,
+        val title: String,
+        val code: ErrorCode,
+    ) {
+        UNAUTHENTICATED(HTTP_UNAUTHORIZED, "Unauthorized", ErrorCode.UNAUTHENTICATED),
+        DENIED(HTTP_FORBIDDEN, "Forbidden", ErrorCode.ACCESS_DENIED),
+    }
 
     private companion object {
         val EXEMPT = WIZARD_OPERATIONS + SIGN_OUT
