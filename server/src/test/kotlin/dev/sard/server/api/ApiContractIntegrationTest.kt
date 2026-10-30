@@ -435,6 +435,7 @@ class ApiContractIntegrationTest(
         val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
         val schedule = """{"cron":"* * * * *","timezone":"UTC","enabled":true}"""
         return listOf(
+            Triple("GET", "/api/v1/server", null),
             Triple("GET", "/api/v1/overview", null),
             Triple("GET", "/api/v1/repositories", null),
             Triple("GET", "/api/v1/ca", null),

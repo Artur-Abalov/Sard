@@ -3173,6 +3173,46 @@
         }
       }
     },
+    "/api/v1/server" : {
+      "get" : {
+        "tags" : [ "server" ],
+        "summary" : "Edition, extensions and licence of this server",
+        "description" : "Needs a session.",
+        "operationId" : "server",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/self-backup" : {
       "get" : {
         "tags" : [ "self-backup" ],
@@ -6449,6 +6489,20 @@
         },
         "required" : [ "readOnlyNote", "repositories", "tokenRole", "verifierRepoAdd" ]
       },
+      "EditionInfo" : {
+        "type" : "object",
+        "description" : "The edition of this build",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "description" : "\"free\" in the open core"
+          },
+          "displayName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "displayName", "id" ]
+      },
       "StatusResponse" : {
         "type" : "object",
         "properties" : {
@@ -6460,9 +6514,13 @@
             "type" : [ "string", "null" ],
             "format" : "date-time",
             "description" : "When a restore was last verified successfully; null if never"
+          },
+          "edition" : {
+            "$ref" : "#/components/schemas/EditionInfo",
+            "description" : "The edition of this build; \"free\" in the open core"
           }
         },
-        "required" : [ "lastVerifiedRestoreAt", "version" ]
+        "required" : [ "edition", "lastVerifiedRestoreAt", "version" ]
       },
       "SourcePage" : {
         "type" : "object",
@@ -6985,6 +7043,86 @@
           }
         },
         "required" : [ "expiresAt", "tenantId" ]
+      },
+      "ExtensionInfo" : {
+        "type" : "object",
+        "description" : "An extension on the server's classpath",
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "displayName", "id" ]
+      },
+      "LicenceInfo" : {
+        "type" : "object",
+        "description" : "The licence summary of the extension; limits are shown, never applied by the core",
+        "properties" : {
+          "state" : {
+            "$ref" : "#/components/schemas/LicenceStatus"
+          },
+          "holder" : {
+            "type" : [ "string", "null" ],
+            "description" : "null when the extension did not report it"
+          },
+          "expiresAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "null when the extension did not report it"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/LicenceItemInfo"
+            }
+          }
+        },
+        "required" : [ "expiresAt", "holder", "items", "state" ]
+      },
+      "LicenceItemInfo" : {
+        "type" : "object",
+        "description" : "A line of the licence, shown as the extension gave it",
+        "properties" : {
+          "label" : {
+            "type" : "string"
+          },
+          "value" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "label", "value" ]
+      },
+      "LicenceStatus" : {
+        "type" : "string",
+        "enum" : [ "valid", "expired", "absent", "invalid", "unavailable" ]
+      },
+      "ServerInfo" : {
+        "type" : "object",
+        "description" : "What the server tells a signed-in administrator about its edition, extensions and licence",
+        "properties" : {
+          "edition" : {
+            "$ref" : "#/components/schemas/EditionInfo"
+          },
+          "extensions" : {
+            "type" : "array",
+            "description" : "Ordered by id; empty in the open core",
+            "items" : {
+              "$ref" : "#/components/schemas/ExtensionInfo"
+            }
+          },
+          "licence" : {
+            "description" : "null in the free edition",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/LicenceInfo"
+            }, {
+              "type" : "null"
+            } ]
+          }
+        },
+        "required" : [ "edition", "extensions", "licence" ]
       },
       "RepositoryCommand" : {
         "type" : "object",

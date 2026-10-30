@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.extension.EditionProvider
 import dev.sard.server.verify.RestoreVerifications
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
@@ -24,6 +25,8 @@ data class StatusResponse(
         requiredMode = Schema.RequiredMode.REQUIRED,
     )
     val lastVerifiedRestoreAt: Instant?,
+    @field:Schema(description = "The edition of this build; \"free\" in the open core", requiredMode = Schema.RequiredMode.REQUIRED)
+    val edition: EditionInfo,
 )
 
 @RestController
@@ -32,11 +35,12 @@ data class StatusResponse(
 class StatusController(
     private val build: BuildProperties,
     private val verifications: RestoreVerifications,
+    private val editions: EditionProvider,
 ) {
     @GetMapping("/status", produces = [MediaType.APPLICATION_JSON_VALUE])
     @SecurityRequirements
     @Operation(summary = "Server status", description = "Public: the dashboard shows it before sign-in.")
-    fun status(): StatusResponse = StatusResponse(build.serverVersion(), verifications.lastVerifiedAt())
+    fun status(): StatusResponse = StatusResponse(build.serverVersion(), verifications.lastVerifiedAt(), editions.edition().toInfo())
 }
 
 private const val UNKNOWN_VERSION = "unknown"

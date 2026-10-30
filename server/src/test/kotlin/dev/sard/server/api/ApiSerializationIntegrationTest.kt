@@ -278,7 +278,7 @@ class ApiSerializationIntegrationTest(
 
     private val samples: List<Any> =
         listOf(
-            StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
+            StatusResponse("1.0.0", lastVerifiedRestoreAt = null, edition = EditionInfo("free", "Free")),
             RunDefaults(480, 600),
             CaInfo(CA_FINGERPRINT, CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
             SessionRequest("secret"),

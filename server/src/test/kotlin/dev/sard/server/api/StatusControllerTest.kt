@@ -3,6 +3,9 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.extension.Edition
+import dev.sard.server.extension.EditionProvider
+import dev.sard.server.extension.LicenceSummary
 import dev.sard.server.verify.RestoreVerifications
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -12,6 +15,13 @@ import java.util.Properties
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+
+private val FREE =
+    object : EditionProvider {
+        override fun edition() = Edition.FREE
+
+        override fun licence(): LicenceSummary? = null
+    }
 
 @MutFlowTest
 class StatusControllerTest {
@@ -28,19 +38,19 @@ class StatusControllerTest {
             object : RestoreVerifications {
                 override fun lastVerifiedAt() = at
             }
-        val status = MutFlow.underTest { StatusController(build("1.2.3"), verified).status() }
-        assertEquals(StatusResponse("1.2.3", at), status)
+        val status = MutFlow.underTest { StatusController(build("1.2.3"), verified, FREE).status() }
+        assertEquals(StatusResponse("1.2.3", at, EditionInfo("free", "Free")), status)
     }
 
     @Test
     fun `no verification yet means null`() {
-        val status = MutFlow.underTest { StatusController(build("1.2.3"), RestoreVerifications { null }).status() }
+        val status = MutFlow.underTest { StatusController(build("1.2.3"), RestoreVerifications { null }, FREE).status() }
         assertNull(status.lastVerifiedRestoreAt)
     }
 
     @Test
     fun `a build without version reports unknown`() {
-        val status = MutFlow.underTest { StatusController(build(null), RestoreVerifications { null }).status() }
+        val status = MutFlow.underTest { StatusController(build(null), RestoreVerifications { null }, FREE).status() }
         assertEquals("unknown", status.version)
     }
 }
