@@ -40,8 +40,8 @@
    `{"edition":{"id":"free","displayName":"Free"},"hasVersion":true,"hasLast":true,"hasExt":false,"hasLic":false}`.
 2. `curl -s $S/api/v1/server -o /tmp/body -w '%{http_code}\n'` без cookie.
    Ожидается: `401`, `jq -r .code /tmp/body` = `unauthenticated`.
-3. Войти. `curl -s -b $J $S/api/v1/server | jq -c '{extensions, licence}'`.
-   Ожидается: `{"extensions":[],"licence":null}`.
+3. Войти. `curl -s -b $J $S/api/v1/server | jq -c '{edition, extensions, licence}'`.
+   Ожидается: `{"edition":{"id":"free","displayName":"Free"},"extensions":[],"licence":null}`.
 4. `psql` с запросом `select to_regclass('sard.flyway_schema_history_extensions') is null`.
    Ожидается: `t` (таблицы нет).
 5. Создать временный источник и запомнить его id:
@@ -57,8 +57,8 @@
    `curl -s $S/api/v1/status | jq -c '{edition, hasExt: has("extensions"), hasLic: has("licence")}'`
    без cookie. Ожидается:
    `{"edition":{"id":"sample","displayName":"Sample"},"hasExt":false,"hasLic":false}`.
-7. `curl -s -b $J $S/api/v1/server | jq -c '{extensions, licence}'`.
-   Ожидается: `extensions` = `[{"id":"sample","displayName":"Sard Sample Extension"}]`,
+7. `curl -s -b $J $S/api/v1/server | jq -c '{edition, extensions, licence}'`.
+   Ожидается: `edition` = `{"id":"sample","displayName":"Sample"}`, `extensions` = `[{"id":"sample","displayName":"Sard Sample Extension"}]`,
    `licence` = `{"state":"valid","holder":"Pilot LLC","expiresAt":"2026-12-31T00:00:00Z","items":[{"label":"Agents","value":"1"}]}`.
 8. Для каждого значения `expired`, `absent`, `invalid`: задать
    `SARD_SAMPLE_LICENCE`, перезапустить сервер образца, войти,
@@ -101,13 +101,25 @@
 
 15. `SARD_SAMPLE_LISTENER=record`, `SARD_SAMPLE_DENY` пусто, перезапуск, вход.
     `curl -s -b $J $S/api/v1/sample/events | jq '.[-1]'`.
-    Ожидается: последнее событие — «вход удался» с `clientAddress` адреса
-    клиента и субъектом вида `administrator`, id `admin`.
-16. Запустить бэкап `qa-files` (как в шаге 9) и дождаться завершения.
-    Ожидается: в `GET /api/v1/sample/events` ровно одно событие «запуск
-    начат» и ровно одно «запуск завершён» с этим `runId`, `kind` = `backup`,
-    `trigger` = `manual`; `status` завершения равен `status` из
-    `GET /api/v1/runs/<runId>`; «начат» стоит раньше «завершён».
+    Ожидается: последнее событие — `type` = `signin.succeeded` с
+    `clientAddress` адреса клиента и субъектом вида `administrator`, id `admin`.
+16. Запустить бэкап `qa-files` (как в шаге 9), запомнить `RUN` — `id` из
+    ответа, дождаться завершения. Затем
+    `curl -s -b $J $S/api/v1/sample/events | jq -c --arg r "$RUN" '[.[] | select(.runId == $r) | {type, kind, trigger, from, to, terminal}]'`.
+    Ожидается:
+    - первое событие — `run.created` с `kind` = `backup`, `trigger` = `manual`;
+    - ровно одно `run.started`, и оно идёт после `run.created`;
+    - события `run.status_changed` идут цепочкой: `from` каждого равен `to`
+      предыдущего, первое начинается с `queued`;
+    - ровно одно событие с `terminal` = `true`, оно последнее, и его `to`
+      равно `status` из `GET /api/v1/runs/$RUN` (`succeeded`); событий
+      `run.finished` нет.
+16а. Остановить агента `qa` (`systemctl stop sard-agent` на его хосте),
+    запустить бэкап `qa-files`, запомнить `RUN2`, отменить его
+    (`POST /api/v1/runs/$RUN2/cancel`), снова запустить агента. Тем же `jq` с
+    `$RUN2` ожидается: `run.created`, затем одно `run.status_changed` с
+    `from` = `queued`, `to` = `cancelled`, `terminal` = `true`; `run.started`
+    нет.
 17. Сменить пароль:
     `curl -s -b $J -X PUT $S/api/v1/session/password -H 'Content-Type: application/json' -d '{"currentPassword":"correct-horse-battery","newPassword":"new-horse-battery-2"}' -c $J -o /dev/null -w '%{http_code}\n'`
     → успешный код. **С этого шага `P=new-horse-battery-2`**: все
@@ -118,8 +130,7 @@
     → `true`;
     `curl -s -b $J $S/api/v1/sample/events | jq -e '[.[] | select(.setting == "password") | tostring | select(test("correct-horse-battery|new-horse-battery-2|\\$argon2"))] | length == 0'`
     → `true` (в событии нет ни старого, ни нового пароля, ни хэша
-    Argon2id). Имя типа `settings.changed` — предложение П18 спецификации;
-    если владелец утвердит другое, шаг правится вместе со спецификацией.
+    Argon2id).
 19. Задать `SARD_SAMPLE_LISTENER=throw`, перезапустить сервер образца, войти
     паролем `$P`, создать токен регистрации
     (`POST /api/v1/enrollment-tokens` с `{}`). Ожидается: ответ такой же, как
