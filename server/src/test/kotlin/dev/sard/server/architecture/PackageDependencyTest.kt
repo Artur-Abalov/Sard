@@ -81,25 +81,67 @@ class PackageDependencyTest {
     }
 }
 
-private val LICENCE_SEAM = Regex("""^import\s+dev\.sard\.server\.extension\.(Edition|EditionProvider|Licence\w*)\b""")
+private val LICENCE_SEAM =
+    Regex("""^import\s+dev\.sard\.server\.extension\.(\*|Edition\w*|ReportedEdition|Licence\w*)""")
+
+private val LICENCE_ROOTS =
+    listOf("runs", "agents", "verify", "scheduler", "selfbackup", "freshness", "retention", "fleet")
+
+/** The slices [roots] import from, directly or through others, and the roots themselves. */
+private fun closureOf(roots: List<String>): Set<String> {
+    val seen = roots.toMutableSet()
+    val queue = ArrayDeque(roots)
+    while (queue.isNotEmpty()) {
+        importedBy(queue.removeFirst()).filter { seen.add(it) }.forEach { queue.add(it) }
+    }
+    return seen
+}
+
+private fun filesOfSlice(slice: String) =
+    MAIN
+        .resolve(slice)
+        .walkTopDown()
+        .filter { it.isFile && it.extension == "kt" }
+        .toList()
 
 /** Rule "Лицензия никогда не блокирует бэкап, восстановление и проверку" (server-core-extensions.feature). */
 class LicenceNeverBlocksTest {
     @Test
     fun `Запуски, отправка, проверка, планировщик и восстановление не зависят от шва лицензии`() {
-        val slices = listOf("runs", "agents", "verify", "scheduler", "selfbackup", "freshness", "retention", "fleet")
         val offenders =
-            slices.flatMap { slice ->
-                val files =
-                    MAIN
-                        .resolve(slice)
-                        .walkTopDown()
-                        .filter { it.isFile && it.extension == "kt" }
-                        .toList()
+            LICENCE_ROOTS.flatMap { slice ->
+                val files = filesOfSlice(slice)
                 assertTrue(files.isNotEmpty(), "the scan found no files of $slice")
                 files.filter { file -> file.readLines().any { LICENCE_SEAM.containsMatchIn(it) } }.map { it.path }
             }
         assertEquals(emptyList(), offenders)
+    }
+
+    /**
+     * The slices those depend on are checked too. The extension slice itself is the carrier of the seam and of the
+     * run events: it is a leaf (ExtensionApiLeafTest), so it adds no edge, and its files need no import of the seam.
+     */
+    @Test
+    fun `Срезы, от которых зависят эти срезы, тоже не зависят от шва лицензии`() {
+        val closure = closureOf(LICENCE_ROOTS) - "extension"
+        assertTrue(closure.containsAll(LICENCE_ROOTS), "the closure lost a root: $closure")
+        assertTrue(closure.size > LICENCE_ROOTS.size, "the scan followed no import: $closure")
+        val offenders =
+            closure.flatMap { slice ->
+                filesOfSlice(slice)
+                    .filter { file -> file.readLines().any { LICENCE_SEAM.containsMatchIn(it) } }
+                    .map { it.path }
+            }
+        assertEquals(emptyList(), offenders)
+    }
+}
+
+/** The public extension API is a leaf: it imports no other slice of the server. */
+class ExtensionApiLeafTest {
+    @Test
+    fun `Публичный API расширений не импортирует другие срезы сервера`() {
+        assertTrue(filesOfSlice("extension").size > 5, "the scan found too few files of extension")
+        assertEquals(emptySet(), importedBy("extension"))
     }
 }
 
