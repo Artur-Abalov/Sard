@@ -112,7 +112,7 @@ class ServerInfoController(
             licence(),
         )
 
-    /** A licence seam that throws is no reason to fail the request: the state is "unavailable" and one WARN says why. */
+    /** A licence seam that throws does not fail the request: the state is "unavailable", one WARN says why. */
     private fun licence(): LicenceInfo? =
         runCatching { editions.licence()?.toInfo() }
             .getOrElse {

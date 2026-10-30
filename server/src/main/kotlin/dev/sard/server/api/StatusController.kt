@@ -25,7 +25,7 @@ data class StatusResponse(
         requiredMode = Schema.RequiredMode.REQUIRED,
     )
     val lastVerifiedRestoreAt: Instant?,
-    @field:Schema(description = "The edition of this build; \"free\" in the open core", requiredMode = Schema.RequiredMode.REQUIRED)
+    @field:Schema(description = "The edition of this build", requiredMode = Schema.RequiredMode.REQUIRED)
     val edition: EditionInfo,
 )
 
@@ -40,7 +40,10 @@ class StatusController(
     @GetMapping("/status", produces = [MediaType.APPLICATION_JSON_VALUE])
     @SecurityRequirements
     @Operation(summary = "Server status", description = "Public: the dashboard shows it before sign-in.")
-    fun status(): StatusResponse = StatusResponse(build.serverVersion(), verifications.lastVerifiedAt(), editions.edition().toInfo())
+    fun status(): StatusResponse {
+        val edition = editions.edition().toInfo()
+        return StatusResponse(build.serverVersion(), verifications.lastVerifiedAt(), edition)
+    }
 }
 
 private const val UNKNOWN_VERSION = "unknown"

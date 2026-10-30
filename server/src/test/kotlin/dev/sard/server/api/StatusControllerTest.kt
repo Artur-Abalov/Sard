@@ -44,7 +44,8 @@ class StatusControllerTest {
 
     @Test
     fun `no verification yet means null`() {
-        val status = MutFlow.underTest { StatusController(build("1.2.3"), RestoreVerifications { null }, FREE).status() }
+        val controller = StatusController(build("1.2.3"), RestoreVerifications { null }, FREE)
+        val status = MutFlow.underTest { controller.status() }
         assertNull(status.lastVerifiedRestoreAt)
     }
 

@@ -21,7 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Rule "Редакцию, расширения и лицензию сервер сообщает так, как их дало расширение" (server-core-extensions.feature). */
+/** Rule "Редакцию, расширения и лицензию сервер сообщает так, как их дало расширение" (spec). */
 @RestApiTest
 @Import(FixtureEditionConfiguration::class, SecondExtensionConfiguration::class)
 class ServerInfoSampleApiIntegrationTest(
@@ -53,7 +53,8 @@ class ServerInfoSampleApiIntegrationTest(
         val json = server().json
 
         assertEquals("""{"id":"sample","displayName":"Sample"}""", json.path("edition").toString())
-        assertTrue(json.path("extensions").toString().contains("""{"id":"sample","displayName":"Sard Sample Extension"}"""))
+        val sample = """{"id":"sample","displayName":"Sard Sample Extension"}"""
+        assertTrue(sample in json.path("extensions").toString())
     }
 
     @Test
@@ -145,7 +146,8 @@ class ServerInfoSampleApiIntegrationTest(
     @Test
     fun `Ядро не сверяет срок лицензии со своими часами`() {
         edition.licence = {
-            LicenceSummary(LicenceState.VALID, "Pilot LLC", Instant.parse("2026-01-01T00:00:00Z"), listOf(LicenceItem("Agents", "1")))
+            val past = Instant.parse("2026-01-01T00:00:00Z")
+            LicenceSummary(LicenceState.VALID, "Pilot LLC", past, listOf(LicenceItem("Agents", "1")))
         }
 
         assertEquals(

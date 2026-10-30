@@ -43,21 +43,25 @@ class TwoEditionExtensions {
     fun b(): EditionProvider = edition("b")
 }
 
-/** Rule "Реестр расширений и заменяемые швы проверяются при старте" (server-core-extensions.feature, @startup). */
+/** Rule "Реестр расширений и заменяемые швы проверяются при старте" (spec, @startup). */
 class SeamUniquenessTest {
     private val runner =
         ApplicationContextRunner()
             .withConfiguration(
-                AutoConfigurations.of(SardExtensionsAutoConfiguration::class.java, EditionAutoConfiguration::class.java),
+                AutoConfigurations.of(
+                    SardExtensionsAutoConfiguration::class.java,
+                    EditionAutoConfiguration::class.java,
+                ),
             )
 
-    private fun messages(failure: Throwable?): String = generateSequence(failure) { it.cause }.joinToString(" | ") { it.message.orEmpty() }
+    private fun messages(failure: Throwable?) = generateSequence(failure) { it.cause }.map { it.message }.joinToString()
 
     @Test
     fun `Два расширения с одним id останавливают старт`() {
         runner.withUserConfiguration(DuplicateExtensions::class.java).run { ctx ->
             assertNotNull(ctx.startupFailure)
-            assertTrue("Duplicate Sard extension ids: [dup]" in messages(ctx.startupFailure), messages(ctx.startupFailure))
+            val text = messages(ctx.startupFailure)
+            assertTrue("Duplicate Sard extension ids: [dup]" in text, text)
         }
     }
 
