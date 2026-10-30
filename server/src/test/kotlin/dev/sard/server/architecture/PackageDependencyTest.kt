@@ -125,7 +125,7 @@ class ExtensionApiLeafTest {
     }
 }
 
-private val EDITION_CALL = Regex("""\.edition\(\)""")
+private val EDITION_CALL = Regex("""\.edition\(\)|::edition\b""")
 
 /** Rule "Редакция читается один раз при старте" (server-core-extensions.feature). */
 class EditionReadOnceTest {
@@ -138,5 +138,15 @@ class EditionReadOnceTest {
                 .filter { file -> file.readLines().any { EDITION_CALL.containsMatchIn(it) } }
                 .map { it.name }
         assertEquals(listOf("EditionAutoConfiguration.kt"), callers)
+    }
+
+    @Test
+    fun `The scan recognises a call and a method reference to edition, and nothing else`() {
+        for (read in listOf("provider.edition()", "provider?.edition()", "val f = provider::edition", "::edition")) {
+            assertTrue(EDITION_CALL.containsMatchIn(read), read)
+        }
+        for (other in listOf("provider.licence()", "val editionId = 1", "provider::editionName", "Edition.FREE")) {
+            assertTrue(!EDITION_CALL.containsMatchIn(other), other)
+        }
     }
 }

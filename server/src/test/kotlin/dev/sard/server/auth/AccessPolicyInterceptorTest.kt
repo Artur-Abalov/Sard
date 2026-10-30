@@ -71,9 +71,11 @@ class AccessPolicyInterceptorTest {
     }
 
     @Test
-    fun `sign-out and the wizard without a session are not asked`() {
-        for ((method, template) in listOf("DELETE" to "/api/v1/session", "POST" to "/api/v1/onboarding/ca")) {
-            assertTrue(handled({ _, _ -> false }, request(method, template, session = false)).first, template)
+    fun `sign-out and every wizard operation without a session are not asked`() {
+        assertTrue(WIZARD_OPERATIONS.isNotEmpty())
+        for (operation in WIZARD_OPERATIONS + "DELETE /api/v1/session") {
+            val (method, template) = operation.split(" ")
+            assertTrue(handled({ _, _ -> false }, request(method, template, session = false)).first, operation)
         }
     }
 
