@@ -308,4 +308,3 @@ tasks.matching { it.name == "processMutatedMainResources" }.configureEach {
 mutflow {
     targets = listOf("dev.sard.server.**")
 }
-
