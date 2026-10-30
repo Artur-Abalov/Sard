@@ -33,7 +33,7 @@ object StepRevocation {
         tenantId: UUID,
         agentId: UUID,
         now: Instant,
-        events: RunEvents = RunEvents.NONE,
+        events: RunEvents,
     ): List<UUID> {
         val lost =
             session

@@ -465,6 +465,7 @@ class RestoresMutationTest(
                 queued,
                 Duration.ofHours(24),
                 { false },
+                RunEvents.NONE,
             )
 
         val run = MutFlow.underTest { offline.start(tenant.id, s, SF, draft(a)) }

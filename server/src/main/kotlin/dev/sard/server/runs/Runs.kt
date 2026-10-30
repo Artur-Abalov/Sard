@@ -125,7 +125,7 @@ class Runs(
     private val agentWaitMax: Duration = DEFAULT_AGENT_WAIT_MAX,
     /** Whether an agent has a session now; a queued run of an offline agent is waiting for it (J1c). */
     private val presence: AgentOnline = AgentOnline.ALWAYS,
-    private val events: RunEvents = RunEvents.NONE,
+    private val events: RunEvents,
 ) {
     /** A manual run of [sourceId] in [tenantId], the tenant of the caller. */
     fun start(

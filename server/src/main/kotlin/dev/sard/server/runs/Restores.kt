@@ -31,7 +31,7 @@ class Restores(
     /** The longest a restore waits for an offline agent (J1c, `sard.run.agent-wait.max`, closes OQ-233). */
     private val agentWaitMax: Duration = DEFAULT_AGENT_WAIT_MAX,
     private val presence: AgentOnline = AgentOnline.ALWAYS,
-    private val events: RunEvents = RunEvents.NONE,
+    private val events: RunEvents,
 ) {
     /** The options of restoring snapshot [snapshotId] (restic's id) of [sourceId], deleted or not. */
     fun options(

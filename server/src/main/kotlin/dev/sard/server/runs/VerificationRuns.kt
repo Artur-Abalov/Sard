@@ -34,7 +34,7 @@ data class VerificationAttempt(
  */
 class VerificationRuns(
     private val ids: UuidV7,
-    private val events: RunEvents = RunEvents.NONE,
+    private val events: RunEvents,
 ) {
     /** Creates the run and its queued step inside the caller's transaction; returns the run's id. */
     fun start(

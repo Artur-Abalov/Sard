@@ -149,7 +149,7 @@ class StepTransitions(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val announcer: RunAnnouncer = RunAnnouncer(sessions, RunFinishedPublisher.NONE),
-    private val events: RunEvents = RunEvents.NONE,
+    private val events: RunEvents,
 ) : DispatchLedger {
     override fun active(
         tenantId: UUID,
