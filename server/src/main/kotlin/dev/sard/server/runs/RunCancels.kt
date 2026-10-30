@@ -53,6 +53,7 @@ class CancelMarks(
     private val clock: Clock,
     private val cancelled: StepsCancelled,
     private val announcer: RunAnnouncer,
+    private val events: RunEvents,
 ) {
     /** Closed in the queue, marked in flight, or neither (already marked); [RunNotFound], [RunAlreadyFinished]. */
     fun apply(
@@ -84,9 +85,9 @@ class CancelMarks(
         values: Map<String, Any?>,
     ): CancelDone? {
         if (session.execute(CANCEL_QUEUED_STEP, values) != 1) return null
-        val watch = announcer.events.watchRun(session, values["tenant"] as UUID, values["run"] as UUID)
+        val watch = events.watchRun(session, values["tenant"] as UUID, values["run"] as UUID)
         session.execute(CANCEL_QUEUED_RUN, values)
-        announcer.events.settled(session, listOfNotNull(watch))
+        events.settled(session, listOfNotNull(watch))
         return CancelDone.CLOSED
     }
 

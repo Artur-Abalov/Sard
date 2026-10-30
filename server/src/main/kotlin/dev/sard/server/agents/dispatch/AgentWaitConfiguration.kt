@@ -8,6 +8,7 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.AgentOnline
 import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.StepDeadlines
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -26,7 +27,17 @@ class AgentWaitConfiguration {
         sessions: TenantSessions,
         clock: Clock,
         announcer: RunAnnouncer,
+        events: RunEvents,
         presence: AgentOnline,
         settings: DispatchSettings,
-    ) = AgentWaits(deadlines, sessions, clock, announcer, presence, clock.instant(), settings.reconnectGrace)
+    ) = AgentWaits(
+        deadlines,
+        sessions,
+        clock,
+        announcer,
+        events,
+        presence,
+        clock.instant(),
+        settings.reconnectGrace,
+    )
 }

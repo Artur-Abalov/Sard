@@ -13,6 +13,7 @@ import dev.sard.server.persistence.hqlWhere
 import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.StepRevocation
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
@@ -149,6 +150,7 @@ class Agents(
     private val sessions: TenantSessions,
     private val presence: AgentPresence,
     private val announcer: RunAnnouncer,
+    private val events: RunEvents,
     private val clock: Clock,
 ) {
     /** Online: the stream manager has a live session of a not revoked agent. */
@@ -259,7 +261,7 @@ class Agents(
             .setParameter("now", now)
             .setParameter("agent", agent.id)
             .executeUpdate()
-        return StepRevocation.loseSteps(session, tenantId, agent.id, now, announcer.events)
+        return StepRevocation.loseSteps(session, tenantId, agent.id, now, events)
     }
 
     /** Records a confirmed duplicate session of [agentId] at the clock's time (ADR 0026, rule 2). */

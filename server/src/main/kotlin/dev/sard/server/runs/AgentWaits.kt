@@ -41,6 +41,7 @@ class AgentWaits(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val announcer: RunAnnouncer,
+    private val events: RunEvents,
     private val presence: AgentOnline,
     private val startedAt: Instant,
     private val grace: Duration,
@@ -76,9 +77,9 @@ class AgentWaits(
                     val values = mapOf("tenant" to step.tenantId, "step" to step.stepId, "agent" to step.agentId)
                     val closed = session.execute(CLOSE_STEP, values + ("now" to now)) == 1
                     if (closed) {
-                        val watch = announcer.events.watchStep(session, step.tenantId, step.stepId)
+                        val watch = events.watchStep(session, step.tenantId, step.stepId)
                         session.execute(CLOSE_RUN, values + ("now" to now))
-                        announcer.events.settled(session, listOfNotNull(watch))
+                        events.settled(session, listOfNotNull(watch))
                     }
                     closed
                 }

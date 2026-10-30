@@ -66,8 +66,6 @@ class RunFinishedPublisher(
 class RunAnnouncer(
     private val sessions: TenantSessions,
     private val publisher: RunFinishedPublisher,
-    /** The events of the runs a caller moves (CORE1 Р19); the announcer travels to every place that moves one. */
-    val events: RunEvents = RunEvents.NONE,
 ) {
     fun announce(
         tenantId: UUID,

@@ -85,15 +85,15 @@ class RunsConfiguration {
     fun runAnnouncer(
         sessions: TenantSessions,
         listeners: ObjectProvider<RunFinishedListener>,
-        events: RunEvents,
-    ) = RunAnnouncer(sessions, RunFinishedPublisher(listeners.orderedStream().toList()), events)
+    ) = RunAnnouncer(sessions, RunFinishedPublisher(listeners.orderedStream().toList()))
 
     @Bean
     fun stepTransitions(
         sessions: TenantSessions,
         clock: Clock,
         announcer: RunAnnouncer,
-    ) = StepTransitions(sessions, clock, announcer)
+        events: RunEvents,
+    ) = StepTransitions(sessions, clock, announcer, events)
 
     @Bean
     fun stepResults(
@@ -172,7 +172,8 @@ class RunCancelsConfiguration {
         clock: Clock,
         cancelled: ObjectProvider<StepsCancelled>,
         announcer: RunAnnouncer,
-    ) = CancelMarks(clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer)
+        events: RunEvents,
+    ) = CancelMarks(clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer, events)
 
     @Bean
     fun runCancels(

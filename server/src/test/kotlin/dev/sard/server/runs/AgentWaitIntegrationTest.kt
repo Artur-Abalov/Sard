@@ -40,6 +40,7 @@ class AgentWaitIntegrationTest(
     @Autowired private val sessions: TenantSessions,
     @Autowired private val deadlines: StepDeadlines,
     @Autowired private val announcer: RunAnnouncer,
+    @Autowired private val events: RunEvents,
     @Autowired private val finished: RecordingRunFinished,
     @Autowired private val steps: StepTransitions,
     @Autowired private val clock: MovableClock,
@@ -63,7 +64,7 @@ class AgentWaitIntegrationTest(
     private fun waits(
         online: Boolean = false,
         startedAt: Instant = RUNS_NOW.minus(Duration.ofDays(1)),
-    ) = AgentWaits(deadlines, sessions, clock, announcer, { online }, startedAt, GRACE)
+    ) = AgentWaits(deadlines, sessions, clock, announcer, events, { online }, startedAt, GRACE)
 
     private fun started(): RunView = runs.start(tenant.id, sources.create(tenant.id, tenant.draft()).id)
 

@@ -11,6 +11,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
@@ -71,6 +72,7 @@ class AgentUnavailableNotificationsIntegrationTest(
     @Autowired private val sessions: TenantSessions,
     @Autowired private val deadlines: StepDeadlines,
     @Autowired private val announcer: RunAnnouncer,
+    @Autowired private val events: RunEvents,
 ) {
     private val tenant = RunsTenant(jdbc)
     private val lastContact = Instant.parse("2026-10-01T09:00:00Z")
@@ -148,7 +150,7 @@ class AgentUnavailableNotificationsIntegrationTest(
         jdbc.update("update runs set agent_wait_until = ? where id = ?", deadline, run.id)
         clock.now = clock.now.plusSeconds(3600)
         val start = RUNS_NOW.minus(Duration.ofDays(1))
-        val waits = AgentWaits(deadlines, sessions, clock, announcer, { false }, start, Duration.ZERO)
+        val waits = AgentWaits(deadlines, sessions, clock, announcer, events, { false }, start, Duration.ZERO)
         assertEquals(1, waits.expire())
         ticks()
         return run.id
