@@ -44,8 +44,8 @@ fun daemonScheduler(threadName: String): ScheduledExecutorService =
 /**
  * Runs [action] by [timing] on one thread named [name] between [start] and [stop]. A run that throws is passed to
  * [onFailure] (nobody, when null) and never stops the later ones (an exception that escaped would cancel the periodic
- * task); [onFailure] must not throw. [stop] interrupts a run in progress, waits for it as [stopWait] says (not at all
- * by default) and ends the thread.
+ * task); an [onFailure] that throws is dropped likewise. [stop] interrupts a run in progress, waits for it as
+ * [stopWait] says (not at all by default) and ends the thread.
  */
 class PeriodicTask(
     private val name: String,
@@ -91,6 +91,6 @@ class PeriodicTask(
     }
 
     private fun run() {
-        runCatching(action).onFailure { onFailure?.invoke(it) }
+        runCatching(action).onFailure { failure -> runCatching { onFailure?.invoke(failure) } }
     }
 }

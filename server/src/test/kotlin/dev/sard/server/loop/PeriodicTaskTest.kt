@@ -244,6 +244,30 @@ class PeriodicTaskTest {
     }
 
     @Test
+    fun `A handler that throws does not keep the next run from happening`() {
+        var runs = 0
+        var handled = 0
+        val scheduler = fake()
+        val loop =
+            PeriodicTask("sard-test", Timing(INTERVAL), onFailure = {
+                handled++
+                error("handler")
+            }, schedulers = { scheduler }) {
+                runs++
+                error("boom")
+            }
+        MutFlow.underTest { loop.start() }
+        val run = scheduler.tasks.single()
+
+        MutFlow.underTest { run.run() }
+        MutFlow.underTest { run.run() }
+
+        assertEquals(2, runs)
+        assertEquals(2, handled)
+        MutFlow.underTest { loop.stop() }
+    }
+
+    @Test
     fun `A run that throws an error is reported too`() {
         val scheduler = fake()
         val loop = task(scheduler = scheduler) { throw AssertionError("an error") }
