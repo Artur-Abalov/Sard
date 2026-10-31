@@ -171,8 +171,8 @@ data class TokenConflictProblem(
 
 /**
  * Writes an RFC 9457 problem body directly to a servlet response: the single writer for
- * every filter that must answer before Spring MVC even picks a handler (session auth,
- * CSRF's Origin guard) and for controller code with a status Spring cannot infer from
+ * every filter and handler of the security chain that answers before Spring MVC picks a handler
+ * (the Origin guard, 401, 403) and for controller code with a status Spring cannot infer from
  * the method's return type alone (sign-in's 204/401/429).
  */
 fun writeProblem(

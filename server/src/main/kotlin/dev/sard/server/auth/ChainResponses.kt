@@ -9,6 +9,7 @@ import dev.sard.server.api.writeProblem
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.core.AuthenticationException
 import org.springframework.security.web.AuthenticationEntryPoint
@@ -16,10 +17,6 @@ import org.springframework.security.web.access.AccessDeniedHandler
 import org.springframework.security.web.firewall.RequestRejectedException
 import org.springframework.security.web.firewall.RequestRejectedHandler
 import tools.jackson.databind.ObjectMapper
-
-private const val HTTP_UNAUTHORIZED = 401
-private const val HTTP_FORBIDDEN = 403
-private const val HTTP_BAD_REQUEST = 400
 
 /**
  * The refusal of a request without an authentication (CORE1 Р38): 401 unauthenticated as problem+json, with no
@@ -37,7 +34,7 @@ class ProblemAuthenticationEntryPoint(
         if ("${request.method} ${request.requestURI}" == SIGN_OUT) {
             response.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(request.isSecure).toString())
         }
-        writeProblem(response, objectMapper, HTTP_UNAUTHORIZED, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+        writeProblem(response, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
     }
 }
 
@@ -49,7 +46,7 @@ class ProblemAccessDeniedHandler(
         request: HttpServletRequest,
         response: HttpServletResponse,
         accessDeniedException: AccessDeniedException,
-    ) = writeProblem(response, objectMapper, HTTP_FORBIDDEN, "Forbidden", ErrorCode.ACCESS_DENIED)
+    ) = writeProblem(response, objectMapper, HttpStatus.FORBIDDEN, ErrorCode.ACCESS_DENIED)
 }
 
 /**
@@ -64,6 +61,6 @@ class ApiRequestRejectedHandler : RequestRejectedHandler {
         requestRejectedException: RequestRejectedException,
     ) {
         addApiHeaders(response)
-        response.status = HTTP_BAD_REQUEST
+        response.status = HttpStatus.BAD_REQUEST.value()
     }
 }

@@ -8,11 +8,11 @@ import dev.sard.server.api.writeProblem
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.http.HttpStatus
 import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
 
 private val MUTATING_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
-private const val HTTP_FORBIDDEN = 403
 
 /**
  * CSRF defense for /api/v1 (К1, Р5): a mutating request whose Origin does not match
@@ -34,7 +34,7 @@ class OriginGuardFilter(
         }
         val origin = request.getHeader("Origin")
         if (origin != null && origin != expectedOrigin(request)) {
-            writeProblem(response, objectMapper, HTTP_FORBIDDEN, "Forbidden", ErrorCode.ORIGIN_REJECTED)
+            writeProblem(response, objectMapper, HttpStatus.FORBIDDEN, ErrorCode.ORIGIN_REJECTED)
             return
         }
         filterChain.doFilter(request, response)
