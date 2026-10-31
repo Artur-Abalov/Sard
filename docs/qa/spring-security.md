@@ -4,13 +4,15 @@
 # QA: HTTP-безопасность сервера на Spring Security (CORE1, редакция 5)
 
 Спецификация: `docs/specs/server/spring-security.feature` (сценарии с тегом
-`@qa`; решения Р34–Р50). Процедура проходится через HTTP (`curl`, `jq`),
-`grpcurl` и `docker compose`; консоль не нужна. Шаги, помеченные **[В-n]**,
-проверяют рекомендацию по вопросу владельца В-n: если владелец ответил
-иначе, шаг правится вместе со спецификацией.
+`@qa`; решения Р34–Р53, ответы владельца на В-1–В-8 от 2026-10-31).
+Процедура проходится через HTTP (`curl`, `jq`), `grpcurl` и `docker compose`;
+консоль не нужна.
 
-Главное, что видит тестировщик: снаружи ничего не изменилось. Каждый шаг
-ниже — место, где переход на Spring Security мог бы что-то изменить.
+Главное, что видит тестировщик: снаружи почти ничего не изменилось. Видимых
+изменений два: ответы `/api/v1` несут `X-Content-Type-Options: nosniff` и
+`Cache-Control: no-store` (Р47), а пути, которые нельзя однозначно
+сопоставить, отклоняются ответом `400` (Р51). Остальные шаги проверяют места,
+где переход на Spring Security мог бы что-то изменить.
 
 ## Подготовка
 
@@ -25,6 +27,20 @@
   → `204`.
 - `AGENT=$(curl -s -b $J "$S/api/v1/agents" | jq -r '.items[] | select(.hostname == "qa") | .id'); echo $AGENT`
   → UUID. Пустое значение — стенд не подготовлен, дальше не идти.
+- Проверка двух заголовков API — функция оболочки, ей передаются аргументы
+  `curl` без `-D` и `-o`:
+
+  ```bash
+  apihdr() {
+    curl -s -D - -o /dev/null "$@" | tr -d '\r' \
+      | grep -iE '^(HTTP|x-content-type-options|cache-control):' \
+      | sed -E 's/^(HTTP\/[0-9.]+ [0-9]+).*/\1/' | tr 'A-Z' 'a-z'
+  }
+  ```
+
+  «Заголовки API» в ожиданиях ниже — после строки статуса ровно две строки,
+  `x-content-type-options: nosniff` и `cache-control: no-store`, каждая один
+  раз.
 - Новые свойства образца задаются переменными окружения сервера образца:
   `SARD_SAMPLE_PUBLIC_PING`, `SARD_SAMPLE_OWN_CHAIN`,
   `SARD_SAMPLE_PUBLIC_OUTSIDE`. Каждое изменение — перезапуск сервера образца
@@ -61,86 +77,117 @@
    - `curl -s -b $J $S/api/v1/session -o /dev/null -w '%{http_code}\n'` → `200`
      (сессия после этого действует).
 
-## B. Заголовки ответов прежние (Р47)
+## B. Заголовки ответов (Р47)
 
-8. `curl -s -D - -o /dev/null $S/api/v1/status | grep -iEc '^(cache-control|pragma|expires|x-content-type-options|x-frame-options|x-xss-protection|strict-transport-security):'`.
-   Ожидается: `0`.
-9. То же для `curl -s -D - -o /dev/null $S/api/v1/sources` (без cookie, 401)
-   и `curl -s -D - -o /dev/null -b $J $S/api/v1/session` (200).
-   Ожидается: `0` в обоих случаях.
-10. `curl -s -D - -o /dev/null $S/ | grep -iE '^(cache-control|x-frame-options|x-content-type-options|referrer-policy|content-security-policy|pragma|expires|x-xss-protection):'`.
+8. Ответы `/api/v1` несут заголовки API. Для каждой строки ожидается указанный
+   статус и заголовки API:
+
+   | Команда | Статус |
+   |---|---|
+   | `apihdr $S/api/v1/status` | `200` |
+   | `apihdr -b $J $S/api/v1/session` | `200` |
+   | `apihdr $S/api/v1/sources` | `401` |
+   | `apihdr -X DELETE $S/api/v1/session` | `401` |
+   | `apihdr -b $J -X POST $S/api/v1/sources -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}'` | `403` |
+   | `apihdr -b $J $S/api/v1/no-such-resource` | `404` |
+   | `apihdr -X POST $S/api/v1/session -H 'Content-Type: application/json' -d "{\"password\":\"$P\"}"` | `204` |
+
+9. Блокировка входа: с одного адреса шесть раз
+   `apihdr -X POST $S/api/v1/session -H 'Content-Type: application/json' -d '{"password":"wrong-password-123"}'`.
+   Ожидается: в шестом ответе `429` и заголовки API. После шага подождать
+   15 минут или перезапустить сервер и войти заново.
+10. Прочих заголовков Spring Security у ответов API нет:
+    `curl -s -D - -o /dev/null $S/api/v1/status | grep -iEc '^(pragma|expires|x-frame-options|x-xss-protection|strict-transport-security):'`
+    и то же для `$S/api/v1/sources`. Ожидается: `0` в обоих случаях.
+11. Ответы вне `/api/v1` заголовков API не получают:
+    `for p in /actuator/health /v3/api-docs /api/v2/agents /api; do curl -s -D - -o /dev/null $S$p | grep -iEc '^(cache-control|x-content-type-options):'; done`.
+    Ожидается: четыре строки `0`.
+12. `curl -s -D - -o /dev/null $S/ | grep -iE '^(cache-control|x-frame-options|x-content-type-options|referrer-policy|content-security-policy|pragma|expires|x-xss-protection):'`.
     Ожидается ровно пять строк: `Cache-Control: no-cache`,
     `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
     `Referrer-Policy: same-origin` и `Content-Security-Policy` со значением
     из `console-serving.feature` Р6; ни одного заголовка дважды; `Pragma`,
     `Expires`, `X-XSS-Protection` нет.
-11. Взять имя скрипта из страницы:
+13. Взять имя скрипта из страницы:
     `A=$(curl -s $S/ | grep -o '/assets/[^"]*\.js' | head -1); curl -s -D - -o /dev/null $S$A | grep -i '^cache-control'`.
     Ожидается одна строка `Cache-Control: public, max-age=31536000, immutable`.
-12. `curl -s -D - -o /dev/null $S/downloads/agent/manifest.json | grep -iE '^(cache-control|x-content-type-options|x-frame-options|pragma|expires|content-security-policy):'`.
-    Ожидается: по одной строке `Cache-Control` и `X-Content-Type-Options: nosniff`,
-    других нет.
+14. `curl -s -D - -o /dev/null $S/downloads/agent/manifest.json | grep -iE '^(cache-control|x-content-type-options|x-frame-options|pragma|expires|content-security-policy):'`.
+    Ожидается: по одной строке `Cache-Control` (не `no-store`) и
+    `X-Content-Type-Options: nosniff`, других нет.
 
-## C. Порядок проверок и открытые пути (Р35, Р37)
+## C. Порядок проверок, открытые пути и продление сессии (Р35, Р37, Р52, Р53)
 
-13. `curl -s -X POST $S/api/v1/sources -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' -o /tmp/body -w '%{http_code}\n'; jq -r .code /tmp/body`
+15. `curl -s -X POST $S/api/v1/sources -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' -o /tmp/body -w '%{http_code}\n'; jq -r .code /tmp/body`
     без cookie. Ожидается: `403` и `origin_rejected` (не `401`).
-14. `curl -s -X POST $S/agents -H 'Origin: https://evil.example' -o /dev/null -w '%{http_code}\n'`.
+16. `curl -s -X POST $S/agents -H 'Origin: https://evil.example' -o /dev/null -w '%{http_code}\n'`.
     Ожидается: `405` (на путь консоли проверка Origin не действует).
-15. Для каждого из `GET /api/v1/status/`, `GET /api/v1/STATUS`,
-    `HEAD /api/v1/status`, `POST /api/v1/status`:
-    `curl -s -X <метод> $S<путь> -o /dev/null -w '%{http_code}\n'` без cookie
-    (`HEAD` — через `curl -I`). Ожидается: `401` каждый раз; и
+17. Для каждого из `GET /api/v1/status/`, `GET /api/v1/STATUS`,
+    `POST /api/v1/status`: `curl -s -X <метод> $S<путь> -o /dev/null -w '%{http_code}\n'`
+    без cookie, и `curl -s -I $S/api/v1/status -o /dev/null -w '%{http_code}\n'`.
+    Ожидается: `401` каждый раз; и
     `curl -s $S/api/v1/status -o /dev/null -w '%{http_code}\n'` → `200`.
-16. `curl -s -b 'sard_session=forged-session-id' -D - -o /dev/null $S/actuator/health | grep -iE '^(HTTP|set-cookie)'`.
+18. `curl -s -b 'sard_session=forged-session-id' -D - -o /dev/null $S/actuator/health | grep -iE '^(HTTP|set-cookie)'`.
     Ожидается: `200` и ни одной строки `Set-Cookie`.
+19. Две cookie сессии: `SID=$(awk '$6=="sard_session"{print $7}' $J)`;
+    `curl -s -H "Cookie: sard_session=$SID; sard_session=forged-session-id" $S/api/v1/sources -o /dev/null -w '%{http_code}\n'`
+    → `200`; `curl -s -H "Cookie: sard_session=forged-session-id; sard_session=$SID" $S/api/v1/sources -o /dev/null -w '%{http_code}\n'`
+    → `401`.
+20. Продление (сроки — час бездействия; шаг занимает больше часа, его можно
+    пройти параллельно с остальными на отдельной сессии). Войти вторым файлом
+    cookie `J2`; в течение часа каждые 10 минут выполнять только
+    `curl -s -b $J2 $S/api/v1/status -o /dev/null`; через 60 минут после входа
+    `curl -s -b $J2 $S/api/v1/session -o /dev/null -w '%{http_code}\n'` → `401`
+    (статус сессию не продлевает). То же с `GET /api/v1/onboarding` вместо
+    статуса → `200`.
 
 ## D. Политика спрашивается только об операциях (Р40)
 
 Стенд образца, `SARD_SAMPLE_DENY='GET /api/v1/sources'`, перезапуск, вход.
 
-17. `curl -s -b $J $S/api/v1/sources -D - -o /tmp/body | grep -iE '^(HTTP|content-type)'; jq -r .code /tmp/body`.
-    Ожидается: `403`, `application/problem+json`, `access_denied`.
-18. `curl -s -b $J $S/api/v1/no-such-resource -o /tmp/body -w '%{http_code}\n'; jq -r .code /tmp/body`.
+21. `apihdr -b $J $S/api/v1/sources; curl -s -b $J $S/api/v1/sources -D - -o /tmp/body | grep -i '^content-type'; jq -r .code /tmp/body`.
+    Ожидается: `403` с заголовками API, `application/problem+json`,
+    `access_denied`.
+22. `curl -s -b $J $S/api/v1/no-such-resource -o /tmp/body -w '%{http_code}\n'; jq -r .code /tmp/body`.
     Ожидается: `404` и не `access_denied` (политику о неизвестном пути не
     спрашивают).
 
-## E. Шов настройщика цепочки на образце (Р41, Р44) [В-2, В-4]
+## E. Шов настройщика цепочки на образце (Р41, Р44)
 
-19. Стенд образца, `SARD_SAMPLE_PUBLIC_PING=true`, перезапуск.
-    `curl -s $S/api/v1/sample/ping -o /dev/null -w '%{http_code}\n'` без cookie.
-    Ожидается: `204`. `curl -s $S/api/v1/sample/ping/deeper -o /dev/null -w '%{http_code}\n'`
-    → `401`.
-20. `SARD_SAMPLE_PUBLIC_PING=false`, `SARD_SAMPLE_OWN_CHAIN=true`, перезапуск.
+23. Стенд образца, `SARD_SAMPLE_PUBLIC_PING=true`, перезапуск.
+    `apihdr $S/api/v1/sample/ping` без cookie → `204` и заголовки API.
+    `curl -s $S/api/v1/sample/ping/deeper -o /dev/null -w '%{http_code}\n'` → `401`.
+24. `SARD_SAMPLE_PUBLIC_PING=false`, `SARD_SAMPLE_OWN_CHAIN=true`, перезапуск.
     `docker compose ps server` — сервер не работает;
     `docker compose logs server | grep -c SardSecurityCustomizer` → не меньше `1`,
     и в той же записи об отказе есть `sample`.
-21. `SARD_SAMPLE_OWN_CHAIN=false`, `SARD_SAMPLE_PUBLIC_OUTSIDE=true`, перезапуск.
+25. `SARD_SAMPLE_OWN_CHAIN=false`, `SARD_SAMPLE_PUBLIC_OUTSIDE=true`, перезапуск.
     Сервер не работает; `docker compose logs server | grep -c 'GET /sample/open'`
     → не меньше `1`.
-22. `SARD_SAMPLE_PUBLIC_OUTSIDE=false`, перезапуск. `GET /actuator/health` → `UP`.
+26. `SARD_SAMPLE_PUBLIC_OUTSIDE=false`, перезапуск. `GET /actuator/health` → `UP`.
 
 ## F. Агенты по gRPC (Р45)
 
 Стенд ядра.
 
-23. `curl -s -b $J $S/api/v1/agents/$AGENT | jq .` — агент `qa` показан
+27. `curl -s -b $J $S/api/v1/agents/$AGENT | jq .` — агент `qa` показан
     подключённым (как до перехода); на хосте агента
     `journalctl -u sard-agent --since -10min | grep -ci 'unauthenticated'` → `0`.
-24. `grpcurl -insecure localhost:9090 list` (TLS без клиентского сертификата)
-    или вызов любого метода `AgentService`, кроме `Register`, без сертификата.
-    Ожидается: статус `Unauthenticated` с текстом
-    `agent certificate rejected` и `ErrorInfo` домена `sard.dev`, причина
-    `CERT_MISSING` (`grpcurl -v` показывает детали).
+28. Вызов любого метода `AgentService`, кроме `Register`, через `grpcurl -v`
+    по TLS без клиентского сертификата. Ожидается: статус `Unauthenticated` с
+    текстом `agent certificate rejected` и `ErrorInfo` домена `sard.dev`,
+    причина `CERT_MISSING`.
 
-## G. Брандмауэр путей [В-5]
+## G. Брандмауэр путей (Р51, Р47)
 
-25. `curl -s --path-as-is -b $J "$S/api;x/v1/status" -o /dev/null -w '%{http_code}\n'`
-    и `curl -s --path-as-is -b $J "$S/api/v1/%2e%2e/v1/status" -o /dev/null -w '%{http_code}\n'`.
-    Ожидается: `400` в обоих; тело не содержит `sard-version`.
+29. Для каждого пути `/api;x/v1/status`, `/api/v1;x/status`,
+    `/api/v1/%2e%2e/v1/status`, `/assets/%2e%2e/application.yaml`,
+    `/;x/actuator/health`:
+    `apihdr --path-as-is -b $J "$S<путь>"` и
+    `curl -s --path-as-is -b $J "$S<путь>" | wc -c`.
+    Ожидается: `400`, заголовки API и `0` (тело пустое).
 
 ## Итог
 
-Все шаги дали ожидаемое — переход на Spring Security снаружи не виден, а шов
-расширений работает. Любое расхождение — дефект с номером шага и выводом
-команды.
+Все шаги дали ожидаемое — переход на Spring Security снаружи виден только
+двумя заголовками API и отказом `400` для неоднозначных путей, а шов расширений
+работает. Любое расхождение — дефект с номером шага и выводом команды.
