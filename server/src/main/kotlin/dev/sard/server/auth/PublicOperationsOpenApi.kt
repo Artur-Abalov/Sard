@@ -20,6 +20,7 @@ private fun documented(
     api.paths
         ?.get(operation.pathTemplate)
         ?.readOperationsMap()
-        ?.entries
-        ?.firstOrNull { it.key.name == operation.method }
-        ?.value
+        ?.get(
+            io.swagger.v3.oas.models.PathItem.HttpMethod
+                .valueOf(operation.method.uppercase()),
+        )

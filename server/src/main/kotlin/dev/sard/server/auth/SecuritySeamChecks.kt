@@ -60,14 +60,14 @@ private fun isFromCore(
     return declaringClassOf(beans, name)?.let { locationOf(it, beans.beanClassLoader) } == coreLocation
 }
 
-/** The code source a class is loaded from; null for a class that cannot be loaded. */
+/** The code source a class is loaded from. */
 private fun locationOf(
     className: String,
     loader: ClassLoader?,
 ): String? =
-    runCatching { Class.forName(className, false, loader) }
-        .getOrNull()
-        ?.protectionDomain
+    Class
+        .forName(className, false, loader)
+        .protectionDomain
         ?.codeSource
         ?.location
         ?.toString()
