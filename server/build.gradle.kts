@@ -90,8 +90,8 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Argon2PasswordEncoder only (ADR F4a); nothing else of Spring Security is on the classpath.
     implementation("org.springframework.security:spring-security-crypto")
-    implementation("com.google.api.grpc:proto-google-common-protos:2.64.1")
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1")
+    implementation("com.google.api.grpc:proto-google-common-protos:2.79.0")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.2.0")
     implementation("com.networknt:json-schema-validator:3.0.8")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -253,7 +253,7 @@ val isolatedTest by tasks.registering(Test::class) {
 }
 
 jacoco {
-    toolVersion = "0.8.15"
+    toolVersion = "0.8.16"
 }
 
 val jacocoData = layout.buildDirectory.files("jacoco/test.exec", "jacoco/isolatedTest.exec")
