@@ -7,7 +7,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 
-/** A controller of an "extension" that dresses its package as the framework's (CORE1 R27). */
+/** A controller of an "extension" that dresses its package as the framework's (CORE1 Р27). */
 @TestConfiguration(proxyBeanMethods = false)
 @RestController
 class FakeFrameworkController {

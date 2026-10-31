@@ -3,11 +3,7 @@ public abstract interface class dev/sard/server/extension/AccessPolicy {
 }
 
 public class dev/sard/server/extension/AccessPolicyAutoConfiguration {
-	public static final field Companion Ldev/sard/server/extension/AccessPolicyAutoConfiguration$Companion;
 	public fun <init> ()V
-}
-
-public final class dev/sard/server/extension/AccessPolicyAutoConfiguration$Companion {
 }
 
 public final class dev/sard/server/extension/AccessPolicyKt {
@@ -33,11 +29,7 @@ public final class dev/sard/server/extension/Edition$Companion {
 }
 
 public class dev/sard/server/extension/EditionAutoConfiguration {
-	public static final field Companion Ldev/sard/server/extension/EditionAutoConfiguration$Companion;
 	public fun <init> ()V
-}
-
-public final class dev/sard/server/extension/EditionAutoConfiguration$Companion {
 }
 
 public abstract interface class dev/sard/server/extension/EditionProvider {
@@ -399,11 +391,7 @@ public class dev/sard/server/extension/SubjectSourceAutoConfiguration {
 }
 
 public class dev/sard/server/extension/TenancyAutoConfiguration {
-	public static final field Companion Ldev/sard/server/extension/TenancyAutoConfiguration$Companion;
 	public fun <init> ()V
-}
-
-public final class dev/sard/server/extension/TenancyAutoConfiguration$Companion {
 }
 
 public abstract interface class dev/sard/server/extension/TenantResolver {
