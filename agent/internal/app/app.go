@@ -31,6 +31,8 @@ type Agent struct {
 	Plugins *sdk.Registry
 	// Handlers run the plugins' steps; their actions are announced.
 	Handlers executor.Registry
+	// Forget runs the FORGET steps of the server, which name no plugin.
+	Forget   executor.Handler
 	Hostname string
 	// MachineID is the HMAC of the host's machine-id (package machineid),
 	// computed once at start and sent in every Register. The agent never

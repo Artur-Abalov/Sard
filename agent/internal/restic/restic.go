@@ -15,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -103,6 +104,39 @@ var (
 	ErrInvalidRequest   = errors.New("invalid request")
 )
 
+// LockedError is a repository locked by another process (exit code 11). It
+// is ErrLocked; Holder is who holds the lock as restic words it.
+type LockedError struct{ Holder string }
+
+func (e *LockedError) Error() string { return ErrLocked.Error() }
+
+// Unwrap makes errors.Is(err, ErrLocked) true.
+func (e *LockedError) Unwrap() error { return ErrLocked }
+
+// LockHolder is who holds the lock that err says (host, PID, user, as restic
+// words it); empty when err is no locked repository or restic named no holder.
+func LockHolder(err error) string {
+	var locked *LockedError
+	if errors.As(err, &locked) {
+		return locked.Holder
+	}
+	return ""
+}
+
+// holderPattern finds the holder in "repository is already locked
+// exclusively by PID 4242 on db2 by sard-agent (UID 0, GID 0)".
+var holderPattern = regexp.MustCompile(`locked (?:exclusively )?by (.+)$`)
+
+// lockHolder reads the holder from the lines restic printed about the lock.
+func (r *result) lockHolder() string {
+	for _, line := range []string{r.hint, r.fatal} {
+		if m := holderPattern.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			return m[1]
+		}
+	}
+	return ""
+}
+
 // ExitError is a restic failure without a more specific error.
 type ExitError struct {
 	Code int
@@ -164,8 +198,12 @@ func (c *CLI) ForStep(commandID string, stderr io.Writer) *CLI {
 
 // ID runs `restic cat config` and returns the repository id.
 func (c *CLI) ID(ctx context.Context) (string, error) {
+	return c.readID(ctx)
+}
+
+func (c *CLI) readID(ctx context.Context, flags ...string) (string, error) {
 	var out bytes.Buffer
-	if _, err := c.runRepo(ctx, call{args: []string{"cat", "config"}, stdout: collect(&out)}); err != nil {
+	if _, err := c.runRepo(ctx, call{args: append([]string{"cat", "config"}, flags...), stdout: collect(&out)}); err != nil {
 		return "", err
 	}
 	var cfg struct {
@@ -173,6 +211,12 @@ func (c *CLI) ID(ctx context.Context) (string, error) {
 	}
 	_ = json.Unmarshal(out.Bytes(), &cfg) // invalid JSON leaves the id empty
 	return requireID("restic cat", cfg.ID)
+}
+
+// idWaiting is ID for a backup: restic waits for an exclusive lock up to
+// lockWait instead of failing at once (OQ-156).
+func (c *CLI) idWaiting(ctx context.Context) (string, error) {
+	return c.readID(ctx, "--retry-lock", lockWait)
 }
 
 // CheckLock runs `restic snapshots --latest 1`: unlike `cat config` it
@@ -434,7 +478,7 @@ func (r *result) err() error {
 	case 10:
 		err = ErrNoRepository
 	case 11:
-		err = ErrLocked
+		err = &LockedError{Holder: r.lockHolder()}
 	case 12:
 		err = ErrWrongPassword
 	default:

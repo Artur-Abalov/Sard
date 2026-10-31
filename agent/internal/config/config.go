@@ -41,7 +41,7 @@ type Config struct {
 	Service Service `yaml:"service"`
 	// RetentionFloor is the least the host keeps when the server asks it to
 	// forget snapshots (main config only, КL1, КL2).
-	RetentionFloor RetentionFloor `yaml:"retention_floor"`
+	RetentionFloor RetentionFloor `yaml:"retention_floor,omitempty"`
 
 	src sources
 }
@@ -95,7 +95,7 @@ type Repository struct {
 	Fragment string `yaml:"-"`
 	// RetentionFloor is never allowed here: it is read only to refuse it
 	// with the right hint (КL2).
-	RetentionFloor forbiddenKey `yaml:"retention_floor"`
+	RetentionFloor forbiddenKey `yaml:"retention_floor,omitempty"`
 }
 
 // forbiddenKey is a key that is read only to refuse it.

@@ -34,6 +34,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/restorejournal"
+	"github.com/Artur-Abalov/sard/agent/internal/retention"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
@@ -409,6 +410,7 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 	return &app.Agent{
 		Plugins:   registry,
 		Handlers:  plugins.Handlers(registry, hostSecrets(cfg), repos.get, restoreDir(cfg.Executor.StateDir), handlerOpts...),
+		Forget:    retention.New(retention.Options{Stores: repos.forgetStore, Floors: cfg.FloorOf, Now: time.Now}),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,
@@ -479,6 +481,7 @@ func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Ag
 	}
 	exec, err := executor.New(executor.Options{
 		Handlers:     agent.Handlers,
+		Forget:       agent.Forget,
 		Sink:         link,
 		StateDir:     executorStateDir(cfg.Executor.StateDir),
 		Role:         role,
@@ -540,6 +543,15 @@ func openRepositories(cfg config.Config, opts restic.Options) resticRepositories
 // get returns the repository of a step: its stderr copied to the step's
 // log, its runs of restic logged with the step's command_id.
 func (r resticRepositories) get(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
+	repo, ok := r[name]
+	if !ok {
+		return nil, false
+	}
+	return repo.ForStep(commandID, stderr), true
+}
+
+// forgetStore is get for the FORGET steps, which list, unlock and forget.
+func (r resticRepositories) forgetStore(name, commandID string, stderr io.Writer) (retention.Store, bool) {
 	repo, ok := r[name]
 	if !ok {
 		return nil, false

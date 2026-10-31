@@ -163,7 +163,7 @@ func (c *CLI) Backup(ctx context.Context, req BackupRequest, progress func(Progr
 	if err := req.validate(); err != nil {
 		return BackupSummary{}, err
 	}
-	id, err := c.ID(ctx)
+	id, err := c.idWaiting(ctx)
 	if err != nil {
 		return BackupSummary{}, err
 	}

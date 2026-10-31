@@ -525,3 +525,14 @@ func TestADuplicateOfARunningCommandRepeatsItsLastStage(t *testing.T) {
 	c.finish(snapshot("s1"), nil)
 	_ = f.sink.result(t)
 }
+
+// The lock holder of a FORGET result is restic's wording: masked like the message.
+func TestTheLockHolderOfAForgetResultIsMasked(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	out := &agentv1.StepResult{Output: &agentv1.StepResult_Forget{Forget: &agentv1.ForgetOutput{LockHolder: "PID 1 by " + secretValue}}}
+	c.finish(out, errors.New("locked"))
+	if got := f.sink.result(t).GetForget().GetLockHolder(); got != "PID 1 by [REDACTED]" {
+		t.Fatalf("lock holder = %q", got)
+	}
+}

@@ -185,3 +185,70 @@ func TestNewRequiresARole(t *testing.T) {
 		}
 	}
 }
+
+// docs/specs/agent/retention-forget.feature (L1a), scenario "Верификатор
+// отклоняет шаг FORGET шлюзом роли": the key of a verifier only reads (V-D7).
+func TestAVerifierRejectsForgetAtTheRoleGate(t *testing.T) {
+	forget := newHandler(false)
+	forget.actions = []agentv1.Action{agentv1.Action_ACTION_FORGET}
+	f, qa := withRole(t, role.Verifier, func(o *executor.Options) { o.Forget = forget })
+	f.e.Submit(step("c1", "", agentv1.Action_ACTION_FORGET))
+	wantRoleMismatch(t, f, qa, "c1", role.Verifier, agentv1.Action_ACTION_FORGET)
+	forget.idle(t)
+}
+
+// A FORGET step has no plugin: the executor runs it with its own handler.
+func TestASourceRunsForgetWithTheForgetHandlerAndNoPlugin(t *testing.T) {
+	forget := newHandler(false)
+	forget.actions = []agentv1.Action{agentv1.Action_ACTION_FORGET}
+	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Forget = forget })
+	f.e.Submit(step("c1", "", agentv1.Action_ACTION_FORGET))
+	accepted(t, f.sink, "c1")
+	call := forget.next(t)
+	if call.step.GetAction() != agentv1.Action_ACTION_FORGET {
+		t.Errorf("step = %v", call.step)
+	}
+	call.finish(&agentv1.StepResult{Output: &agentv1.StepResult_Forget{Forget: &agentv1.ForgetOutput{LockHolder: "h"}}}, nil)
+	r := f.sink.result(t)
+	if r.GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED || r.GetForget().GetLockHolder() != "h" {
+		t.Errorf("result = %v", r)
+	}
+}
+
+// An agent without the handler (a verifier-only build, an old test host)
+// refuses the step before any work.
+func TestAnAgentWithoutAForgetHandlerRejectsForget(t *testing.T) {
+	f, qa := withRole(t, role.Source)
+	f.e.Submit(step("c1", "", agentv1.Action_ACTION_FORGET))
+	r := f.sink.result(t)
+	if r.GetStatus() != rejected || r.GetRejectReason() != agentv1.RejectReason_REJECT_REASON_UNSPECIFIED || !strings.Contains(r.GetMessage(), "FORGET") {
+		t.Errorf("result = %v", r)
+	}
+	qa.idle(t)
+}
+
+// A FORGET step needs a repository like the other data actions.
+func TestAForgetStepWithoutARepositoryIsRejected(t *testing.T) {
+	forget := newHandler(false)
+	forget.actions = []agentv1.Action{agentv1.Action_ACTION_FORGET}
+	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Forget = forget })
+	s := step("c1", "", agentv1.Action_ACTION_FORGET)
+	s.RepositoryName = ""
+	f.e.Submit(s)
+	if r := f.sink.result(t); r.GetStatus() != rejected || !strings.Contains(r.GetMessage(), "needs a repository") {
+		t.Errorf("result = %v", r)
+	}
+	forget.idle(t)
+}
+
+// The other actions still need a plugin; an action of a number this agent
+// does not know is still refused without a reason code.
+func TestAnUnknownActionIsStillRejectedWithoutAReasonCode(t *testing.T) {
+	f, qa := withRole(t, role.Source)
+	f.e.Submit(step("c1", "qa", agentv1.Action(99)))
+	r := f.sink.result(t)
+	if r.GetStatus() != rejected || r.GetRejectReason() != agentv1.RejectReason_REJECT_REASON_UNSPECIFIED {
+		t.Errorf("result = %v", r)
+	}
+	qa.idle(t)
+}

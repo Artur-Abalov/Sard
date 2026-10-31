@@ -12,7 +12,7 @@ import agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 type Role string
 
 const (
-	// Source runs BACKUP, RESTORE and RUN.
+	// Source runs BACKUP, RESTORE, RUN and FORGET.
 	Source Role = "source"
 	// Verifier runs VERIFY only.
 	Verifier Role = "verifier"
@@ -25,7 +25,7 @@ func (r Role) Valid() bool { return r == Source || r == Verifier }
 // unknown actions pass: the executor's plugin check rejects them as before.
 func (r Role) Allows(a agentv1.Action) bool {
 	switch a {
-	case agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN:
+	case agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN, agentv1.Action_ACTION_FORGET:
 		return r == Source
 	case agentv1.Action_ACTION_VERIFY:
 		return r == Verifier

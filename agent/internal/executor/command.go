@@ -127,6 +127,9 @@ func (e *Executor) refuse(c *command) *refusal {
 // check returns why the step cannot run, or "".
 func (e *Executor) check(c *command) string {
 	step := c.step
+	if step.GetAction() == agentv1.Action_ACTION_FORGET {
+		return e.checkForget(c)
+	}
 	h, ok := e.opts.Handlers.Handler(step.GetPlugin())
 	if !ok {
 		return fmt.Sprintf("unknown plugin %q", step.GetPlugin())
@@ -135,6 +138,22 @@ func (e *Executor) check(c *command) string {
 	if step.GetAction() == agentv1.Action_ACTION_UNSPECIFIED || !slices.Contains(h.Actions(), step.GetAction()) {
 		return fmt.Sprintf("plugin %q does not support %s", step.GetPlugin(), step.GetAction())
 	}
+	return e.checkQueue(step)
+}
+
+// checkForget: a FORGET step names no plugin, and the agent's own handler
+// carries it out. What else is wrong with it the handler tells, before it
+// touches the repository.
+func (e *Executor) checkForget(c *command) string {
+	if e.opts.Forget == nil {
+		return fmt.Sprintf("this agent does not run %s", c.step.GetAction())
+	}
+	c.handler = e.opts.Forget
+	return e.checkQueue(c.step)
+}
+
+// checkQueue: the repository is known and the queue has room.
+func (e *Executor) checkQueue(step *agentv1.RunStep) string {
 	if reason := e.checkRepository(step); reason != "" {
 		return reason
 	}

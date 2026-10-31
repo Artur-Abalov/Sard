@@ -62,6 +62,9 @@ func maskResult(set *redact.Set, r *agentv1.StepResult) {
 	for i, path := range paths {
 		paths[i] = set.Mask(path)
 	}
+	if forget := r.GetForget(); forget != nil {
+		forget.LockHolder = set.Mask(forget.GetLockHolder())
+	}
 	for _, check := range r.GetVerify().GetChecks() {
 		check.Detail = set.Mask(check.GetDetail())
 	}

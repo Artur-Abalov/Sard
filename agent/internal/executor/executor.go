@@ -139,6 +139,9 @@ type Options struct {
 	Role role.Role
 	// Repositories are the repository names configured on this host.
 	Repositories []string
+	// Forget runs the FORGET steps, which name no plugin; nil: this agent
+	// refuses them.
+	Forget Handler
 	// Secrets are masked in each step's log lines and result; nil masks nothing.
 	Secrets Secrets
 	// OutputLevel is the level of a line of a tool's output; default INFO.

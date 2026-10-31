@@ -55,3 +55,15 @@ func (c *CLI) CheckData(ctx context.Context, percent int) error {
 	_, err := c.runRepo(ctx, call{args: []string{"check", fmt.Sprintf("--read-data-subset=%d%%", percent)}})
 	return err
 }
+
+// Forget runs `restic forget` for the snapshots with exactly these ids and
+// nothing else: no --keep-* rule, no --group-by and no --prune, so what is
+// forgotten is decided by the caller alone (КL16). A repository locked by a
+// live process is waited for up to lockWait, then the error is ErrLocked.
+func (c *CLI) Forget(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return fmt.Errorf("%w: no snapshots to forget", ErrInvalidRequest)
+	}
+	_, err := c.runRepo(ctx, call{args: []string{"forget", "--retry-lock", lockWait}, tail: append([]string{"--"}, ids...)})
+	return err
+}

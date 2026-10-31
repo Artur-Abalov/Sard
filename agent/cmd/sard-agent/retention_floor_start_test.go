@@ -4,6 +4,8 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -11,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
 // docs/specs/agent/retention-forget.feature (L1a), rule "Нижний предел
@@ -100,5 +104,29 @@ func TestПределВоФрагментеAgentDОстанавливаетАг�
 	code, _, stderr := h.run(eventWait)
 	if code != 1 || !strings.Contains(stderr, frag) || !strings.Contains(stderr, "retention_floor") || h.server.registry.Load() != 0 {
 		t.Errorf("code %d, Register %d, stderr %q", code, h.server.registry.Load(), stderr)
+	}
+}
+
+type silentReporter struct{ executor.Reporter }
+
+func (silentReporter) Log(agentv1.LogLevel, string) {}
+func (silentReporter) Output() io.Writer            { return io.Discard }
+
+// The agent runs FORGET with its own repositories and the floor of its config.
+func TestTheAgentRunsForgetStepsOverTheRepositoriesOfItsConfig(t *testing.T) {
+	script, calls := recordingRestic(t)
+	cfg, err := config.Parse([]byte("server:\n  address: s:1\nrepositories:\n  - {name: main, url: /srv/main, password_file: /etc/sard/main.pass}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := buildAgent(cfg, "maint", script, "", nil, nil, false)
+	step := &agentv1.RunStep{CommandId: "c1", Action: agentv1.Action_ACTION_FORGET, RepositoryName: "main",
+		Forget: &agentv1.ForgetTask{SourceId: "s1", Policy: &agentv1.RetentionPolicy{KeepLast: 1}}}
+	_, err = agent.Forget.Run(t.Context(), step, silentReporter{})
+	if err == nil || errors.Is(err, executor.ErrRejected) {
+		t.Fatalf("err = %v: the fake restic prints no snapshot list, so the step fails after listing", err)
+	}
+	if lines := calls(); len(lines) != 1 || !strings.Contains(lines[0], "snapshots --json --no-lock --tag sard.source=s1") {
+		t.Errorf("restic was run as %q", lines)
 	}
 }
