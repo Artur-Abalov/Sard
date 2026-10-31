@@ -173,8 +173,8 @@ class AgentAuthIntegrationTest(
             val options = CallOptions.DEFAULT.withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS)
             val method = rawMethod(fullMethodName)
             val plain = channel(credentials)
-            val target =
-                if (headers == null) plain else ClientInterceptors.intercept(plain, MetadataUtils.newAttachHeadersInterceptor(headers))
+            val attach = headers?.let { MetadataUtils.newAttachHeadersInterceptor(it) }
+            val target = if (attach == null) plain else ClientInterceptors.intercept(plain, attach)
             val body = ClientCalls.blockingUnaryCall(target, method, options, ByteArray(0))
             Outcome(Status.Code.OK, body = String(body))
         } catch (e: StatusRuntimeException) {
