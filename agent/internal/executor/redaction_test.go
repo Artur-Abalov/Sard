@@ -536,3 +536,14 @@ func TestTheLockHolderOfAForgetResultIsMasked(t *testing.T) {
 		t.Fatalf("lock holder = %q", got)
 	}
 }
+
+// The same for the lock holder of a PRUNE result.
+func TestTheLockHolderOfAPruneResultIsMasked(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	out := &agentv1.StepResult{Output: &agentv1.StepResult_Prune{Prune: &agentv1.PruneOutput{LockHolder: "PID 1 by " + secretValue}}}
+	c.finish(out, errors.New("locked"))
+	if got := f.sink.result(t).GetPrune().GetLockHolder(); got != "PID 1 by [REDACTED]" {
+		t.Fatalf("lock holder = %q", got)
+	}
+}

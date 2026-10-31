@@ -4,10 +4,13 @@
 package app_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -99,5 +102,34 @@ func TestRegisterАгентаБезПоляВстроенныхДействий�
 	}
 	if len(req.BuiltinActions) != 0 {
 		t.Errorf("builtin_actions = %v, want empty", req.BuiltinActions)
+	}
+}
+
+// docs/specs/agent/retention-prune.feature, rule "Агент сообщает действия,
+// которые выполняет без плагина".
+
+type noHandler struct{ executor.Handler }
+
+func registerWith(t *testing.T, r role.Role) []agentv1.Action {
+	t.Helper()
+	a := newAgent(t, &fakeLink{})
+	a.Role = r
+	a.Builtin = executor.Builtin{
+		agentv1.Action_ACTION_PRUNE:  noHandler{},
+		agentv1.Action_ACTION_FORGET: noHandler{},
+	}
+	return a.RegisterRequest(context.Background()).GetBuiltinActions()
+}
+
+func TestАгентРолиSourceСообщаетFORGETИPRUNEКакВстроенныеДействия(t *testing.T) {
+	got := registerWith(t, role.Source)
+	if len(got) != 2 || got[0] != agentv1.Action_ACTION_FORGET || got[1] != agentv1.Action_ACTION_PRUNE {
+		t.Errorf("builtin_actions = %v", got)
+	}
+}
+
+func TestВерификаторНеСообщаетВстроенныхДействий(t *testing.T) {
+	if got := registerWith(t, role.Verifier); len(got) != 0 {
+		t.Errorf("builtin_actions = %v", got)
 	}
 }

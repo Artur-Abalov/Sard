@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -139,9 +140,10 @@ type Options struct {
 	Role role.Role
 	// Repositories are the repository names configured on this host.
 	Repositories []string
-	// Forget runs the FORGET steps, which name no plugin; nil: this agent
-	// refuses them.
-	Forget Handler
+	// Builtin runs the steps whose action the agent carries out itself,
+	// without a plugin (FORGET, PRUNE); an action not in it needs a plugin.
+	// The actions an agent tells the server it runs on its own are these.
+	Builtin Builtin
 	// Secrets are masked in each step's log lines and result; nil masks nothing.
 	Secrets Secrets
 	// OutputLevel is the level of a line of a tool's output; default INFO.
@@ -530,4 +532,16 @@ func (e *Executor) signalIdle() {
 		close(e.idle)
 		e.idleClosed = true
 	}
+}
+
+// Builtin is the registry of the handlers of the agent's own actions: those
+// that name no plugin. It is the one source of truth for what the agent
+// executes and what it announces in Register.
+type Builtin map[agentv1.Action]Handler
+
+// Actions are the actions with a handler, in the order of the enum.
+func (b Builtin) Actions() []agentv1.Action {
+	actions := slices.Collect(maps.Keys(b))
+	slices.Sort(actions)
+	return actions
 }

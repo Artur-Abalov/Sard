@@ -124,7 +124,7 @@ func TestTheAgentRunsForgetStepsOverTheRepositoriesOfItsConfig(t *testing.T) {
 	agent := buildAgent(cfg, "maint", script, "", nil, nil, false)
 	step := &agentv1.RunStep{CommandId: "c1", Action: agentv1.Action_ACTION_FORGET, RepositoryName: "main",
 		Forget: &agentv1.ForgetTask{SourceId: "s1", Policy: &agentv1.RetentionPolicy{KeepLast: 1}}}
-	_, err = agent.Forget.Run(t.Context(), step, silentReporter{})
+	_, err = agent.Builtin[agentv1.Action_ACTION_FORGET].Run(t.Context(), step, silentReporter{})
 	if err == nil || errors.Is(err, executor.ErrRejected) {
 		t.Fatalf("err = %v: the fake restic prints no snapshot list, so the step fails after listing", err)
 	}

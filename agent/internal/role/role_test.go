@@ -12,11 +12,11 @@ import (
 
 func TestWhatEachRoleMayRun(t *testing.T) {
 	allowed := map[role.Role][]agentv1.Action{
-		role.Source:   {agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN, agentv1.Action_ACTION_FORGET},
+		role.Source:   {agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN, agentv1.Action_ACTION_FORGET, agentv1.Action_ACTION_PRUNE},
 		role.Verifier: {agentv1.Action_ACTION_VERIFY},
 	}
 	for r, ok := range allowed {
-		for _, a := range []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN, agentv1.Action_ACTION_VERIFY, agentv1.Action_ACTION_FORGET} {
+		for _, a := range []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN, agentv1.Action_ACTION_VERIFY, agentv1.Action_ACTION_FORGET, agentv1.Action_ACTION_PRUNE} {
 			want := false
 			for _, x := range ok {
 				want = want || x == a

@@ -191,7 +191,7 @@ func TestNewRequiresARole(t *testing.T) {
 func TestAVerifierRejectsForgetAtTheRoleGate(t *testing.T) {
 	forget := newHandler(false)
 	forget.actions = []agentv1.Action{agentv1.Action_ACTION_FORGET}
-	f, qa := withRole(t, role.Verifier, func(o *executor.Options) { o.Forget = forget })
+	f, qa := withRole(t, role.Verifier, func(o *executor.Options) { o.Builtin = executor.Builtin{agentv1.Action_ACTION_FORGET: forget} })
 	f.e.Submit(step("c1", "", agentv1.Action_ACTION_FORGET))
 	wantRoleMismatch(t, f, qa, "c1", role.Verifier, agentv1.Action_ACTION_FORGET)
 	forget.idle(t)
@@ -201,7 +201,7 @@ func TestAVerifierRejectsForgetAtTheRoleGate(t *testing.T) {
 func TestASourceRunsForgetWithTheForgetHandlerAndNoPlugin(t *testing.T) {
 	forget := newHandler(false)
 	forget.actions = []agentv1.Action{agentv1.Action_ACTION_FORGET}
-	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Forget = forget })
+	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Builtin = executor.Builtin{agentv1.Action_ACTION_FORGET: forget} })
 	f.e.Submit(step("c1", "", agentv1.Action_ACTION_FORGET))
 	accepted(t, f.sink, "c1")
 	call := forget.next(t)
@@ -221,7 +221,7 @@ func TestAnAgentWithoutAForgetHandlerRejectsForget(t *testing.T) {
 	f, qa := withRole(t, role.Source)
 	f.e.Submit(step("c1", "", agentv1.Action_ACTION_FORGET))
 	r := f.sink.result(t)
-	if r.GetStatus() != rejected || r.GetRejectReason() != agentv1.RejectReason_REJECT_REASON_UNSPECIFIED || !strings.Contains(r.GetMessage(), "FORGET") {
+	if r.GetStatus() != rejected || r.GetRejectReason() != agentv1.RejectReason_REJECT_REASON_UNSPECIFIED {
 		t.Errorf("result = %v", r)
 	}
 	qa.idle(t)
@@ -231,7 +231,7 @@ func TestAnAgentWithoutAForgetHandlerRejectsForget(t *testing.T) {
 func TestAForgetStepWithoutARepositoryIsRejected(t *testing.T) {
 	forget := newHandler(false)
 	forget.actions = []agentv1.Action{agentv1.Action_ACTION_FORGET}
-	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Forget = forget })
+	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Builtin = executor.Builtin{agentv1.Action_ACTION_FORGET: forget} })
 	s := step("c1", "", agentv1.Action_ACTION_FORGET)
 	s.RepositoryName = ""
 	f.e.Submit(s)
@@ -251,4 +251,77 @@ func TestAnUnknownActionIsStillRejectedWithoutAReasonCode(t *testing.T) {
 		t.Errorf("result = %v", r)
 	}
 	qa.idle(t)
+}
+
+// docs/specs/agent/retention-prune.feature, rule "Агент сообщает действия,
+// которые выполняет без плагина".
+
+func builtinAction(a agentv1.Action) *fakeHandler {
+	h := newHandler(false)
+	h.actions = []agentv1.Action{a}
+	return h
+}
+
+func TestАVerifierRejectsPruneAtTheRoleGate(t *testing.T) {
+	prune := builtinAction(agentv1.Action_ACTION_PRUNE)
+	f, qa := withRole(t, role.Verifier, func(o *executor.Options) {
+		o.Builtin = executor.Builtin{agentv1.Action_ACTION_PRUNE: prune}
+	})
+	f.e.Submit(step("c1", "", agentv1.Action_ACTION_PRUNE))
+	wantRoleMismatch(t, f, qa, "c1", role.Verifier, agentv1.Action_ACTION_PRUNE)
+	prune.idle(t)
+}
+
+func TestАSourceRunsPruneWithItsBuiltinHandlerAndNoPlugin(t *testing.T) {
+	prune := builtinAction(agentv1.Action_ACTION_PRUNE)
+	f, _ := withRole(t, role.Source, func(o *executor.Options) {
+		o.Builtin = executor.Builtin{agentv1.Action_ACTION_PRUNE: prune}
+	})
+	f.e.Submit(step("c1", "", agentv1.Action_ACTION_PRUNE))
+	accepted(t, f.sink, "c1")
+	call := prune.next(t)
+	if call.step.GetAction() != agentv1.Action_ACTION_PRUNE {
+		t.Errorf("step = %v", call.step)
+	}
+	call.finish(&agentv1.StepResult{Output: &agentv1.StepResult_Prune{Prune: &agentv1.PruneOutput{LockHolder: "h"}}}, nil)
+	if r := f.sink.result(t); r.GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED || r.GetPrune().GetLockHolder() != "h" {
+		t.Errorf("result = %v", r)
+	}
+}
+
+func TestEveryReportedBuiltinActionRunsAndAnyOtherWithoutAPluginIsRejected(t *testing.T) {
+	fakes := map[agentv1.Action]*fakeHandler{
+		agentv1.Action_ACTION_FORGET: builtinAction(agentv1.Action_ACTION_FORGET),
+		agentv1.Action_ACTION_PRUNE:  builtinAction(agentv1.Action_ACTION_PRUNE),
+	}
+	builtin := executor.Builtin{}
+	for a, h := range fakes {
+		builtin[a] = h
+	}
+	f, _ := withRole(t, role.Source, func(o *executor.Options) { o.Builtin = builtin })
+	values := agentv1.Action(0).Descriptor().Values()
+	for i := range values.Len() {
+		a := agentv1.Action(values.Get(i).Number())
+		id := "c-" + a.String()
+		f.e.Submit(step(id, "", a))
+		if h, ok := fakes[a]; ok {
+			accepted(t, f.sink, id)
+			h.next(t).finish(&agentv1.StepResult{}, nil)
+			if r := f.sink.result(t); r.GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED {
+				t.Errorf("%s: result = %v", a, r)
+			}
+			continue
+		}
+		if r := f.sink.result(t); r.GetStatus() != rejected {
+			t.Errorf("%s: result = %v, want REJECTED", a, r)
+		}
+	}
+}
+
+func TestTheBuiltinActionsAreListedInTheOrderOfTheEnum(t *testing.T) {
+	builtin := executor.Builtin{agentv1.Action_ACTION_PRUNE: nil, agentv1.Action_ACTION_FORGET: nil}
+	got := builtin.Actions()
+	if len(got) != 2 || got[0] != agentv1.Action_ACTION_FORGET || got[1] != agentv1.Action_ACTION_PRUNE {
+		t.Errorf("actions = %v", got)
+	}
 }

@@ -43,6 +43,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/verifier"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
+	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
 // version is set at build time: -ldflags "-X main.version=...".
@@ -410,7 +411,7 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 	return &app.Agent{
 		Plugins:   registry,
 		Handlers:  plugins.Handlers(registry, hostSecrets(cfg), repos.get, restoreDir(cfg.Executor.StateDir), handlerOpts...),
-		Forget:    retention.New(retention.Options{Stores: repos.forgetStore, Floors: cfg.FloorOf, Now: time.Now}),
+		Builtin:   builtinHandlers(repos, cfg),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,
@@ -456,6 +457,7 @@ func restoreDir(stateDir string) string {
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
 func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent, recovery *recovery, renewal *certrenew.Manager, rt agentRuntime) error {
+	agent.Role = role
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
@@ -481,7 +483,7 @@ func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Ag
 	}
 	exec, err := executor.New(executor.Options{
 		Handlers:     agent.Handlers,
-		Forget:       agent.Forget,
+		Builtin:      agent.Builtin,
 		Sink:         link,
 		StateDir:     executorStateDir(cfg.Executor.StateDir),
 		Role:         role,
@@ -543,6 +545,24 @@ func openRepositories(cfg config.Config, opts restic.Options) resticRepositories
 // get returns the repository of a step: its stderr copied to the step's
 // log, its runs of restic logged with the step's command_id.
 func (r resticRepositories) get(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
+	repo, ok := r[name]
+	if !ok {
+		return nil, false
+	}
+	return repo.ForStep(commandID, stderr), true
+}
+
+// builtinHandlers are the handlers of the actions the agent carries out
+// itself, without a plugin: what the executor runs and Register announces.
+func builtinHandlers(repos resticRepositories, cfg config.Config) executor.Builtin {
+	return executor.Builtin{
+		agentv1.Action_ACTION_FORGET: retention.New(retention.Options{Stores: repos.forgetStore, Floors: cfg.FloorOf, Now: time.Now}),
+		agentv1.Action_ACTION_PRUNE:  retention.NewPrune(retention.PruneOptions{Stores: repos.pruneStore}),
+	}
+}
+
+// pruneStore is get for the PRUNE steps, which unlock and prune.
+func (r resticRepositories) pruneStore(name, commandID string, stderr io.Writer) (retention.PruneStore, bool) {
 	repo, ok := r[name]
 	if !ok {
 		return nil, false

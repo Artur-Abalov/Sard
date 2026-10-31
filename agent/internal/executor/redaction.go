@@ -55,6 +55,16 @@ func (e *Executor) compile(c *command) (*redact.Set, map[string][]byte, error) {
 	return set, refs, nil
 }
 
+// maskLockHolder masks restic's wording of who holds the lock of a maintenance result.
+func maskLockHolder(set *redact.Set, r *agentv1.StepResult) {
+	if forget := r.GetForget(); forget != nil {
+		forget.LockHolder = set.Mask(forget.GetLockHolder())
+	}
+	if prune := r.GetPrune(); prune != nil {
+		prune.LockHolder = set.Mask(prune.GetLockHolder())
+	}
+}
+
 // maskResult masks the texts of a result that may quote a tool or a plugin.
 func maskResult(set *redact.Set, r *agentv1.StepResult) {
 	r.Message = set.Mask(r.GetMessage())
@@ -62,9 +72,7 @@ func maskResult(set *redact.Set, r *agentv1.StepResult) {
 	for i, path := range paths {
 		paths[i] = set.Mask(path)
 	}
-	if forget := r.GetForget(); forget != nil {
-		forget.LockHolder = set.Mask(forget.GetLockHolder())
-	}
+	maskLockHolder(set, r)
 	for _, check := range r.GetVerify().GetChecks() {
 		check.Detail = set.Mask(check.GetDetail())
 	}

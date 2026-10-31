@@ -127,8 +127,8 @@ func (e *Executor) refuse(c *command) *refusal {
 // check returns why the step cannot run, or "".
 func (e *Executor) check(c *command) string {
 	step := c.step
-	if step.GetAction() == agentv1.Action_ACTION_FORGET {
-		return e.checkForget(c)
+	if h, ok := e.opts.Builtin[step.GetAction()]; ok {
+		return e.checkBuiltin(c, h)
 	}
 	h, ok := e.opts.Handlers.Handler(step.GetPlugin())
 	if !ok {
@@ -141,14 +141,11 @@ func (e *Executor) check(c *command) string {
 	return e.checkQueue(step)
 }
 
-// checkForget: a FORGET step names no plugin, and the agent's own handler
-// carries it out. What else is wrong with it the handler tells, before it
-// touches the repository.
-func (e *Executor) checkForget(c *command) string {
-	if e.opts.Forget == nil {
-		return fmt.Sprintf("this agent does not run %s", c.step.GetAction())
-	}
-	c.handler = e.opts.Forget
+// checkBuiltin: a step of an action the agent carries out itself names no
+// plugin, and the agent's own handler runs it. What else is wrong with the
+// step the handler tells, before it touches the repository.
+func (e *Executor) checkBuiltin(c *command, h Handler) string {
+	c.handler = h
 	return e.checkQueue(c.step)
 }
 

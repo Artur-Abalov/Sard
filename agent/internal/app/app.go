@@ -7,10 +7,12 @@ package app
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -31,8 +33,13 @@ type Agent struct {
 	Plugins *sdk.Registry
 	// Handlers run the plugins' steps; their actions are announced.
 	Handlers executor.Registry
-	// Forget runs the FORGET steps of the server, which name no plugin.
-	Forget   executor.Handler
+	// Builtin runs the steps of the actions the agent carries out itself,
+	// without a plugin; the actions the role allows are announced.
+	Builtin executor.Builtin
+	// Role is the role of the certificate; it decides which of Builtin are
+	// announced. The agent never sends it: the server reads it from the
+	// certificate.
+	Role     role.Role
 	Hostname string
 	// MachineID is the HMAC of the host's machine-id (package machineid),
 	// computed once at start and sent in every Register. The agent never
@@ -96,7 +103,8 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		ScriptNames:     a.Local.ScriptNames(),
 		// An empty status still tells the server this agent speaks the
 		// verification contract; a verifier measures its own (V5).
-		Verifier: &agentv1.VerifierStatus{},
+		Verifier:       &agentv1.VerifierStatus{},
+		BuiltinActions: a.builtinActions(),
 	}
 	if a.Verifier != nil {
 		req.Verifier = a.Verifier(ctx)
@@ -115,6 +123,12 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		})
 	}
 	return req
+}
+
+// builtinActions are the actions of Builtin the role allows, in the order of
+// the enum: a verifier runs none of them.
+func (a *Agent) builtinActions() []agentv1.Action {
+	return slices.DeleteFunc(a.Builtin.Actions(), func(act agentv1.Action) bool { return !a.Role.Allows(act) })
 }
 
 // Bindings are the bindings of the secrets of the host (*secretbind.Store).
