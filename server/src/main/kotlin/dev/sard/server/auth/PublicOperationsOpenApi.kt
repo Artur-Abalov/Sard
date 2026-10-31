@@ -17,10 +17,13 @@ private fun documented(
     api: io.swagger.v3.oas.models.OpenAPI,
     operation: Operation,
 ): io.swagger.v3.oas.models.Operation? =
+    operationsAt(api, operation.pathTemplate).entries.firstOrNull { it.key.name == operation.method }?.value
+
+private fun operationsAt(
+    api: io.swagger.v3.oas.models.OpenAPI,
+    template: String,
+): Map<io.swagger.v3.oas.models.PathItem.HttpMethod, io.swagger.v3.oas.models.Operation> =
     api.paths
-        ?.get(operation.pathTemplate)
+        ?.get(template)
         ?.readOperationsMap()
-        ?.get(
-            io.swagger.v3.oas.models.PathItem.HttpMethod
-                .valueOf(operation.method.uppercase()),
-        )
+        .orEmpty()
