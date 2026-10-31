@@ -381,6 +381,7 @@ message StepResult {
     RestoreOutput restore = 11;
     VerifyOutput verify = 12;
     RunOutput run = 13;
+    ForgetOutput forget = 15;
   }
 
   // Machine-readable reason for STEP_STATUS_REJECTED; unspecified otherwise.
@@ -409,6 +410,34 @@ enum StepStatus {
   // Not started: unknown plugin, repository, secret or script, unsupported
   // action or invalid config.
   STEP_STATUS_REJECTED = 5;
+}
+
+// ForgetOutput says exactly what a FORGET step left in the repository. It is
+// filled on failure, cancellation and timeout too, whenever the agent managed
+// to list the snapshots.
+message ForgetOutput {
+  // Full ids (main snapshots and their parts) the step tried to forget and
+  // that are no longer in the repository.
+  repeated string forgotten_snapshot_ids = 1;
+  // Snapshots the policy would have forgotten and the host's floor kept.
+  repeated string kept_by_floor_snapshot_ids = 2;
+  // All snapshots of the source after the step.
+  repeated string remaining_snapshot_ids = 3;
+  // When the agent listed remaining_snapshot_ids.
+  google.protobuf.Timestamp listed_at = 4;
+  MaintenanceFailure failure = 5;
+  // Who holds the repository lock (host, PID, user, time) as restic says it;
+  // set with MAINTENANCE_FAILURE_REPOSITORY_LOCKED.
+  string lock_holder = 6;
+}
+
+// MaintenanceFailure is the machine-readable cause of a failed maintenance
+// step.
+enum MaintenanceFailure {
+  MAINTENANCE_FAILURE_UNSPECIFIED = 0;
+  MAINTENANCE_FAILURE_REPOSITORY_LOCKED = 1;
+  MAINTENANCE_FAILURE_DELETE_DENIED = 2;
+  MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE = 3;
 }
 
 message BackupOutput {
@@ -594,6 +623,10 @@ enum Action {
   ACTION_VERIFY = 3;
   // Run a script allowlisted on the agent host; no repository involved.
   ACTION_RUN = 4;
+  // Forget the snapshots of one source that the source's retention policy
+  // and the host's retention floor no longer protect. The server sends the
+  // policy only, never a list of snapshots to delete.
+  ACTION_FORGET = 5;
 }
 
 // RunStep asks the agent to execute one workflow step with a plugin.
@@ -629,6 +662,39 @@ message RunStep {
   // What a verification needs besides snapshot_id (ACTION_VERIFY only). No
   // secret: the verifier opens the repository with its own key.
   VerifyTask verify = 11;
+  // What to forget and keep (ACTION_FORGET only). The agent rejects a
+  // FORGET step that carries anything outside this message, including
+  // plugin, config_json, tags, snapshot_id and fields it does not know.
+  ForgetTask forget = 12;
+}
+
+// ForgetTask is the retention job a FORGET step carries out. It names no
+// snapshot to delete: the agent computes them itself from the repository and
+// never goes below its own retention floor (RepositoryInfo.retention_floor).
+// There is deliberately no field that overrides or disables the floor.
+message ForgetTask {
+  // Value of the sard.source tag; only snapshots of this source are
+  // considered.
+  string source_id = 1;
+  RetentionPolicy policy = 2;
+  // Snapshots to keep on top of the policy; only ever adds protection.
+  repeated string keep_snapshot_ids = 3;
+  // Snapshots the server knows to be incomplete.
+  repeated string incomplete_snapshot_ids = 4;
+  // An incomplete snapshot older than this is forgotten when a newer
+  // complete one exists.
+  google.protobuf.Duration incomplete_max_age = 5;
+}
+
+// RetentionPolicy mirrors the rules of restic forget; every rule is
+// additive.
+message RetentionPolicy {
+  uint32 keep_last = 1;
+  uint32 keep_daily = 2;
+  uint32 keep_weekly = 3;
+  uint32 keep_monthly = 4;
+  uint32 keep_yearly = 5;
+  google.protobuf.Duration keep_within = 6;
 }
 
 // VerifyTask is the verification job a VERIFY step carries out.
@@ -669,6 +735,33 @@ message RepositoryInfo {
   // user field of the repository's restic keys on every Register. Only the
   // flag: never a key, a password, a key id or a count of keys (ADR 0008).
   RecoveryKeyState recovery_key = 5;
+  // The retention floor of this host for this repository, set by the host
+  // operator in agent.yaml. Absent: an agent older than FORGET, which the
+  // server must not send FORGET to. The server never sets a floor.
+  RetentionFloor retention_floor = 6;
+}
+
+// RetentionFloor is the least the host keeps of every source in a
+// repository, whatever a FORGET step asks for.
+message RetentionFloor {
+  // The operator switched the floor off for this repository.
+  bool disabled = 1;
+  // Keep at least this many latest main snapshots of a source.
+  uint32 keep_last = 2;
+  // Keep every main snapshot not older than this from the newest one.
+  google.protobuf.Duration keep_within = 3;
+  RetentionFloorOrigin origin = 4;
+}
+
+// RetentionFloorOrigin tells where a floor comes from.
+enum RetentionFloorOrigin {
+  RETENTION_FLOOR_ORIGIN_UNSPECIFIED = 0;
+  // Built into the agent.
+  RETENTION_FLOOR_ORIGIN_BUILT_IN = 1;
+  // retention_floor.default in agent.yaml.
+  RETENTION_FLOOR_ORIGIN_CONFIG_DEFAULT = 2;
+  // retention_floor.repositories.<name> in agent.yaml.
+  RETENTION_FLOOR_ORIGIN_CONFIG_REPOSITORY = 3;
 }
 
 // RecoveryKeyState tells whether a repository has a recovery key. An agent

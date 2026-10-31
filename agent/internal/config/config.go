@@ -39,6 +39,9 @@ type Config struct {
 	Verify Verify `yaml:"verify"`
 	// Service names the user the service runs as (main config only).
 	Service Service `yaml:"service"`
+	// RetentionFloor is the least the host keeps when the server asks it to
+	// forget snapshots (main config only, КL1, КL2).
+	RetentionFloor RetentionFloor `yaml:"retention_floor"`
 
 	src sources
 }
@@ -90,6 +93,18 @@ type Repository struct {
 	// Fragment is the agent.d file that defines the repository; empty for
 	// one of the main config.
 	Fragment string `yaml:"-"`
+	// RetentionFloor is never allowed here: it is read only to refuse it
+	// with the right hint (КL2).
+	RetentionFloor forbiddenKey `yaml:"retention_floor"`
+}
+
+// forbiddenKey is a key that is read only to refuse it.
+type forbiddenKey bool
+
+// UnmarshalYAML notes that the key is there.
+func (k *forbiddenKey) UnmarshalYAML(*yaml.Node) error {
+	*k = true
+	return nil
 }
 
 // ErrNoServerAddress is returned when server.address is missing.
@@ -146,6 +161,9 @@ func (c Config) validate() error {
 	if err := c.validateRestore(); err != nil {
 		return err
 	}
+	if err := c.validateRetentionFloor(); err != nil {
+		return err
+	}
 	return c.validateVerify()
 }
 
@@ -175,6 +193,8 @@ func (r Repository) validate(seen []string) error {
 		return fmt.Errorf("%w: %q: url is required", ErrInvalidRepository, r.Name)
 	case r.PasswordFile == "":
 		return fmt.Errorf("%w: %q: password_file is required", ErrInvalidRepository, r.Name)
+	case bool(r.RetentionFloor):
+		return fmt.Errorf("%w: %q: retention_floor is not allowed in a repository definition: set it in the retention_floor.repositories section of agent.yaml", ErrInvalidRepository, r.Name)
 	}
 	return nil
 }

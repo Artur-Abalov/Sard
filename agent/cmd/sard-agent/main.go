@@ -171,6 +171,7 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 		return err
 	}
 	cfg, me := local.cfg, local.host
+	logRetentionFloors(cfg, rt.logger)
 	removeStale(local, rt)
 	// V5: what a killed verification left is removed before any step, too.
 	verify, err := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())

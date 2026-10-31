@@ -334,6 +334,60 @@ func (StepStatus) EnumDescriptor() ([]byte, []int) {
 	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
+// MaintenanceFailure is the machine-readable cause of a failed maintenance
+// step.
+type MaintenanceFailure int32
+
+const (
+	MaintenanceFailure_MAINTENANCE_FAILURE_UNSPECIFIED         MaintenanceFailure = 0
+	MaintenanceFailure_MAINTENANCE_FAILURE_REPOSITORY_LOCKED   MaintenanceFailure = 1
+	MaintenanceFailure_MAINTENANCE_FAILURE_DELETE_DENIED       MaintenanceFailure = 2
+	MaintenanceFailure_MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE MaintenanceFailure = 3
+)
+
+// Enum value maps for MaintenanceFailure.
+var (
+	MaintenanceFailure_name = map[int32]string{
+		0: "MAINTENANCE_FAILURE_UNSPECIFIED",
+		1: "MAINTENANCE_FAILURE_REPOSITORY_LOCKED",
+		2: "MAINTENANCE_FAILURE_DELETE_DENIED",
+		3: "MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE",
+	}
+	MaintenanceFailure_value = map[string]int32{
+		"MAINTENANCE_FAILURE_UNSPECIFIED":         0,
+		"MAINTENANCE_FAILURE_REPOSITORY_LOCKED":   1,
+		"MAINTENANCE_FAILURE_DELETE_DENIED":       2,
+		"MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE": 3,
+	}
+)
+
+func (x MaintenanceFailure) Enum() *MaintenanceFailure {
+	p := new(MaintenanceFailure)
+	*p = x
+	return p
+}
+
+func (x MaintenanceFailure) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MaintenanceFailure) Descriptor() protoreflect.EnumDescriptor {
+	return file_sard_agent_v1_agent_proto_enumTypes[5].Descriptor()
+}
+
+func (MaintenanceFailure) Type() protoreflect.EnumType {
+	return &file_sard_agent_v1_agent_proto_enumTypes[5]
+}
+
+func (x MaintenanceFailure) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MaintenanceFailure.Descriptor instead.
+func (MaintenanceFailure) EnumDescriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{5}
+}
+
 type StageStatus int32
 
 const (
@@ -376,11 +430,11 @@ func (x StageStatus) String() string {
 }
 
 func (StageStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_sard_agent_v1_agent_proto_enumTypes[5].Descriptor()
+	return file_sard_agent_v1_agent_proto_enumTypes[6].Descriptor()
 }
 
 func (StageStatus) Type() protoreflect.EnumType {
-	return &file_sard_agent_v1_agent_proto_enumTypes[5]
+	return &file_sard_agent_v1_agent_proto_enumTypes[6]
 }
 
 func (x StageStatus) Number() protoreflect.EnumNumber {
@@ -389,7 +443,7 @@ func (x StageStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StageStatus.Descriptor instead.
 func (StageStatus) EnumDescriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{5}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{6}
 }
 
 // VerifyVerdict is the verifier's conclusion; "no verifier" is the server's
@@ -438,11 +492,11 @@ func (x VerifyVerdict) String() string {
 }
 
 func (VerifyVerdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_sard_agent_v1_agent_proto_enumTypes[6].Descriptor()
+	return file_sard_agent_v1_agent_proto_enumTypes[7].Descriptor()
 }
 
 func (VerifyVerdict) Type() protoreflect.EnumType {
-	return &file_sard_agent_v1_agent_proto_enumTypes[6]
+	return &file_sard_agent_v1_agent_proto_enumTypes[7]
 }
 
 func (x VerifyVerdict) Number() protoreflect.EnumNumber {
@@ -451,7 +505,7 @@ func (x VerifyVerdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use VerifyVerdict.Descriptor instead.
 func (VerifyVerdict) EnumDescriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{6}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{7}
 }
 
 // Action is what a step does with a plugin.
@@ -465,6 +519,10 @@ const (
 	Action_ACTION_VERIFY Action = 3
 	// Run a script allowlisted on the agent host; no repository involved.
 	Action_ACTION_RUN Action = 4
+	// Forget the snapshots of one source that the source's retention policy
+	// and the host's retention floor no longer protect. The server sends the
+	// policy only, never a list of snapshots to delete.
+	Action_ACTION_FORGET Action = 5
 )
 
 // Enum value maps for Action.
@@ -475,6 +533,7 @@ var (
 		2: "ACTION_RESTORE",
 		3: "ACTION_VERIFY",
 		4: "ACTION_RUN",
+		5: "ACTION_FORGET",
 	}
 	Action_value = map[string]int32{
 		"ACTION_UNSPECIFIED": 0,
@@ -482,6 +541,7 @@ var (
 		"ACTION_RESTORE":     2,
 		"ACTION_VERIFY":      3,
 		"ACTION_RUN":         4,
+		"ACTION_FORGET":      5,
 	}
 )
 
@@ -496,11 +556,11 @@ func (x Action) String() string {
 }
 
 func (Action) Descriptor() protoreflect.EnumDescriptor {
-	return file_sard_agent_v1_agent_proto_enumTypes[7].Descriptor()
+	return file_sard_agent_v1_agent_proto_enumTypes[8].Descriptor()
 }
 
 func (Action) Type() protoreflect.EnumType {
-	return &file_sard_agent_v1_agent_proto_enumTypes[7]
+	return &file_sard_agent_v1_agent_proto_enumTypes[8]
 }
 
 func (x Action) Number() protoreflect.EnumNumber {
@@ -509,7 +569,63 @@ func (x Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Action.Descriptor instead.
 func (Action) EnumDescriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{7}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{8}
+}
+
+// RetentionFloorOrigin tells where a floor comes from.
+type RetentionFloorOrigin int32
+
+const (
+	RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_UNSPECIFIED RetentionFloorOrigin = 0
+	// Built into the agent.
+	RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_BUILT_IN RetentionFloorOrigin = 1
+	// retention_floor.default in agent.yaml.
+	RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_CONFIG_DEFAULT RetentionFloorOrigin = 2
+	// retention_floor.repositories.<name> in agent.yaml.
+	RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_CONFIG_REPOSITORY RetentionFloorOrigin = 3
+)
+
+// Enum value maps for RetentionFloorOrigin.
+var (
+	RetentionFloorOrigin_name = map[int32]string{
+		0: "RETENTION_FLOOR_ORIGIN_UNSPECIFIED",
+		1: "RETENTION_FLOOR_ORIGIN_BUILT_IN",
+		2: "RETENTION_FLOOR_ORIGIN_CONFIG_DEFAULT",
+		3: "RETENTION_FLOOR_ORIGIN_CONFIG_REPOSITORY",
+	}
+	RetentionFloorOrigin_value = map[string]int32{
+		"RETENTION_FLOOR_ORIGIN_UNSPECIFIED":       0,
+		"RETENTION_FLOOR_ORIGIN_BUILT_IN":          1,
+		"RETENTION_FLOOR_ORIGIN_CONFIG_DEFAULT":    2,
+		"RETENTION_FLOOR_ORIGIN_CONFIG_REPOSITORY": 3,
+	}
+)
+
+func (x RetentionFloorOrigin) Enum() *RetentionFloorOrigin {
+	p := new(RetentionFloorOrigin)
+	*p = x
+	return p
+}
+
+func (x RetentionFloorOrigin) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RetentionFloorOrigin) Descriptor() protoreflect.EnumDescriptor {
+	return file_sard_agent_v1_agent_proto_enumTypes[9].Descriptor()
+}
+
+func (RetentionFloorOrigin) Type() protoreflect.EnumType {
+	return &file_sard_agent_v1_agent_proto_enumTypes[9]
+}
+
+func (x RetentionFloorOrigin) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RetentionFloorOrigin.Descriptor instead.
+func (RetentionFloorOrigin) EnumDescriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{9}
 }
 
 // RecoveryKeyState tells whether a repository has a recovery key. An agent
@@ -548,11 +664,11 @@ func (x RecoveryKeyState) String() string {
 }
 
 func (RecoveryKeyState) Descriptor() protoreflect.EnumDescriptor {
-	return file_sard_agent_v1_agent_proto_enumTypes[8].Descriptor()
+	return file_sard_agent_v1_agent_proto_enumTypes[10].Descriptor()
 }
 
 func (RecoveryKeyState) Type() protoreflect.EnumType {
-	return &file_sard_agent_v1_agent_proto_enumTypes[8]
+	return &file_sard_agent_v1_agent_proto_enumTypes[10]
 }
 
 func (x RecoveryKeyState) Number() protoreflect.EnumNumber {
@@ -561,7 +677,7 @@ func (x RecoveryKeyState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RecoveryKeyState.Descriptor instead.
 func (RecoveryKeyState) EnumDescriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{8}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{10}
 }
 
 type EnrollRequest struct {
@@ -1986,6 +2102,7 @@ type StepResult struct {
 	//	*StepResult_Restore
 	//	*StepResult_Verify
 	//	*StepResult_Run
+	//	*StepResult_Forget
 	Output isStepResult_Output `protobuf_oneof:"output"`
 	// Machine-readable reason for STEP_STATUS_REJECTED; unspecified otherwise.
 	RejectReason  RejectReason `protobuf:"varint,14,opt,name=reject_reason,json=rejectReason,proto3,enum=sard.agent.v1.RejectReason" json:"reject_reason,omitempty"`
@@ -2101,6 +2218,15 @@ func (x *StepResult) GetRun() *RunOutput {
 	return nil
 }
 
+func (x *StepResult) GetForget() *ForgetOutput {
+	if x != nil {
+		if x, ok := x.Output.(*StepResult_Forget); ok {
+			return x.Forget
+		}
+	}
+	return nil
+}
+
 func (x *StepResult) GetRejectReason() RejectReason {
 	if x != nil {
 		return x.RejectReason
@@ -2128,6 +2254,10 @@ type StepResult_Run struct {
 	Run *RunOutput `protobuf:"bytes,13,opt,name=run,proto3,oneof"`
 }
 
+type StepResult_Forget struct {
+	Forget *ForgetOutput `protobuf:"bytes,15,opt,name=forget,proto3,oneof"`
+}
+
 func (*StepResult_Backup) isStepResult_Output() {}
 
 func (*StepResult_Restore) isStepResult_Output() {}
@@ -2135,6 +2265,102 @@ func (*StepResult_Restore) isStepResult_Output() {}
 func (*StepResult_Verify) isStepResult_Output() {}
 
 func (*StepResult_Run) isStepResult_Output() {}
+
+func (*StepResult_Forget) isStepResult_Output() {}
+
+// ForgetOutput says exactly what a FORGET step left in the repository. It is
+// filled on failure, cancellation and timeout too, whenever the agent managed
+// to list the snapshots.
+type ForgetOutput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Full ids (main snapshots and their parts) the step tried to forget and
+	// that are no longer in the repository.
+	ForgottenSnapshotIds []string `protobuf:"bytes,1,rep,name=forgotten_snapshot_ids,json=forgottenSnapshotIds,proto3" json:"forgotten_snapshot_ids,omitempty"`
+	// Snapshots the policy would have forgotten and the host's floor kept.
+	KeptByFloorSnapshotIds []string `protobuf:"bytes,2,rep,name=kept_by_floor_snapshot_ids,json=keptByFloorSnapshotIds,proto3" json:"kept_by_floor_snapshot_ids,omitempty"`
+	// All snapshots of the source after the step.
+	RemainingSnapshotIds []string `protobuf:"bytes,3,rep,name=remaining_snapshot_ids,json=remainingSnapshotIds,proto3" json:"remaining_snapshot_ids,omitempty"`
+	// When the agent listed remaining_snapshot_ids.
+	ListedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=listed_at,json=listedAt,proto3" json:"listed_at,omitempty"`
+	Failure  MaintenanceFailure     `protobuf:"varint,5,opt,name=failure,proto3,enum=sard.agent.v1.MaintenanceFailure" json:"failure,omitempty"`
+	// Who holds the repository lock (host, PID, user, time) as restic says it;
+	// set with MAINTENANCE_FAILURE_REPOSITORY_LOCKED.
+	LockHolder    string `protobuf:"bytes,6,opt,name=lock_holder,json=lockHolder,proto3" json:"lock_holder,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ForgetOutput) Reset() {
+	*x = ForgetOutput{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForgetOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForgetOutput) ProtoMessage() {}
+
+func (x *ForgetOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForgetOutput.ProtoReflect.Descriptor instead.
+func (*ForgetOutput) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ForgetOutput) GetForgottenSnapshotIds() []string {
+	if x != nil {
+		return x.ForgottenSnapshotIds
+	}
+	return nil
+}
+
+func (x *ForgetOutput) GetKeptByFloorSnapshotIds() []string {
+	if x != nil {
+		return x.KeptByFloorSnapshotIds
+	}
+	return nil
+}
+
+func (x *ForgetOutput) GetRemainingSnapshotIds() []string {
+	if x != nil {
+		return x.RemainingSnapshotIds
+	}
+	return nil
+}
+
+func (x *ForgetOutput) GetListedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ListedAt
+	}
+	return nil
+}
+
+func (x *ForgetOutput) GetFailure() MaintenanceFailure {
+	if x != nil {
+		return x.Failure
+	}
+	return MaintenanceFailure_MAINTENANCE_FAILURE_UNSPECIFIED
+}
+
+func (x *ForgetOutput) GetLockHolder() string {
+	if x != nil {
+		return x.LockHolder
+	}
+	return ""
+}
 
 type BackupOutput struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2178,7 +2404,7 @@ type BackupOutput struct {
 
 func (x *BackupOutput) Reset() {
 	*x = BackupOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2190,7 +2416,7 @@ func (x *BackupOutput) String() string {
 func (*BackupOutput) ProtoMessage() {}
 
 func (x *BackupOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2203,7 +2429,7 @@ func (x *BackupOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupOutput.ProtoReflect.Descriptor instead.
 func (*BackupOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *BackupOutput) GetSnapshotId() string {
@@ -2299,7 +2525,7 @@ type RestoreOutput struct {
 
 func (x *RestoreOutput) Reset() {
 	*x = RestoreOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2311,7 +2537,7 @@ func (x *RestoreOutput) String() string {
 func (*RestoreOutput) ProtoMessage() {}
 
 func (x *RestoreOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2324,7 +2550,7 @@ func (x *RestoreOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreOutput.ProtoReflect.Descriptor instead.
 func (*RestoreOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RestoreOutput) GetTarget() string {
@@ -2405,7 +2631,7 @@ type VerifyOutput struct {
 
 func (x *VerifyOutput) Reset() {
 	*x = VerifyOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2417,7 +2643,7 @@ func (x *VerifyOutput) String() string {
 func (*VerifyOutput) ProtoMessage() {}
 
 func (x *VerifyOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2430,7 +2656,7 @@ func (x *VerifyOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyOutput.ProtoReflect.Descriptor instead.
 func (*VerifyOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *VerifyOutput) GetSnapshotId() string {
@@ -2499,7 +2725,7 @@ type VerifyStage struct {
 
 func (x *VerifyStage) Reset() {
 	*x = VerifyStage{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2511,7 +2737,7 @@ func (x *VerifyStage) String() string {
 func (*VerifyStage) ProtoMessage() {}
 
 func (x *VerifyStage) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2524,7 +2750,7 @@ func (x *VerifyStage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyStage.ProtoReflect.Descriptor instead.
 func (*VerifyStage) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *VerifyStage) GetLevel() uint32 {
@@ -2597,7 +2823,7 @@ type FingerprintMismatch struct {
 
 func (x *FingerprintMismatch) Reset() {
 	*x = FingerprintMismatch{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2609,7 +2835,7 @@ func (x *FingerprintMismatch) String() string {
 func (*FingerprintMismatch) ProtoMessage() {}
 
 func (x *FingerprintMismatch) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2622,7 +2848,7 @@ func (x *FingerprintMismatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FingerprintMismatch.ProtoReflect.Descriptor instead.
 func (*FingerprintMismatch) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *FingerprintMismatch) GetName() string {
@@ -2659,7 +2885,7 @@ type CheckResult struct {
 
 func (x *CheckResult) Reset() {
 	*x = CheckResult{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2671,7 +2897,7 @@ func (x *CheckResult) String() string {
 func (*CheckResult) ProtoMessage() {}
 
 func (x *CheckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2684,7 +2910,7 @@ func (x *CheckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckResult.ProtoReflect.Descriptor instead.
 func (*CheckResult) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CheckResult) GetName() string {
@@ -2718,7 +2944,7 @@ type RunOutput struct {
 
 func (x *RunOutput) Reset() {
 	*x = RunOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2730,7 +2956,7 @@ func (x *RunOutput) String() string {
 func (*RunOutput) ProtoMessage() {}
 
 func (x *RunOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2743,7 +2969,7 @@ func (x *RunOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunOutput.ProtoReflect.Descriptor instead.
 func (*RunOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *RunOutput) GetExitCode() int32 {
@@ -2768,7 +2994,7 @@ type ConnectResponse struct {
 
 func (x *ConnectResponse) Reset() {
 	*x = ConnectResponse{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2780,7 +3006,7 @@ func (x *ConnectResponse) String() string {
 func (*ConnectResponse) ProtoMessage() {}
 
 func (x *ConnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2793,7 +3019,7 @@ func (x *ConnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectResponse.ProtoReflect.Descriptor instead.
 func (*ConnectResponse) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{28}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ConnectResponse) GetMessage() isConnectResponse_Message {
@@ -2872,7 +3098,7 @@ type ResultAck struct {
 
 func (x *ResultAck) Reset() {
 	*x = ResultAck{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2884,7 +3110,7 @@ func (x *ResultAck) String() string {
 func (*ResultAck) ProtoMessage() {}
 
 func (x *ResultAck) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2897,7 +3123,7 @@ func (x *ResultAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultAck.ProtoReflect.Descriptor instead.
 func (*ResultAck) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{29}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ResultAck) GetCommandId() string {
@@ -2937,14 +3163,18 @@ type RunStep struct {
 	Tags map[string]string `protobuf:"bytes,9,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// What a verification needs besides snapshot_id (ACTION_VERIFY only). No
 	// secret: the verifier opens the repository with its own key.
-	Verify        *VerifyTask `protobuf:"bytes,11,opt,name=verify,proto3" json:"verify,omitempty"`
+	Verify *VerifyTask `protobuf:"bytes,11,opt,name=verify,proto3" json:"verify,omitempty"`
+	// What to forget and keep (ACTION_FORGET only). The agent rejects a
+	// FORGET step that carries anything outside this message, including
+	// plugin, config_json, tags, snapshot_id and fields it does not know.
+	Forget        *ForgetTask `protobuf:"bytes,12,opt,name=forget,proto3" json:"forget,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunStep) Reset() {
 	*x = RunStep{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[30]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2956,7 +3186,7 @@ func (x *RunStep) String() string {
 func (*RunStep) ProtoMessage() {}
 
 func (x *RunStep) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[30]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2969,7 +3199,7 @@ func (x *RunStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunStep.ProtoReflect.Descriptor instead.
 func (*RunStep) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{30}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *RunStep) GetCommandId() string {
@@ -3035,6 +3265,185 @@ func (x *RunStep) GetVerify() *VerifyTask {
 	return nil
 }
 
+func (x *RunStep) GetForget() *ForgetTask {
+	if x != nil {
+		return x.Forget
+	}
+	return nil
+}
+
+// ForgetTask is the retention job a FORGET step carries out. It names no
+// snapshot to delete: the agent computes them itself from the repository and
+// never goes below its own retention floor (RepositoryInfo.retention_floor).
+// There is deliberately no field that overrides or disables the floor.
+type ForgetTask struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Value of the sard.source tag; only snapshots of this source are
+	// considered.
+	SourceId string           `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Policy   *RetentionPolicy `protobuf:"bytes,2,opt,name=policy,proto3" json:"policy,omitempty"`
+	// Snapshots to keep on top of the policy; only ever adds protection.
+	KeepSnapshotIds []string `protobuf:"bytes,3,rep,name=keep_snapshot_ids,json=keepSnapshotIds,proto3" json:"keep_snapshot_ids,omitempty"`
+	// Snapshots the server knows to be incomplete.
+	IncompleteSnapshotIds []string `protobuf:"bytes,4,rep,name=incomplete_snapshot_ids,json=incompleteSnapshotIds,proto3" json:"incomplete_snapshot_ids,omitempty"`
+	// An incomplete snapshot older than this is forgotten when a newer
+	// complete one exists.
+	IncompleteMaxAge *durationpb.Duration `protobuf:"bytes,5,opt,name=incomplete_max_age,json=incompleteMaxAge,proto3" json:"incomplete_max_age,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ForgetTask) Reset() {
+	*x = ForgetTask{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForgetTask) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForgetTask) ProtoMessage() {}
+
+func (x *ForgetTask) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForgetTask.ProtoReflect.Descriptor instead.
+func (*ForgetTask) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ForgetTask) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *ForgetTask) GetPolicy() *RetentionPolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return nil
+}
+
+func (x *ForgetTask) GetKeepSnapshotIds() []string {
+	if x != nil {
+		return x.KeepSnapshotIds
+	}
+	return nil
+}
+
+func (x *ForgetTask) GetIncompleteSnapshotIds() []string {
+	if x != nil {
+		return x.IncompleteSnapshotIds
+	}
+	return nil
+}
+
+func (x *ForgetTask) GetIncompleteMaxAge() *durationpb.Duration {
+	if x != nil {
+		return x.IncompleteMaxAge
+	}
+	return nil
+}
+
+// RetentionPolicy mirrors the rules of restic forget; every rule is
+// additive.
+type RetentionPolicy struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	KeepLast      uint32                 `protobuf:"varint,1,opt,name=keep_last,json=keepLast,proto3" json:"keep_last,omitempty"`
+	KeepDaily     uint32                 `protobuf:"varint,2,opt,name=keep_daily,json=keepDaily,proto3" json:"keep_daily,omitempty"`
+	KeepWeekly    uint32                 `protobuf:"varint,3,opt,name=keep_weekly,json=keepWeekly,proto3" json:"keep_weekly,omitempty"`
+	KeepMonthly   uint32                 `protobuf:"varint,4,opt,name=keep_monthly,json=keepMonthly,proto3" json:"keep_monthly,omitempty"`
+	KeepYearly    uint32                 `protobuf:"varint,5,opt,name=keep_yearly,json=keepYearly,proto3" json:"keep_yearly,omitempty"`
+	KeepWithin    *durationpb.Duration   `protobuf:"bytes,6,opt,name=keep_within,json=keepWithin,proto3" json:"keep_within,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetentionPolicy) Reset() {
+	*x = RetentionPolicy{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetentionPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetentionPolicy) ProtoMessage() {}
+
+func (x *RetentionPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetentionPolicy.ProtoReflect.Descriptor instead.
+func (*RetentionPolicy) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *RetentionPolicy) GetKeepLast() uint32 {
+	if x != nil {
+		return x.KeepLast
+	}
+	return 0
+}
+
+func (x *RetentionPolicy) GetKeepDaily() uint32 {
+	if x != nil {
+		return x.KeepDaily
+	}
+	return 0
+}
+
+func (x *RetentionPolicy) GetKeepWeekly() uint32 {
+	if x != nil {
+		return x.KeepWeekly
+	}
+	return 0
+}
+
+func (x *RetentionPolicy) GetKeepMonthly() uint32 {
+	if x != nil {
+		return x.KeepMonthly
+	}
+	return 0
+}
+
+func (x *RetentionPolicy) GetKeepYearly() uint32 {
+	if x != nil {
+		return x.KeepYearly
+	}
+	return 0
+}
+
+func (x *RetentionPolicy) GetKeepWithin() *durationpb.Duration {
+	if x != nil {
+		return x.KeepWithin
+	}
+	return nil
+}
+
 // VerifyTask is the verification job a VERIFY step carries out.
 type VerifyTask struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -3061,7 +3470,7 @@ type VerifyTask struct {
 
 func (x *VerifyTask) Reset() {
 	*x = VerifyTask{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[31]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3073,7 +3482,7 @@ func (x *VerifyTask) String() string {
 func (*VerifyTask) ProtoMessage() {}
 
 func (x *VerifyTask) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[31]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3086,7 +3495,7 @@ func (x *VerifyTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTask.ProtoReflect.Descriptor instead.
 func (*VerifyTask) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{31}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *VerifyTask) GetJobId() string {
@@ -3148,14 +3557,18 @@ type RepositoryInfo struct {
 	// Whether the repository has a recovery key, read by the agent from the
 	// user field of the repository's restic keys on every Register. Only the
 	// flag: never a key, a password, a key id or a count of keys (ADR 0008).
-	RecoveryKey   RecoveryKeyState `protobuf:"varint,5,opt,name=recovery_key,json=recoveryKey,proto3,enum=sard.agent.v1.RecoveryKeyState" json:"recovery_key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RecoveryKey RecoveryKeyState `protobuf:"varint,5,opt,name=recovery_key,json=recoveryKey,proto3,enum=sard.agent.v1.RecoveryKeyState" json:"recovery_key,omitempty"`
+	// The retention floor of this host for this repository, set by the host
+	// operator in agent.yaml. Absent: an agent older than FORGET, which the
+	// server must not send FORGET to. The server never sets a floor.
+	RetentionFloor *RetentionFloor `protobuf:"bytes,6,opt,name=retention_floor,json=retentionFloor,proto3" json:"retention_floor,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RepositoryInfo) Reset() {
 	*x = RepositoryInfo{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[32]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3167,7 +3580,7 @@ func (x *RepositoryInfo) String() string {
 func (*RepositoryInfo) ProtoMessage() {}
 
 func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[32]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3180,7 +3593,7 @@ func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepositoryInfo.ProtoReflect.Descriptor instead.
 func (*RepositoryInfo) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{32}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *RepositoryInfo) GetName() string {
@@ -3218,6 +3631,86 @@ func (x *RepositoryInfo) GetRecoveryKey() RecoveryKeyState {
 	return RecoveryKeyState_RECOVERY_KEY_STATE_UNSPECIFIED
 }
 
+func (x *RepositoryInfo) GetRetentionFloor() *RetentionFloor {
+	if x != nil {
+		return x.RetentionFloor
+	}
+	return nil
+}
+
+// RetentionFloor is the least the host keeps of every source in a
+// repository, whatever a FORGET step asks for.
+type RetentionFloor struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The operator switched the floor off for this repository.
+	Disabled bool `protobuf:"varint,1,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	// Keep at least this many latest main snapshots of a source.
+	KeepLast uint32 `protobuf:"varint,2,opt,name=keep_last,json=keepLast,proto3" json:"keep_last,omitempty"`
+	// Keep every main snapshot not older than this from the newest one.
+	KeepWithin    *durationpb.Duration `protobuf:"bytes,3,opt,name=keep_within,json=keepWithin,proto3" json:"keep_within,omitempty"`
+	Origin        RetentionFloorOrigin `protobuf:"varint,4,opt,name=origin,proto3,enum=sard.agent.v1.RetentionFloorOrigin" json:"origin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetentionFloor) Reset() {
+	*x = RetentionFloor{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetentionFloor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetentionFloor) ProtoMessage() {}
+
+func (x *RetentionFloor) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetentionFloor.ProtoReflect.Descriptor instead.
+func (*RetentionFloor) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *RetentionFloor) GetDisabled() bool {
+	if x != nil {
+		return x.Disabled
+	}
+	return false
+}
+
+func (x *RetentionFloor) GetKeepLast() uint32 {
+	if x != nil {
+		return x.KeepLast
+	}
+	return 0
+}
+
+func (x *RetentionFloor) GetKeepWithin() *durationpb.Duration {
+	if x != nil {
+		return x.KeepWithin
+	}
+	return nil
+}
+
+func (x *RetentionFloor) GetOrigin() RetentionFloorOrigin {
+	if x != nil {
+		return x.Origin
+	}
+	return RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_UNSPECIFIED
+}
+
 // CancelStep asks the agent to stop a running step. The agent answers with
 // StepResult status CANCELLED, or with the real result if the step had
 // already finished.
@@ -3230,7 +3723,7 @@ type CancelStep struct {
 
 func (x *CancelStep) Reset() {
 	*x = CancelStep{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[33]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3242,7 +3735,7 @@ func (x *CancelStep) String() string {
 func (*CancelStep) ProtoMessage() {}
 
 func (x *CancelStep) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[33]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3255,7 +3748,7 @@ func (x *CancelStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelStep.ProtoReflect.Descriptor instead.
 func (*CancelStep) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{33}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CancelStep) GetCommandId() string {
@@ -3365,7 +3858,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\aLogLine\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12-\n" +
 	"\x05level\x18\x02 \x01(\x0e2\x17.sard.agent.v1.LogLevelR\x05level\x12\x12\n" +
-	"\x04text\x18\x03 \x01(\tR\x04text\"\xa5\x04\n" +
+	"\x04text\x18\x03 \x01(\tR\x04text\"\xdc\x04\n" +
 	"\n" +
 	"StepResult\x12\x1d\n" +
 	"\n" +
@@ -3380,9 +3873,18 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	" \x01(\v2\x1b.sard.agent.v1.BackupOutputH\x00R\x06backup\x128\n" +
 	"\arestore\x18\v \x01(\v2\x1c.sard.agent.v1.RestoreOutputH\x00R\arestore\x125\n" +
 	"\x06verify\x18\f \x01(\v2\x1b.sard.agent.v1.VerifyOutputH\x00R\x06verify\x12,\n" +
-	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03run\x12@\n" +
+	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03run\x125\n" +
+	"\x06forget\x18\x0f \x01(\v2\x1b.sard.agent.v1.ForgetOutputH\x00R\x06forget\x12@\n" +
 	"\rreject_reason\x18\x0e \x01(\x0e2\x1b.sard.agent.v1.RejectReasonR\frejectReasonB\b\n" +
-	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\xf8\x02\n" +
+	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\xcd\x02\n" +
+	"\fForgetOutput\x124\n" +
+	"\x16forgotten_snapshot_ids\x18\x01 \x03(\tR\x14forgottenSnapshotIds\x12:\n" +
+	"\x1akept_by_floor_snapshot_ids\x18\x02 \x03(\tR\x16keptByFloorSnapshotIds\x124\n" +
+	"\x16remaining_snapshot_ids\x18\x03 \x03(\tR\x14remainingSnapshotIds\x127\n" +
+	"\tlisted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\blistedAt\x12;\n" +
+	"\afailure\x18\x05 \x01(\x0e2!.sard.agent.v1.MaintenanceFailureR\afailure\x12\x1f\n" +
+	"\vlock_holder\x18\x06 \x01(\tR\n" +
+	"lockHolder\"\xf8\x02\n" +
 	"\fBackupOutput\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12\x1f\n" +
@@ -3447,7 +3949,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\amessage\"*\n" +
 	"\tResultAck\x12\x1d\n" +
 	"\n" +
-	"command_id\x18\x01 \x01(\tR\tcommandId\"\xd2\x03\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\"\x85\x04\n" +
 	"\aRunStep\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x16\n" +
@@ -3461,11 +3963,30 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"snapshotId\x123\n" +
 	"\atimeout\x18\b \x01(\v2\x19.google.protobuf.DurationR\atimeout\x124\n" +
 	"\x04tags\x18\t \x03(\v2 .sard.agent.v1.RunStep.TagsEntryR\x04tags\x121\n" +
-	"\x06verify\x18\v \x01(\v2\x19.sard.agent.v1.VerifyTaskR\x06verify\x1a7\n" +
+	"\x06verify\x18\v \x01(\v2\x19.sard.agent.v1.VerifyTaskR\x06verify\x121\n" +
+	"\x06forget\x18\f \x01(\v2\x19.sard.agent.v1.ForgetTaskR\x06forget\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\n" +
-	"repositoryR\asecrets\"\xff\x01\n" +
+	"repositoryR\asecrets\"\x8e\x02\n" +
+	"\n" +
+	"ForgetTask\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x126\n" +
+	"\x06policy\x18\x02 \x01(\v2\x1e.sard.agent.v1.RetentionPolicyR\x06policy\x12*\n" +
+	"\x11keep_snapshot_ids\x18\x03 \x03(\tR\x0fkeepSnapshotIds\x126\n" +
+	"\x17incomplete_snapshot_ids\x18\x04 \x03(\tR\x15incompleteSnapshotIds\x12G\n" +
+	"\x12incomplete_max_age\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x10incompleteMaxAge\"\xee\x01\n" +
+	"\x0fRetentionPolicy\x12\x1b\n" +
+	"\tkeep_last\x18\x01 \x01(\rR\bkeepLast\x12\x1d\n" +
+	"\n" +
+	"keep_daily\x18\x02 \x01(\rR\tkeepDaily\x12\x1f\n" +
+	"\vkeep_weekly\x18\x03 \x01(\rR\n" +
+	"keepWeekly\x12!\n" +
+	"\fkeep_monthly\x18\x04 \x01(\rR\vkeepMonthly\x12\x1f\n" +
+	"\vkeep_yearly\x18\x05 \x01(\rR\n" +
+	"keepYearly\x12:\n" +
+	"\vkeep_within\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\n" +
+	"keepWithin\"\xff\x01\n" +
 	"\n" +
 	"VerifyTask\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12#\n" +
@@ -3473,13 +3994,20 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\vfingerprint\x18\x03 \x01(\fR\vfingerprint\x12-\n" +
 	"\x12fingerprint_sha256\x18\x04 \x01(\tR\x11fingerprintSha256\x126\n" +
 	"\bdeadline\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x12,\n" +
-	"\x12source_machine_ids\x18\x06 \x03(\tR\x10sourceMachineIds\"\xd0\x01\n" +
+	"\x12source_machine_ids\x18\x06 \x03(\tR\x10sourceMachineIds\"\x98\x02\n" +
 	"\x0eRepositoryInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12#\n" +
 	"\rrepository_id\x18\x03 \x01(\tR\frepositoryId\x12'\n" +
 	"\x0fcrypto_provider\x18\x04 \x01(\tR\x0ecryptoProvider\x12B\n" +
-	"\frecovery_key\x18\x05 \x01(\x0e2\x1f.sard.agent.v1.RecoveryKeyStateR\vrecoveryKey\"+\n" +
+	"\frecovery_key\x18\x05 \x01(\x0e2\x1f.sard.agent.v1.RecoveryKeyStateR\vrecoveryKey\x12F\n" +
+	"\x0fretention_floor\x18\x06 \x01(\v2\x1d.sard.agent.v1.RetentionFloorR\x0eretentionFloor\"\xc2\x01\n" +
+	"\x0eRetentionFloor\x12\x1a\n" +
+	"\bdisabled\x18\x01 \x01(\bR\bdisabled\x12\x1b\n" +
+	"\tkeep_last\x18\x02 \x01(\rR\bkeepLast\x12:\n" +
+	"\vkeep_within\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\n" +
+	"keepWithin\x12;\n" +
+	"\x06origin\x18\x04 \x01(\x0e2#.sard.agent.v1.RetentionFloorOriginR\x06origin\"+\n" +
 	"\n" +
 	"CancelStep\x12\x1d\n" +
 	"\n" +
@@ -3513,7 +4041,12 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x12STEP_STATUS_FAILED\x10\x02\x12\x19\n" +
 	"\x15STEP_STATUS_CANCELLED\x10\x03\x12\x19\n" +
 	"\x15STEP_STATUS_TIMED_OUT\x10\x04\x12\x18\n" +
-	"\x14STEP_STATUS_REJECTED\x10\x05*\x9b\x01\n" +
+	"\x14STEP_STATUS_REJECTED\x10\x05*\xb8\x01\n" +
+	"\x12MaintenanceFailure\x12#\n" +
+	"\x1fMAINTENANCE_FAILURE_UNSPECIFIED\x10\x00\x12)\n" +
+	"%MAINTENANCE_FAILURE_REPOSITORY_LOCKED\x10\x01\x12%\n" +
+	"!MAINTENANCE_FAILURE_DELETE_DENIED\x10\x02\x12+\n" +
+	"'MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE\x10\x03*\x9b\x01\n" +
 	"\vStageStatus\x12\x1c\n" +
 	"\x18STAGE_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13STAGE_STATUS_PASSED\x10\x01\x12\x17\n" +
@@ -3525,14 +4058,20 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x15VERIFY_VERDICT_PASSED\x10\x01\x12\x19\n" +
 	"\x15VERIFY_VERDICT_FAILED\x10\x02\x12 \n" +
 	"\x1cVERIFY_VERDICT_CANNOT_VERIFY\x10\x03\x12)\n" +
-	"%VERIFY_VERDICT_INFRASTRUCTURE_FAILURE\x10\x04*j\n" +
+	"%VERIFY_VERDICT_INFRASTRUCTURE_FAILURE\x10\x04*}\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rACTION_BACKUP\x10\x01\x12\x12\n" +
 	"\x0eACTION_RESTORE\x10\x02\x12\x11\n" +
 	"\rACTION_VERIFY\x10\x03\x12\x0e\n" +
 	"\n" +
-	"ACTION_RUN\x10\x04*u\n" +
+	"ACTION_RUN\x10\x04\x12\x11\n" +
+	"\rACTION_FORGET\x10\x05*\xbc\x01\n" +
+	"\x14RetentionFloorOrigin\x12&\n" +
+	"\"RETENTION_FLOOR_ORIGIN_UNSPECIFIED\x10\x00\x12#\n" +
+	"\x1fRETENTION_FLOOR_ORIGIN_BUILT_IN\x10\x01\x12)\n" +
+	"%RETENTION_FLOOR_ORIGIN_CONFIG_DEFAULT\x10\x02\x12,\n" +
+	"(RETENTION_FLOOR_ORIGIN_CONFIG_REPOSITORY\x10\x03*u\n" +
 	"\x10RecoveryKeyState\x12\"\n" +
 	"\x1eRECOVERY_KEY_STATE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aRECOVERY_KEY_STATE_PRESENT\x10\x01\x12\x1d\n" +
@@ -3560,121 +4099,137 @@ func file_sard_agent_v1_agent_proto_rawDescGZIP() []byte {
 	return file_sard_agent_v1_agent_proto_rawDescData
 }
 
-var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
+var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(Sandbox)(0),                       // 0: sard.agent.v1.Sandbox
 	(StepPhase)(0),                     // 1: sard.agent.v1.StepPhase
 	(LogLevel)(0),                      // 2: sard.agent.v1.LogLevel
 	(RejectReason)(0),                  // 3: sard.agent.v1.RejectReason
 	(StepStatus)(0),                    // 4: sard.agent.v1.StepStatus
-	(StageStatus)(0),                   // 5: sard.agent.v1.StageStatus
-	(VerifyVerdict)(0),                 // 6: sard.agent.v1.VerifyVerdict
-	(Action)(0),                        // 7: sard.agent.v1.Action
-	(RecoveryKeyState)(0),              // 8: sard.agent.v1.RecoveryKeyState
-	(*EnrollRequest)(nil),              // 9: sard.agent.v1.EnrollRequest
-	(*EnrollResponse)(nil),             // 10: sard.agent.v1.EnrollResponse
-	(*ProbeRequest)(nil),               // 11: sard.agent.v1.ProbeRequest
-	(*ProbeResponse)(nil),              // 12: sard.agent.v1.ProbeResponse
-	(*RegisterRequest)(nil),            // 13: sard.agent.v1.RegisterRequest
-	(*SecretInfo)(nil),                 // 14: sard.agent.v1.SecretInfo
-	(*VerifierStatus)(nil),             // 15: sard.agent.v1.VerifierStatus
-	(*SandboxImage)(nil),               // 16: sard.agent.v1.SandboxImage
-	(*Plugin)(nil),                     // 17: sard.agent.v1.Plugin
-	(*RegisterResponse)(nil),           // 18: sard.agent.v1.RegisterResponse
-	(*RenewCertificateRequest)(nil),    // 19: sard.agent.v1.RenewCertificateRequest
-	(*RenewCertificateResponse)(nil),   // 20: sard.agent.v1.RenewCertificateResponse
-	(*ConfirmCertificateRequest)(nil),  // 21: sard.agent.v1.ConfirmCertificateRequest
-	(*ConfirmCertificateResponse)(nil), // 22: sard.agent.v1.ConfirmCertificateResponse
-	(*ConnectRequest)(nil),             // 23: sard.agent.v1.ConnectRequest
-	(*Hello)(nil),                      // 24: sard.agent.v1.Hello
-	(*Heartbeat)(nil),                  // 25: sard.agent.v1.Heartbeat
-	(*StepProgress)(nil),               // 26: sard.agent.v1.StepProgress
-	(*LogChunk)(nil),                   // 27: sard.agent.v1.LogChunk
-	(*LogLine)(nil),                    // 28: sard.agent.v1.LogLine
-	(*StepResult)(nil),                 // 29: sard.agent.v1.StepResult
-	(*BackupOutput)(nil),               // 30: sard.agent.v1.BackupOutput
-	(*RestoreOutput)(nil),              // 31: sard.agent.v1.RestoreOutput
-	(*VerifyOutput)(nil),               // 32: sard.agent.v1.VerifyOutput
-	(*VerifyStage)(nil),                // 33: sard.agent.v1.VerifyStage
-	(*FingerprintMismatch)(nil),        // 34: sard.agent.v1.FingerprintMismatch
-	(*CheckResult)(nil),                // 35: sard.agent.v1.CheckResult
-	(*RunOutput)(nil),                  // 36: sard.agent.v1.RunOutput
-	(*ConnectResponse)(nil),            // 37: sard.agent.v1.ConnectResponse
-	(*ResultAck)(nil),                  // 38: sard.agent.v1.ResultAck
-	(*RunStep)(nil),                    // 39: sard.agent.v1.RunStep
-	(*VerifyTask)(nil),                 // 40: sard.agent.v1.VerifyTask
-	(*RepositoryInfo)(nil),             // 41: sard.agent.v1.RepositoryInfo
-	(*CancelStep)(nil),                 // 42: sard.agent.v1.CancelStep
-	nil,                                // 43: sard.agent.v1.RunStep.TagsEntry
-	(*timestamppb.Timestamp)(nil),      // 44: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),        // 45: google.protobuf.Duration
+	(MaintenanceFailure)(0),            // 5: sard.agent.v1.MaintenanceFailure
+	(StageStatus)(0),                   // 6: sard.agent.v1.StageStatus
+	(VerifyVerdict)(0),                 // 7: sard.agent.v1.VerifyVerdict
+	(Action)(0),                        // 8: sard.agent.v1.Action
+	(RetentionFloorOrigin)(0),          // 9: sard.agent.v1.RetentionFloorOrigin
+	(RecoveryKeyState)(0),              // 10: sard.agent.v1.RecoveryKeyState
+	(*EnrollRequest)(nil),              // 11: sard.agent.v1.EnrollRequest
+	(*EnrollResponse)(nil),             // 12: sard.agent.v1.EnrollResponse
+	(*ProbeRequest)(nil),               // 13: sard.agent.v1.ProbeRequest
+	(*ProbeResponse)(nil),              // 14: sard.agent.v1.ProbeResponse
+	(*RegisterRequest)(nil),            // 15: sard.agent.v1.RegisterRequest
+	(*SecretInfo)(nil),                 // 16: sard.agent.v1.SecretInfo
+	(*VerifierStatus)(nil),             // 17: sard.agent.v1.VerifierStatus
+	(*SandboxImage)(nil),               // 18: sard.agent.v1.SandboxImage
+	(*Plugin)(nil),                     // 19: sard.agent.v1.Plugin
+	(*RegisterResponse)(nil),           // 20: sard.agent.v1.RegisterResponse
+	(*RenewCertificateRequest)(nil),    // 21: sard.agent.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil),   // 22: sard.agent.v1.RenewCertificateResponse
+	(*ConfirmCertificateRequest)(nil),  // 23: sard.agent.v1.ConfirmCertificateRequest
+	(*ConfirmCertificateResponse)(nil), // 24: sard.agent.v1.ConfirmCertificateResponse
+	(*ConnectRequest)(nil),             // 25: sard.agent.v1.ConnectRequest
+	(*Hello)(nil),                      // 26: sard.agent.v1.Hello
+	(*Heartbeat)(nil),                  // 27: sard.agent.v1.Heartbeat
+	(*StepProgress)(nil),               // 28: sard.agent.v1.StepProgress
+	(*LogChunk)(nil),                   // 29: sard.agent.v1.LogChunk
+	(*LogLine)(nil),                    // 30: sard.agent.v1.LogLine
+	(*StepResult)(nil),                 // 31: sard.agent.v1.StepResult
+	(*ForgetOutput)(nil),               // 32: sard.agent.v1.ForgetOutput
+	(*BackupOutput)(nil),               // 33: sard.agent.v1.BackupOutput
+	(*RestoreOutput)(nil),              // 34: sard.agent.v1.RestoreOutput
+	(*VerifyOutput)(nil),               // 35: sard.agent.v1.VerifyOutput
+	(*VerifyStage)(nil),                // 36: sard.agent.v1.VerifyStage
+	(*FingerprintMismatch)(nil),        // 37: sard.agent.v1.FingerprintMismatch
+	(*CheckResult)(nil),                // 38: sard.agent.v1.CheckResult
+	(*RunOutput)(nil),                  // 39: sard.agent.v1.RunOutput
+	(*ConnectResponse)(nil),            // 40: sard.agent.v1.ConnectResponse
+	(*ResultAck)(nil),                  // 41: sard.agent.v1.ResultAck
+	(*RunStep)(nil),                    // 42: sard.agent.v1.RunStep
+	(*ForgetTask)(nil),                 // 43: sard.agent.v1.ForgetTask
+	(*RetentionPolicy)(nil),            // 44: sard.agent.v1.RetentionPolicy
+	(*VerifyTask)(nil),                 // 45: sard.agent.v1.VerifyTask
+	(*RepositoryInfo)(nil),             // 46: sard.agent.v1.RepositoryInfo
+	(*RetentionFloor)(nil),             // 47: sard.agent.v1.RetentionFloor
+	(*CancelStep)(nil),                 // 48: sard.agent.v1.CancelStep
+	nil,                                // 49: sard.agent.v1.RunStep.TagsEntry
+	(*timestamppb.Timestamp)(nil),      // 50: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),        // 51: google.protobuf.Duration
 }
 var file_sard_agent_v1_agent_proto_depIdxs = []int32{
-	44, // 0: sard.agent.v1.ProbeResponse.server_time:type_name -> google.protobuf.Timestamp
-	17, // 1: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
-	41, // 2: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
-	15, // 3: sard.agent.v1.RegisterRequest.verifier:type_name -> sard.agent.v1.VerifierStatus
-	14, // 4: sard.agent.v1.RegisterRequest.secrets:type_name -> sard.agent.v1.SecretInfo
+	50, // 0: sard.agent.v1.ProbeResponse.server_time:type_name -> google.protobuf.Timestamp
+	19, // 1: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
+	46, // 2: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
+	17, // 3: sard.agent.v1.RegisterRequest.verifier:type_name -> sard.agent.v1.VerifierStatus
+	16, // 4: sard.agent.v1.RegisterRequest.secrets:type_name -> sard.agent.v1.SecretInfo
 	0,  // 5: sard.agent.v1.VerifierStatus.sandbox:type_name -> sard.agent.v1.Sandbox
-	16, // 6: sard.agent.v1.VerifierStatus.images:type_name -> sard.agent.v1.SandboxImage
-	7,  // 7: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
-	45, // 8: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	25, // 9: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
-	29, // 10: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
-	24, // 11: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
-	26, // 12: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
-	27, // 13: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
-	44, // 14: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
-	15, // 15: sard.agent.v1.Heartbeat.verifier:type_name -> sard.agent.v1.VerifierStatus
+	18, // 6: sard.agent.v1.VerifierStatus.images:type_name -> sard.agent.v1.SandboxImage
+	8,  // 7: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
+	51, // 8: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	27, // 9: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
+	31, // 10: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
+	26, // 11: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
+	28, // 12: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
+	29, // 13: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
+	50, // 14: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	17, // 15: sard.agent.v1.Heartbeat.verifier:type_name -> sard.agent.v1.VerifierStatus
 	1,  // 16: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
-	44, // 17: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
-	33, // 18: sard.agent.v1.StepProgress.stage:type_name -> sard.agent.v1.VerifyStage
-	28, // 19: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
-	44, // 20: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	50, // 17: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
+	36, // 18: sard.agent.v1.StepProgress.stage:type_name -> sard.agent.v1.VerifyStage
+	30, // 19: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
+	50, // 20: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
 	2,  // 21: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
 	4,  // 22: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
-	44, // 23: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
-	44, // 24: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
-	30, // 25: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
-	31, // 26: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
-	32, // 27: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
-	36, // 28: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
-	3,  // 29: sard.agent.v1.StepResult.reject_reason:type_name -> sard.agent.v1.RejectReason
-	35, // 30: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
-	33, // 31: sard.agent.v1.VerifyOutput.stages:type_name -> sard.agent.v1.VerifyStage
-	6,  // 32: sard.agent.v1.VerifyOutput.verdict:type_name -> sard.agent.v1.VerifyVerdict
-	34, // 33: sard.agent.v1.VerifyOutput.mismatches:type_name -> sard.agent.v1.FingerprintMismatch
-	45, // 34: sard.agent.v1.VerifyOutput.restore_duration:type_name -> google.protobuf.Duration
-	5,  // 35: sard.agent.v1.VerifyStage.status:type_name -> sard.agent.v1.StageStatus
-	44, // 36: sard.agent.v1.VerifyStage.started_at:type_name -> google.protobuf.Timestamp
-	44, // 37: sard.agent.v1.VerifyStage.finished_at:type_name -> google.protobuf.Timestamp
-	39, // 38: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
-	42, // 39: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
-	38, // 40: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
-	7,  // 41: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
-	45, // 42: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
-	43, // 43: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
-	40, // 44: sard.agent.v1.RunStep.verify:type_name -> sard.agent.v1.VerifyTask
-	44, // 45: sard.agent.v1.VerifyTask.deadline:type_name -> google.protobuf.Timestamp
-	8,  // 46: sard.agent.v1.RepositoryInfo.recovery_key:type_name -> sard.agent.v1.RecoveryKeyState
-	9,  // 47: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
-	13, // 48: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
-	23, // 49: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
-	19, // 50: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
-	21, // 51: sard.agent.v1.AgentService.ConfirmCertificate:input_type -> sard.agent.v1.ConfirmCertificateRequest
-	11, // 52: sard.agent.v1.AgentService.Probe:input_type -> sard.agent.v1.ProbeRequest
-	10, // 53: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
-	18, // 54: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
-	37, // 55: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
-	20, // 56: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
-	22, // 57: sard.agent.v1.AgentService.ConfirmCertificate:output_type -> sard.agent.v1.ConfirmCertificateResponse
-	12, // 58: sard.agent.v1.AgentService.Probe:output_type -> sard.agent.v1.ProbeResponse
-	53, // [53:59] is the sub-list for method output_type
-	47, // [47:53] is the sub-list for method input_type
-	47, // [47:47] is the sub-list for extension type_name
-	47, // [47:47] is the sub-list for extension extendee
-	0,  // [0:47] is the sub-list for field type_name
+	50, // 23: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
+	50, // 24: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
+	33, // 25: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
+	34, // 26: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
+	35, // 27: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
+	39, // 28: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
+	32, // 29: sard.agent.v1.StepResult.forget:type_name -> sard.agent.v1.ForgetOutput
+	3,  // 30: sard.agent.v1.StepResult.reject_reason:type_name -> sard.agent.v1.RejectReason
+	50, // 31: sard.agent.v1.ForgetOutput.listed_at:type_name -> google.protobuf.Timestamp
+	5,  // 32: sard.agent.v1.ForgetOutput.failure:type_name -> sard.agent.v1.MaintenanceFailure
+	38, // 33: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
+	36, // 34: sard.agent.v1.VerifyOutput.stages:type_name -> sard.agent.v1.VerifyStage
+	7,  // 35: sard.agent.v1.VerifyOutput.verdict:type_name -> sard.agent.v1.VerifyVerdict
+	37, // 36: sard.agent.v1.VerifyOutput.mismatches:type_name -> sard.agent.v1.FingerprintMismatch
+	51, // 37: sard.agent.v1.VerifyOutput.restore_duration:type_name -> google.protobuf.Duration
+	6,  // 38: sard.agent.v1.VerifyStage.status:type_name -> sard.agent.v1.StageStatus
+	50, // 39: sard.agent.v1.VerifyStage.started_at:type_name -> google.protobuf.Timestamp
+	50, // 40: sard.agent.v1.VerifyStage.finished_at:type_name -> google.protobuf.Timestamp
+	42, // 41: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
+	48, // 42: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
+	41, // 43: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
+	8,  // 44: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
+	51, // 45: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
+	49, // 46: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
+	45, // 47: sard.agent.v1.RunStep.verify:type_name -> sard.agent.v1.VerifyTask
+	43, // 48: sard.agent.v1.RunStep.forget:type_name -> sard.agent.v1.ForgetTask
+	44, // 49: sard.agent.v1.ForgetTask.policy:type_name -> sard.agent.v1.RetentionPolicy
+	51, // 50: sard.agent.v1.ForgetTask.incomplete_max_age:type_name -> google.protobuf.Duration
+	51, // 51: sard.agent.v1.RetentionPolicy.keep_within:type_name -> google.protobuf.Duration
+	50, // 52: sard.agent.v1.VerifyTask.deadline:type_name -> google.protobuf.Timestamp
+	10, // 53: sard.agent.v1.RepositoryInfo.recovery_key:type_name -> sard.agent.v1.RecoveryKeyState
+	47, // 54: sard.agent.v1.RepositoryInfo.retention_floor:type_name -> sard.agent.v1.RetentionFloor
+	51, // 55: sard.agent.v1.RetentionFloor.keep_within:type_name -> google.protobuf.Duration
+	9,  // 56: sard.agent.v1.RetentionFloor.origin:type_name -> sard.agent.v1.RetentionFloorOrigin
+	11, // 57: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
+	15, // 58: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
+	25, // 59: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
+	21, // 60: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
+	23, // 61: sard.agent.v1.AgentService.ConfirmCertificate:input_type -> sard.agent.v1.ConfirmCertificateRequest
+	13, // 62: sard.agent.v1.AgentService.Probe:input_type -> sard.agent.v1.ProbeRequest
+	12, // 63: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
+	20, // 64: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
+	40, // 65: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
+	22, // 66: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
+	24, // 67: sard.agent.v1.AgentService.ConfirmCertificate:output_type -> sard.agent.v1.ConfirmCertificateResponse
+	14, // 68: sard.agent.v1.AgentService.Probe:output_type -> sard.agent.v1.ProbeResponse
+	63, // [63:69] is the sub-list for method output_type
+	57, // [57:63] is the sub-list for method input_type
+	57, // [57:57] is the sub-list for extension type_name
+	57, // [57:57] is the sub-list for extension extendee
+	0,  // [0:57] is the sub-list for field type_name
 }
 
 func init() { file_sard_agent_v1_agent_proto_init() }
@@ -3695,9 +4250,10 @@ func file_sard_agent_v1_agent_proto_init() {
 		(*StepResult_Restore)(nil),
 		(*StepResult_Verify)(nil),
 		(*StepResult_Run)(nil),
+		(*StepResult_Forget)(nil),
 	}
-	file_sard_agent_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
-	file_sard_agent_v1_agent_proto_msgTypes[28].OneofWrappers = []any{
+	file_sard_agent_v1_agent_proto_msgTypes[22].OneofWrappers = []any{}
+	file_sard_agent_v1_agent_proto_msgTypes[29].OneofWrappers = []any{
 		(*ConnectResponse_RunStep)(nil),
 		(*ConnectResponse_CancelStep)(nil),
 		(*ConnectResponse_ResultAck)(nil),
@@ -3707,8 +4263,8 @@ func file_sard_agent_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sard_agent_v1_agent_proto_rawDesc), len(file_sard_agent_v1_agent_proto_rawDesc)),
-			NumEnums:      9,
-			NumMessages:   35,
+			NumEnums:      11,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

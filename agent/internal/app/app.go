@@ -7,12 +7,14 @@ package app
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // ProtocolVersion is the version of the agent contract this agent speaks.
@@ -160,9 +162,26 @@ func (a *Agent) repositoryInfos(ctx context.Context) []*agentv1.RepositoryInfo {
 			RepositoryId:   id,
 			CryptoProvider: r.CryptoProvider,
 			RecoveryKey:    a.recoveryKey(ctx, r, id),
+			RetentionFloor: floorInfo(a.Local.FloorOf(r.Name)),
 		})
 	}
 	return infos
+}
+
+// floorInfo is the retention floor of a repository as the server is told.
+func floorInfo(f config.Floor) *agentv1.RetentionFloor {
+	return &agentv1.RetentionFloor{
+		Disabled:   f.Disabled,
+		KeepLast:   f.KeepLast,
+		KeepWithin: durationpb.New(time.Duration(f.KeepWithinDays) * 24 * time.Hour),
+		Origin:     floorOrigins[f.Origin],
+	}
+}
+
+var floorOrigins = map[config.FloorOrigin]agentv1.RetentionFloorOrigin{
+	config.FloorBuiltIn:          agentv1.RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_BUILT_IN,
+	config.FloorConfigDefault:    agentv1.RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_CONFIG_DEFAULT,
+	config.FloorConfigRepository: agentv1.RetentionFloorOrigin_RETENTION_FLOOR_ORIGIN_CONFIG_REPOSITORY,
 }
 
 // recoveryKey is read at every Register and never kept. A repository whose id
