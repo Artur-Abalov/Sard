@@ -125,21 +125,49 @@ class RunEvents(
         watch: Watch,
         now: Snapshot,
     ) {
-        val statusChanged = now.status != watch.from
-        val startedNow = now.started && !watch.started
-        if (!statusChanged && !startedNow) return
+        val change = Change(statusChanged = now.status != watch.from, startedNow = now.started && !watch.started)
+        if (!change.happened) return
         val run = session.find(RunRecord::class.java, watch.runId) ?: return
+        val events = eventsOf(session, run, watch, now, change)
+        afterCommit(session) { events.forEach(publisher::publish) }
+    }
+
+    /** What moved between a [Watch] and the run's state now. */
+    private class Change(
+        val statusChanged: Boolean,
+        val startedNow: Boolean,
+    ) {
+        val happened get() = statusChanged || startedNow
+    }
+
+    /** The change of status, then the start, of [run] between [watch] and [now], each only if it happened. */
+    private fun eventsOf(
+        session: Session,
+        run: RunRecord,
+        watch: Watch,
+        now: Snapshot,
+        change: Change,
+    ): List<SardEvent> {
         val at = clock.instant()
         val actor = Requester.requesterOf(session, run)
         val kind = kindOf(run)
         val tenant = watch.tenantId
         val terminal = !RunState.of(now.status).active
-        val from = watch.from
         val changed =
-            RunStatusChanged(at, tenant, actor, run.id, kind, run.trigger, run.sourceId, from, now.status, terminal)
+            RunStatusChanged(
+                at,
+                tenant,
+                actor,
+                run.id,
+                kind,
+                run.trigger,
+                run.sourceId,
+                watch.from,
+                now.status,
+                terminal,
+            )
         val started = RunStarted(at, tenant, actor, run.id, kind, run.trigger, run.sourceId)
-        val events: List<SardEvent> = listOfNotNull(changed.takeIf { statusChanged }, started.takeIf { startedNow })
-        afterCommit(session) { events.forEach(publisher::publish) }
+        return listOfNotNull(changed.takeIf { change.statusChanged }, started.takeIf { change.startedNow })
     }
 
     private fun snapshotOf(

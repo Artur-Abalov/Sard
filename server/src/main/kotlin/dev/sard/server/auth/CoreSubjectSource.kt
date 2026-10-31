@@ -7,6 +7,7 @@ import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.Subject
 import dev.sard.server.extension.SubjectSource
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
 
@@ -16,9 +17,15 @@ import org.springframework.web.context.request.ServletRequestAttributes
  * the verification cycle) and in the wizard, which runs with a setup session, not an administrator's.
  */
 class CoreSubjectSource : SubjectSource {
-    override fun current(): Subject? {
-        val request = (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)?.request
-        return (request?.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession)?.subject
-            ?: request?.getAttribute(SUBJECT_REQUEST_ATTRIBUTE) as? Subject
+    override fun current(): Subject? = currentRequest()?.let(::subjectOf)
+
+    private fun currentRequest(): HttpServletRequest? {
+        val attributes = RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes
+        return attributes?.request
     }
+
+    /** The core session's subject, else the one a replaced session filter put on the request. */
+    private fun subjectOf(request: HttpServletRequest): Subject? =
+        (request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession)?.subject
+            ?: request.getAttribute(SUBJECT_REQUEST_ATTRIBUTE) as? Subject
 }
