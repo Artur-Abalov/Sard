@@ -36,15 +36,24 @@ internal class ExtensionControllers(
                 pathsOf(info).filterNot { it.startsWith(API_PREFIX) }.map { "$it (${handler.beanType.name})" }
             }
 
-    private fun pathsOf(info: RequestMappingInfo): Set<String> =
-        info.pathPatternsCondition
-            ?.patternValues
-            .orEmpty()
-            .ifEmpty { setOf(NO_PATH) }
+    private fun pathsOf(info: RequestMappingInfo): Set<String> = patternsOf(info).ifEmpty { setOf(NO_PATH) }
 
-    private fun isTrusted(type: Class<*>): Boolean {
-        val location = locationOf(type) ?: return false
-        return location == core?.toString() || anchors.any { it.toString() == location }
+    private fun patternsOf(info: RequestMappingInfo): Set<String> {
+        val patterns = info.pathPatternsCondition?.patternValues
+        return patterns ?: emptySet()
+    }
+
+    private fun isTrusted(type: Class<*>): Boolean = locationOf(type)?.let(::isTrustedLocation) ?: false
+
+    private fun locationOf(type: Class<*>): String? =
+        type.protectionDomain
+            ?.codeSource
+            ?.location
+            ?.toString()
+
+    private fun isTrustedLocation(location: String): Boolean {
+        val coreLocation = core?.toString()
+        return location == coreLocation || anchors.any { it.toString() == location }
     }
 
     private fun locationOf(type: Class<*>): String? =
