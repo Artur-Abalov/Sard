@@ -59,6 +59,12 @@
 #          }
 #        Вывод заполняется и при FAILED, CANCELLED, TIMED_OUT, если агент успел
 #        перечислить снимки: сервер должен знать, что уже забыто (КL9).
+#        [УТВЕРЖДЕНО 2026-10-31] Если перечислить не удалось, ForgetOutput
+#        всё равно есть (в нём failure), но несёт только failure и, если
+#        есть, lock_holder: без id снимков и без listed_at. Отсутствующий
+#        listed_at значит «перечисления не было» — сервер по такому итогу
+#        ничего не сверяет. Поэтому listed_at — поле-сообщение с признаком
+#        присутствия, нулевое время не используется вместо отсутствия.
 #   КП4. RepositoryInfo.retention_floor = 6 (RetentionFloor) — нижний предел
 #        хоста для этого репозитория:
 #          message RetentionFloor {
@@ -159,6 +165,14 @@
       И disabled равно true
 
   Правило: Задание и итог переживают сериализацию
+
+    @wire
+    Сценарий: Итог FORGET без перечисления отличим от итога с перечислением
+      # УТВЕРЖДЕНО 2026-10-31
+      Дано StepResult со статусом STEP_STATUS_FAILED и ForgetOutput только с failure MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE
+      Когда он сериализуется и разбирается снова
+      Тогда ForgetOutput присутствует с failure MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE
+      И listed_at отсутствует
 
     @wire
     Сценарий: RunStep с заданием FORGET переживает сериализацию
