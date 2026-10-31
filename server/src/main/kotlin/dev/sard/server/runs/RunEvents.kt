@@ -127,7 +127,7 @@ class RunEvents(
         watch: Watch,
         now: Snapshot,
     ) {
-        val change = Change(statusChanged = now.status != watch.from, startedNow = now.started && !watch.started)
+        val change = Change.between(watch, now)
         if (!change.happened) return
         val run = session.find(RunRecord::class.java, watch.runId) ?: return
         val events = eventsOf(session, run, watch, now, change)
@@ -140,6 +140,13 @@ class RunEvents(
         val startedNow: Boolean,
     ) {
         val happened get() = statusChanged || startedNow
+
+        companion object {
+            fun between(
+                watch: Watch,
+                now: Snapshot,
+            ) = Change(statusChanged = now.status != watch.from, startedNow = now.started && !watch.started)
+        }
     }
 
     /** The change of status, then the start, of [run] between [watch] and [now], each only if it happened. */
