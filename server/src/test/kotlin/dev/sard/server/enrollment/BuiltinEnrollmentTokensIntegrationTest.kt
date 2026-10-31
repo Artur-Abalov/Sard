@@ -4,6 +4,7 @@
 package dev.sard.server.enrollment
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.auth.CoreSubjectSource
 import dev.sard.server.completeOnboarding
 import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventMulticaster
@@ -49,6 +50,7 @@ private val MARGIN: Duration = Duration.ofMinutes(10)
         AfterCommit::class,
         SardEventPublisher::class,
         SardEventMulticaster::class,
+        CoreSubjectSource::class, // CoreSubjectSourceTest mutates it
     ],
 )
 @SpringBootTest(
