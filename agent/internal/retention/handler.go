@@ -101,8 +101,12 @@ func taskOf(step *agentv1.RunStep) (Task, error) {
 // agent does not know — all of which could bend the floor of the host.
 func outsideContract(step *agentv1.RunStep) bool {
 	f := step.GetForget()
-	return step.GetPlugin() != "" || step.GetConfigJson() != "" || len(step.GetTags()) > 0 || step.GetVerify() != nil ||
-		hasUnknown(step) || hasUnknown(f) || hasUnknown(f.GetPolicy())
+	return hasOtherFields(step) || hasUnknown(step) || hasUnknown(f) || hasUnknown(f.GetPolicy())
+}
+
+// hasOtherFields: the fields of a step that FORGET does not use are set.
+func hasOtherFields(step *agentv1.RunStep) bool {
+	return step.GetPlugin() != "" || step.GetConfigJson() != "" || len(step.GetTags()) > 0 || step.GetVerify() != nil
 }
 
 func hasUnknown(m interface{ ProtoReflect() protoreflect.Message }) bool {

@@ -149,22 +149,15 @@ func (c Config) validate() error {
 	if c.Server.Address == "" {
 		return ErrNoServerAddress
 	}
-	if err := c.Restic.validate(); err != nil {
-		return err
+	for _, check := range []func() error{
+		c.Restic.validate, c.Executor.validate, c.validateRepositories,
+		c.validateRestore, c.validateRetentionFloor, c.validateVerify,
+	} {
+		if err := check(); err != nil {
+			return err
+		}
 	}
-	if err := c.Executor.validate(); err != nil {
-		return err
-	}
-	if err := c.validateRepositories(); err != nil {
-		return err
-	}
-	if err := c.validateRestore(); err != nil {
-		return err
-	}
-	if err := c.validateRetentionFloor(); err != nil {
-		return err
-	}
-	return c.validateVerify()
+	return nil
 }
 
 // validateRepositories checks every repository; one of a fragment is

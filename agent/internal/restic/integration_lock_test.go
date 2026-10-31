@@ -31,6 +31,26 @@ func TestIntegrationABackupWaitsForAnExclusiveLockInsteadOfFailingAtOnce(t *test
 	if _, err := r.cli.Backup(ctx, restic.BackupRequest{Paths: []string{r.data}}, nil); err != nil {
 		t.Fatal(err)
 	}
+	check := holdExclusiveLock(t, r)
+	if err := check.Process.Signal(syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	released := time.AfterFunc(6*time.Second, func() { _ = check.Process.Signal(syscall.SIGCONT) })
+	defer released.Stop()
+	start := time.Now()
+	if _, err := r.cli.Backup(ctx, restic.BackupRequest{Paths: []string{r.data}}, nil); err != nil {
+		t.Fatalf("Backup: %v", err)
+	}
+	if took := time.Since(start); took < 5*time.Second {
+		t.Errorf("the backup took %v: it did not wait for the lock", took)
+	}
+}
+
+// holdExclusiveLock starts a throttled restic check, which holds the
+// exclusive lock for seconds, and returns it once restic lists the lock (the
+// file alone may be half written).
+func holdExclusiveLock(t *testing.T, r realRepo) *exec.Cmd {
+	t.Helper()
 	check := exec.Command(pinnedBinary(t), "check", "--read-data", "--limit-download", "4096", "-q")
 	env := []string{"RESTIC_REPOSITORY=" + r.dir, "RESTIC_PASSWORD_FILE=" + filepath.Join(filepath.Dir(r.dir), "password"), "RESTIC_CACHE_DIR=" + filepath.Join(filepath.Dir(r.dir), "cache"), "PATH=" + os.Getenv("PATH")}
 	check.Env = env
@@ -50,16 +70,5 @@ func TestIntegrationABackupWaitsForAnExclusiveLockInsteadOfFailingAtOnce(t *test
 			t.Fatal("no lock appeared")
 		}
 	}
-	if err := check.Process.Signal(syscall.SIGSTOP); err != nil {
-		t.Fatal(err)
-	}
-	released := time.AfterFunc(6*time.Second, func() { _ = check.Process.Signal(syscall.SIGCONT) })
-	defer released.Stop()
-	start := time.Now()
-	if _, err := r.cli.Backup(ctx, restic.BackupRequest{Paths: []string{r.data}}, nil); err != nil {
-		t.Fatalf("Backup: %v", err)
-	}
-	if took := time.Since(start); took < 5*time.Second {
-		t.Errorf("the backup took %v: it did not wait for the lock", took)
-	}
+	return check
 }

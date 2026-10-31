@@ -57,17 +57,7 @@ func mainOf(s restic.Snapshot) (string, bool) {
 // them. The floor of this host is applied last and only ever removes ids from
 // the decision of the policy (КL5-КL8).
 func Plan(snaps []restic.Snapshot, t Task, floor config.Floor, now time.Time) Decision {
-	var mains, parts []restic.Snapshot
-	for _, s := range snaps {
-		if !slices.Contains(s.Tags, SourceTag+t.Source) {
-			continue
-		}
-		if _, isPart := mainOf(s); isPart {
-			parts = append(parts, s)
-		} else {
-			mains = append(mains, s)
-		}
-	}
+	mains, parts := split(snaps, t.Source)
 	candidates := t.forgettable(mains, now)
 	protected := floorKeep(mains, floor, now)
 	var d Decision
@@ -88,18 +78,27 @@ func Plan(snaps []restic.Snapshot, t Task, floor config.Floor, now time.Time) De
 // Forget is every id the step forgets: the parts, then the main snapshots.
 func (d Decision) Forget() []string { return slices.Concat(d.Parts, d.Mains) }
 
+// split sorts the snapshots of the source into main snapshots and parts;
+// the snapshots of other sources, and those of none, are not looked at.
+func split(snaps []restic.Snapshot, source string) (mains, parts []restic.Snapshot) {
+	for _, s := range snaps {
+		if !slices.Contains(s.Tags, SourceTag+source) {
+			continue
+		}
+		if _, isPart := mainOf(s); isPart {
+			parts = append(parts, s)
+		} else {
+			mains = append(mains, s)
+		}
+	}
+	return mains, parts
+}
+
 // forgettable are the main snapshots the policy and the hint would forget,
 // before the floor: complete ones that the policy does not keep and
 // incomplete ones that are old enough with a complete one newer.
 func (t Task) forgettable(mains []restic.Snapshot, now time.Time) map[string]bool {
-	var complete, partial []restic.Snapshot
-	for _, s := range mains {
-		if slices.Contains(t.Incomplete, s.ID) {
-			partial = append(partial, s)
-		} else {
-			complete = append(complete, s)
-		}
-	}
+	complete, partial := t.byCompleteness(mains)
 	kept := t.Policy.keep(complete, now)
 	for _, id := range t.Keep {
 		kept[id] = true
@@ -112,6 +111,18 @@ func (t Task) forgettable(mains []restic.Snapshot, now time.Time) map[string]boo
 		out[s.ID] = t.stale(s, complete, now) && !kept[s.ID]
 	}
 	return out
+}
+
+// byCompleteness splits main snapshots by the hint of the server.
+func (t Task) byCompleteness(mains []restic.Snapshot) (complete, partial []restic.Snapshot) {
+	for _, s := range mains {
+		if slices.Contains(t.Incomplete, s.ID) {
+			partial = append(partial, s)
+		} else {
+			complete = append(complete, s)
+		}
+	}
+	return complete, partial
 }
 
 // stale: an incomplete snapshot older than IncompleteMaxAge with a complete

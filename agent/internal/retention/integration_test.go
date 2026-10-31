@@ -213,19 +213,7 @@ func TestResticРешениеПолитикиСовпадаетСResticForgetН�
 		"keep_last 3 keep_within 48h": {[]string{"--keep-last", "3", "--keep-within", "48h"}, retention.Policy{Last: 3, Within: 48 * time.Hour}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			var dry []struct {
-				Remove []struct {
-					ID string `json:"id"`
-				} `json:"remove"`
-			}
-			out := r.restic(append([]string{"forget", "--dry-run", "--json", "--group-by", "", "--tag", "sard.source=S"}, c.flags...)...)
-			if err := json.Unmarshal(out, &dry); err != nil || len(dry) != 1 {
-				t.Fatalf("restic forget --dry-run: %v, %s", err, out)
-			}
-			var want []string
-			for _, s := range dry[0].Remove {
-				want = append(want, s.ID)
-			}
+			want := r.resticForgets(c.flags)
 			got := retention.Plan(snaps, retention.Task{Source: "S", Policy: c.policy}, noFloor, real)
 			sameSet(t, "forgotten", got.Forget(), want)
 			if len(want) == 0 || len(want) == len(snaps) {
@@ -233,6 +221,25 @@ func TestResticРешениеПолитикиСовпадаетСResticForgetН�
 			}
 		})
 	}
+}
+
+// resticForgets are the ids restic forget --dry-run would forget.
+func (r *realRepo) resticForgets(flags []string) []string {
+	r.t.Helper()
+	var dry []struct {
+		Remove []struct {
+			ID string `json:"id"`
+		} `json:"remove"`
+	}
+	out := r.restic(append([]string{"forget", "--dry-run", "--json", "--group-by", "", "--tag", "sard.source=S"}, flags...)...)
+	if err := json.Unmarshal(out, &dry); err != nil || len(dry) != 1 {
+		r.t.Fatalf("restic forget --dry-run: %v, %s", err, out)
+	}
+	var ids []string
+	for _, s := range dry[0].Remove {
+		ids = append(ids, s.ID)
+	}
+	return ids
 }
 
 func TestResticОтпечатокИГлобальныеОбъектыЗабываютсяВместеСОсновнымСнимком(t *testing.T) {
@@ -358,16 +365,12 @@ func TestResticБлокировкаОсвободившаясяВоВремяО�
 	}
 }
 
-func TestResticДваШагаFORGETРазныхИсточниковОдногоРепозиторияВыполняютсяОба(t *testing.T) {
-	r := newRealRepo(t)
-	for i := range 10 {
-		r.main("maint", "S", day(i-10))
-		r.main("maint", "T", day(i-10))
-	}
+// forgetTogether runs a step for each source at once, keeping the last snapshot.
+func (r *realRepo) forgetTogether(sources ...string) ([]*agentv1.ForgetOutput, []error) {
 	var wg sync.WaitGroup
-	outs := make([]*agentv1.ForgetOutput, 2)
-	errs := make([]error, 2)
-	for i, source := range []string{"S", "T"} {
+	outs := make([]*agentv1.ForgetOutput, len(sources))
+	errs := make([]error, len(sources))
+	for i, source := range sources {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -375,6 +378,16 @@ func TestResticДваШагаFORGETРазныхИсточниковОдного�
 		}()
 	}
 	wg.Wait()
+	return outs, errs
+}
+
+func TestResticДваШагаFORGETРазныхИсточниковОдногоРепозиторияВыполняютсяОба(t *testing.T) {
+	r := newRealRepo(t)
+	for i := range 10 {
+		r.main("maint", "S", day(i-10))
+		r.main("maint", "T", day(i-10))
+	}
+	outs, errs := r.forgetTogether("S", "T")
 	if errs[0] != nil || errs[1] != nil {
 		t.Fatalf("errors: %v", errs)
 	}

@@ -86,29 +86,37 @@ func (f *RetentionFloor) readRepositories(n *yaml.Node) error {
 func readSettings(n *yaml.Node, path string, allowDisabled bool) (floorSettings, error) {
 	var s floorSettings
 	err := decodeMap(n, path, func(key string, v *yaml.Node) error {
-		var err error
-		switch key {
-		case "keep_last":
-			s.keepLast, err = readCount(v, path+"."+key)
-		case "keep_within_days":
-			s.keepWithinDays, err = readCount(v, path+"."+key)
-		case "disabled":
-			if !allowDisabled {
-				return fmt.Errorf("%w: %s.disabled: switch the floor off per repository in retention_floor.repositories.<name>", ErrInvalidRetentionFloor, path)
-			}
-			err = v.Decode(&s.disabled)
-			if err != nil {
-				err = fmt.Errorf("%w: %s.disabled: want true or false", ErrInvalidRetentionFloor, path)
-			}
-		default:
-			err = keyError(path + "." + key)
-		}
-		return err
+		return s.read(key, v, path, allowDisabled)
 	})
 	if err == nil && s.disabled && (s.keepLast != nil || s.keepWithinDays != nil) {
 		err = fmt.Errorf("%w: %s: disabled cannot be combined with keep_last or keep_within_days", ErrInvalidRetentionFloor, path)
 	}
 	return s, err
+}
+
+// read takes one key of a floor section.
+func (s *floorSettings) read(key string, v *yaml.Node, path string, allowDisabled bool) (err error) {
+	switch key {
+	case "keep_last":
+		s.keepLast, err = readCount(v, path+"."+key)
+	case "keep_within_days":
+		s.keepWithinDays, err = readCount(v, path+"."+key)
+	case "disabled":
+		err = s.readDisabled(v, path, allowDisabled)
+	default:
+		err = keyError(path + "." + key)
+	}
+	return err
+}
+
+func (s *floorSettings) readDisabled(v *yaml.Node, path string, allowed bool) error {
+	if !allowed {
+		return fmt.Errorf("%w: %s.disabled: switch the floor off per repository in retention_floor.repositories.<name>", ErrInvalidRetentionFloor, path)
+	}
+	if err := v.Decode(&s.disabled); err != nil {
+		return fmt.Errorf("%w: %s.disabled: want true or false", ErrInvalidRetentionFloor, path)
+	}
+	return nil
 }
 
 func keyError(key string) error {
