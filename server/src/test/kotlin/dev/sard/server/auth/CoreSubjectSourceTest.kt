@@ -3,16 +3,13 @@
 
 package dev.sard.server.auth
 
-import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
-import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.Subject
+import dev.sard.server.extension.SubjectAuthentication
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
-import org.springframework.mock.web.MockHttpServletRequest
-import org.springframework.web.context.request.RequestContextHolder
-import org.springframework.web.context.request.ServletRequestAttributes
-import java.time.Instant
-import java.util.UUID
+import org.springframework.security.authentication.TestingAuthenticationToken
+import org.springframework.security.core.Authentication
+import org.springframework.security.core.context.SecurityContextHolder
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,50 +17,39 @@ import kotlin.test.assertNull
 
 private val SSO_USER = Subject("sso-user", "alice")
 
-/** Rule "Кто выполняет запрос, политика и события узнают из одного шва SubjectSource" (Р26): the core's source. */
+/** Rule "Кто выполняет запрос, политика и события узнают из одного шва SubjectSource" (Р26, Р39): the core's source. */
 @MutFlowTest
 class CoreSubjectSourceTest {
     @AfterTest
-    fun `leave no request on the thread`() = RequestContextHolder.resetRequestAttributes()
+    fun `leave no authentication on the thread`() = SecurityContextHolder.clearContext()
 
-    private fun inRequest(configure: MockHttpServletRequest.() -> Unit): Subject? {
-        RequestContextHolder.setRequestAttributes(ServletRequestAttributes(MockHttpServletRequest().apply(configure)))
+    private fun subjectOf(authentication: Authentication?): Subject? {
+        SecurityContextHolder.getContext().authentication = authentication
         return MutFlow.underTest { CoreSubjectSource().current() }
     }
 
-    private fun MockHttpServletRequest.withSession() {
-        val now = Instant.parse("2026-09-01T03:00:00Z")
-        setAttribute(SESSION_REQUEST_ATTRIBUTE, AdminSession("s", UUID.randomUUID(), now, now))
+    @Test
+    fun `the subject of a subject authentication is the subject of the request`() {
+        assertEquals(SSO_USER, subjectOf(SubjectAuthentication(SSO_USER)))
     }
 
     @Test
     fun `the subject of the core session is the administrator`() {
-        assertEquals(Subject.ADMINISTRATOR, inRequest { withSession() })
+        assertEquals(Subject.ADMINISTRATOR, subjectOf(SubjectAuthentication(Subject.ADMINISTRATOR)))
     }
 
     @Test
-    fun `without a core session the subject a replaced filter put on the request`() {
-        assertEquals(SSO_USER, inRequest { setAttribute(SUBJECT_REQUEST_ATTRIBUTE, SSO_USER) })
+    fun `an authentication that is not authenticated names no subject`() {
+        assertNull(subjectOf(SubjectAuthentication(SSO_USER, authenticated = false)))
     }
 
     @Test
-    fun `the core session wins over the attribute`() {
-        val subject =
-            inRequest {
-                withSession()
-                setAttribute(SUBJECT_REQUEST_ATTRIBUTE, SSO_USER)
-            }
-        assertEquals(Subject.ADMINISTRATOR, subject)
+    fun `an authentication of another type names no subject`() {
+        assertNull(subjectOf(TestingAuthenticationToken("alice", "x").apply { isAuthenticated = true }))
     }
 
     @Test
-    fun `a request with neither has no subject, nor does one with an attribute of another type`() {
-        assertNull(inRequest { })
-        assertNull(inRequest { setAttribute(SUBJECT_REQUEST_ATTRIBUTE, "alice") })
-    }
-
-    @Test
-    fun `outside a request there is no subject`() {
-        assertNull(MutFlow.underTest { CoreSubjectSource().current() })
+    fun `without an authentication there is no subject, as outside a request`() {
+        assertNull(subjectOf(null))
     }
 }

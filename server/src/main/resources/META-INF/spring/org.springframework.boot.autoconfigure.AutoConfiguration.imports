@@ -8,6 +8,7 @@ dev.sard.server.pki.PkiAutoConfiguration
 dev.sard.server.ClockAutoConfiguration
 dev.sard.server.auth.AdminAuthAutoConfiguration
 dev.sard.server.auth.AdminAuthSupportAutoConfiguration
+dev.sard.server.auth.CoreSecurityAutoConfiguration
 dev.sard.server.console.ConsoleAutoConfiguration
 dev.sard.server.onboarding.OnboardingAutoConfiguration
 dev.sard.server.extension.SubjectSourceAutoConfiguration

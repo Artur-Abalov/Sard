@@ -3,29 +3,19 @@
 
 package dev.sard.server.auth
 
-import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
-import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.Subject
+import dev.sard.server.extension.SubjectAuthentication
 import dev.sard.server.extension.SubjectSource
-import jakarta.servlet.http.HttpServletRequest
-import org.springframework.web.context.request.RequestContextHolder
-import org.springframework.web.context.request.ServletRequestAttributes
+import org.springframework.security.core.context.SecurityContextHolder
 
 /**
- * The [SubjectSource] of the core (CORE1 Р26): the subject of the core session of the request on this thread, else
- * the one a replaced session filter put under [SUBJECT_REQUEST_ATTRIBUTE]; none outside a request (the scheduler,
- * the verification cycle) and in the wizard, which runs with a setup session, not an administrator's.
+ * The [SubjectSource] of the core (CORE1 Р26, Р39): the subject of the [SubjectAuthentication] in the security
+ * context of the request on this thread; none outside a request (the scheduler, the verification cycle: the context
+ * lives for one request only) and in the wizard, which runs with a setup session, not an administrator's.
  */
 class CoreSubjectSource : SubjectSource {
-    override fun current(): Subject? = currentRequest()?.let(::subjectOf)
-
-    private fun currentRequest(): HttpServletRequest? {
-        val attributes = RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes
-        return attributes?.request
+    override fun current(): Subject? {
+        val authentication = SecurityContextHolder.getContext().authentication as? SubjectAuthentication
+        return authentication?.takeIf { it.isAuthenticated }?.subject
     }
-
-    /** The core session's subject, else the one a replaced session filter put on the request. */
-    private fun subjectOf(request: HttpServletRequest): Subject? =
-        (request.getAttribute(SESSION_REQUEST_ATTRIBUTE) as? AdminSession)?.subject
-            ?: request.getAttribute(SUBJECT_REQUEST_ATTRIBUTE) as? Subject
 }

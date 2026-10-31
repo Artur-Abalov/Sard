@@ -6,9 +6,11 @@ package dev.sard.server
 import dev.sard.server.onboarding.ServerCommand
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
+import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
 import kotlin.system.exitProcess
 
-@SpringBootApplication
+// No default user and generated password: the chain of the core is the only HTTP security (CORE1 Р34, ADR 0071).
+@SpringBootApplication(exclude = [UserDetailsServiceAutoConfiguration::class])
 class SardServerApplication
 
 /**

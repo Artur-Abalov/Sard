@@ -12,7 +12,6 @@ import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
 
 private val MUTATING_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
-private const val API_PREFIX = "/api/v1/"
 private const val HTTP_FORBIDDEN = 403
 
 /**
@@ -29,7 +28,7 @@ class OriginGuardFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        if (!request.requestURI.startsWith(API_PREFIX) || request.method !in MUTATING_METHODS) {
+        if (!isApiPath(request.requestURI) || request.method !in MUTATING_METHODS) {
             filterChain.doFilter(request, response)
             return
         }

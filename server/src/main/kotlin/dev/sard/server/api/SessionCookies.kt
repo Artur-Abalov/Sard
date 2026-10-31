@@ -5,19 +5,26 @@ package dev.sard.server.api
 
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseCookie
+import org.springframework.security.core.context.SecurityContextHolder
 
 /**
- * Name of the request attribute an authentication filter attaches the touched administrator session under.
- * The open core's [dev.sard.server.api.OnboardingApi] reads only its presence; an enterprise filter that
- * replaces the core one sets it the same way, and that is how the wizard learns the caller is signed in.
+ * Name of the request attribute the core's own chain attaches the touched [dev.sard.server.auth.AdminSession] under,
+ * for the code of the core that needs more than the subject (the tenant of the session). An extension is not asked
+ * to set it: it authenticates through the security context (CORE1 Р43).
  */
 const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.session"
 
 /** The value of the request's cookie [name], or null when it carries none. */
 fun HttpServletRequest.cookie(name: String): String? = cookies.orEmpty().firstOrNull { it.name == name }?.value
 
-/** True when an authentication filter attached an administrator session to this request. */
-fun HttpServletRequest.administratorSession(): Boolean = getAttribute(SESSION_REQUEST_ATTRIBUTE) != null
+/**
+ * True when the chain authenticated this request (Р43): the core's session cookie, or the sign-in of an extension.
+ * The first-start wizard learns from it that the caller is signed in.
+ */
+fun HttpServletRequest.administratorSession(): Boolean {
+    val authentication = SecurityContextHolder.getContext().authentication
+    return authentication?.isAuthenticated == true
+}
 
 /** A fresh session cookie (Р7: no Max-Age, no Expires). */
 fun sessionCookie(

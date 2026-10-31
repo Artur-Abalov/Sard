@@ -5,19 +5,21 @@ package dev.sard.server.onboarding
 
 import dev.sard.server.api.NoSuchSessionException
 import dev.sard.server.api.SESSION_COOKIE
-import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.SETUP_COOKIE
 import dev.sard.server.api.Session
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
 import dev.sard.server.api.list
-import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
+import dev.sard.server.extension.SardSecurityCustomizer
 import dev.sard.server.extension.Subject
+import dev.sard.server.extension.SubjectAuthentication
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.junit.jupiter.api.io.TempDir
-import org.springframework.boot.web.servlet.FilterRegistrationBean
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.web.access.intercept.AuthorizationFilter
 import org.springframework.web.filter.OncePerRequestFilter
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -363,8 +365,8 @@ class FirstStartRestartIntegrationTest {
             chain: FilterChain,
         ) {
             if (request.getHeader("X-Extension-Admin") != null) {
-                request.setAttribute(SESSION_REQUEST_ATTRIBUTE, "admin")
-                request.setAttribute(SUBJECT_REQUEST_ATTRIBUTE, Subject("extension-admin", "root"))
+                val authentication = SubjectAuthentication(Subject("extension-admin", "root"))
+                SecurityContextHolder.getContext().authentication = authentication
             }
             chain.doFilter(request, response)
         }
@@ -375,10 +377,11 @@ class FirstStartRestartIntegrationTest {
             beans =
                 mapOf(
                     "sessionApi" to ExtensionSessions(),
-                    "sessionAuthFilterRegistration" to
-                        FilterRegistrationBean<jakarta.servlet.Filter>(ExtensionGuard()).apply {
-                            urlPatterns = listOf("/api/v1/*")
-                            order = 2
+                    "extension-sso" to
+                        object : SardSecurityCustomizer {
+                            override fun customize(http: HttpSecurity) {
+                                http.addFilterBefore(ExtensionGuard(), AuthorizationFilter::class.java)
+                            }
                         },
                 ),
         )

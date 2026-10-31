@@ -150,4 +150,53 @@ class AccessPolicyApiIntegrationTest(
         assertEquals(403, response.status)
         assertEquals("access_denied", response.code)
     }
+
+    // ---- spring-security.feature: Правило "Политика доступа спрашивается в цепочке один раз" ----
+
+    @Test
+    fun `Неизвестный путь под api v1 с сессией отвечает 404 и не спрашивает политику`() {
+        policy.denyAll = true
+
+        val response = api.sendUnchecked("GET", "/api/v1/no-such-resource", admin)
+
+        assertEquals(404, response.status, response.toString())
+        assertEquals("application/problem+json", response.contentType)
+        assertTrue(policy.calls.isEmpty(), policy.calls.toString())
+    }
+
+    @Test
+    fun `Метод без операции под api v1 отвечает как у ядра и не спрашивает политику`() {
+        val id = source()
+        val unmapped = { api.sendUnchecked("PATCH", "/api/v1/sources/$id", admin) }
+        val asked = unmapped()
+        policy.reset()
+        policy.denyAll = true
+
+        val denied = unmapped()
+
+        assertEquals(asked.status, denied.status)
+        assertEquals(asked.code, denied.code)
+        assertTrue(policy.calls.isEmpty(), policy.calls.toString())
+    }
+
+    @Test
+    fun `Операция, обработчик которой ответил ошибкой, спрашивает политику один раз`() {
+        val response = api.get("/api/v1/sources/0192f7a0-0000-7000-8000-000000000999", admin)
+
+        assertEquals(404, response.status, response.toString())
+        assertEquals("application/problem+json", response.contentType)
+        assertEquals(1, policy.calls.size, policy.calls.toString())
+        assertEquals(Operation("GET", "/api/v1/sources/{sourceId}"), policy.calls.single().second)
+    }
+
+    @Test
+    fun `Отказ политики приходит ответом access_denied, а не страницей ошибки`() {
+        policy.denied = setOf("GET /api/v1/sources")
+
+        val response = api.get("/api/v1/sources", admin)
+
+        assertEquals(403, response.status)
+        assertEquals("application/problem+json", response.contentType)
+        assertEquals("access_denied", response.code)
+    }
 }

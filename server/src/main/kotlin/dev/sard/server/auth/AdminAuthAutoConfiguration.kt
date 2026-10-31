@@ -4,40 +4,28 @@
 package dev.sard.server.auth
 
 import dev.sard.server.ClockAutoConfiguration
-import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.SessionApi
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
 import dev.sard.server.events.SubjectActors
-import dev.sard.server.extension.AccessPolicy
 import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.SessionExpired
-import dev.sard.server.extension.SubjectSource
 import dev.sard.server.extension.TenancyAutoConfiguration
 import dev.sard.server.extension.TenantResolver
-import jakarta.servlet.Filter
-import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
-import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
-import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 
-private const val API_PATTERN = "/api/v1/*"
-
 /**
- * The administrator session's beans and the two filters that guard /api/v1 (D2, W1b).
+ * The administrator session's beans (D2, W1b). The chain that guards /api/v1 with them is
+ * [CoreSecurityAutoConfiguration]'s (ADR 0071).
  * Every bean is `@ConditionalOnMissingBean`, so an enterprise starter (SSO, say) that
  * declares `@AutoConfiguration(before = [AdminAuthAutoConfiguration::class])` and
  * registers its own [SessionApi] replaces password sign-in outright: neither the stored
  * administrator nor the default [SessionApi] is created, and the first-start wizard sees
- * [ExternalAdminSetup] instead (ADR 0021's seam, F4a).
- * [OriginGuardFilter] (CSRF, К1/Р5) runs before [SessionAuthFilter] (rule 5): a request
- * with a foreign Origin is refused before authentication is even considered.
+ * [ExternalAdminSetup] instead (ADR 0021's seam, F4a; ADR 0071).
  */
 @AutoConfiguration(
     after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class, AccessPolicyAutoConfiguration::class],
@@ -103,39 +91,4 @@ class AdminAuthAutoConfiguration {
             settings,
             actors,
         )
-
-    @Bean
-    @ConditionalOnMissingBean(name = ["originGuardFilterRegistration"])
-    fun originGuardFilterRegistration(objectMapper: ObjectMapper): FilterRegistrationBean<Filter> =
-        registration(OriginGuardFilter(objectMapper), order = 1)
-
-    @Bean
-    @ConditionalOnMissingBean(name = ["sessionAuthFilterRegistration"])
-    fun sessionAuthFilterRegistration(
-        sessionStore: SessionStore,
-        objectMapper: ObjectMapper,
-    ): FilterRegistrationBean<Filter> = registration(SessionAuthFilter(sessionStore, objectMapper), order = 2)
-
-    /** The access policy seam (CORE1 Р4): asked for every /api/v1 operation but the public ones, after the filters. */
-    @Bean
-    fun accessPolicyInterceptorConfigurer(
-        policy: ObjectProvider<AccessPolicy>,
-        subjects: ObjectProvider<SubjectSource>,
-        objectMapper: ObjectProvider<ObjectMapper>,
-    ): WebMvcConfigurer =
-        object : WebMvcConfigurer {
-            override fun addInterceptors(registry: InterceptorRegistry) {
-                val interceptor = AccessPolicyInterceptor(policy, subjects, objectMapper)
-                registry.addInterceptor(interceptor).addPathPatterns("/api/v1/**")
-            }
-        }
-
-    private fun registration(
-        filter: Filter,
-        order: Int,
-    ): FilterRegistrationBean<Filter> =
-        FilterRegistrationBean(filter).apply {
-            urlPatterns = listOf(API_PATTERN)
-            this.order = order
-        }
 }

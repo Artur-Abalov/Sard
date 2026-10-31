@@ -271,7 +271,8 @@ class OnboardingGuardApiIntegrationTest(
         val statuses = paths.associateWith { world.api.sendUnchecked("POST", it, admin, "{}").status }
         assertEquals(
             mapOf(
-                "/api/v1/enrollment-tokens;x=1" to 409,
+                // The firewall of Spring Security refuses a ";" before any code of the server (Р51).
+                "/api/v1/enrollment-tokens;x=1" to 400,
                 "/api/v1/enrollment%2Dtokens" to 409,
                 // No such mapping: the trailing slash is not the issue of a token, and it is not issued.
                 "/api/v1/enrollment-tokens/" to 404,
@@ -299,15 +300,17 @@ class OnboardingGuardApiIntegrationTest(
 
         val statuses = requests.associateWith { world.api.sendUnchecked("POST", it, admin, source).status }
         val refused = 409
+        val firewalled = 400
         val expected =
             mapOf(
-                "/api/v1/onboarding/../sources" to refused,
-                "/api/v1/sources;x=1" to refused,
+                // The firewall of Spring Security refuses an unnormalized path and a ";" before any code (Р51).
+                "/api/v1/onboarding/../sources" to firewalled,
+                "/api/v1/sources;x=1" to firewalled,
+                // An encoded letter is decoded as it always was, and the guard refuses what it names.
                 "/api/v1/s%6Frces" to refused,
-                "/api/v1/enrollment-tokens;x=1" to refused,
-                "/api/v1/onboarding;x=1/../sources" to refused,
-                // The schedule has no POST: the method is not allowed, nothing is changed.
-                "/api/v1/sources/$random;x=1/schedule" to 405,
+                "/api/v1/enrollment-tokens;x=1" to firewalled,
+                "/api/v1/onboarding;x=1/../sources" to firewalled,
+                "/api/v1/sources/$random;x=1/schedule" to firewalled,
                 // An encoded slash is rejected before any mapping.
                 "/api/v1/agents/$random%2Frevoke" to 400,
             )

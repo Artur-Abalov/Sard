@@ -27,8 +27,8 @@ private val log = LoggerFactory.getLogger(SessionApiImpl::class.java)
  * dependency on this module's web layer). [dev.sard.server.api.SessionController] maps
  * [SignInResult] and [NoSuchSessionException] to status, cookies and body.
  *
- * The password is only ever a hash in the database, read for every check; a database that cannot be reached
- * throws a data access exception (503), which is no attempt and is not counted.
+ * The password is only ever a hash in the database, read for every check by the authentication manager of sign-in;
+ * a database that cannot be reached throws a data access exception (503), which is no attempt and is not counted.
  */
 class SessionApiImpl(
     private val administrators: Administrators,
@@ -41,6 +41,8 @@ class SessionApiImpl(
     private val settings: SettingsEvents,
     private val actors: SubjectActors = SubjectActors.NONE,
 ) : SessionApi {
+    private val login = AdministratorLogin(administrators, hasher)
+
     override fun createSession(
         password: String,
         clientAddress: String,
@@ -51,12 +53,15 @@ class SessionApiImpl(
         attemptTracker.withAddressLock(clientAddress) {
             val retryAfter = attemptTracker.retryAfterSeconds(clientAddress)
             // A locked address does not even reach the database.
-            val stored = if (retryAfter == null) administrators.hash() else null
-            when {
-                retryAfter != null -> SignInResult.Locked(retryAfter)
-                stored == null -> SignInResult.SetupRequired
-                hasher.matches(password, stored) -> signIn(clientAddress, previousSessionId)
-                else -> wrongPassword(clientAddress)
+            if (retryAfter != null) {
+                SignInResult.Locked(retryAfter)
+            } else {
+                // The password goes to the authentication manager of sign-in (Р42).
+                when (login.check(password)) {
+                    PasswordCheck.RIGHT -> signIn(clientAddress, previousSessionId)
+                    PasswordCheck.WRONG -> wrongPassword(clientAddress)
+                    PasswordCheck.NO_ADMINISTRATOR -> SignInResult.SetupRequired
+                }
             }
         }
 

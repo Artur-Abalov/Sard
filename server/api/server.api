@@ -6,10 +6,6 @@ public class dev/sard/server/extension/AccessPolicyAutoConfiguration {
 	public fun <init> ()V
 }
 
-public final class dev/sard/server/extension/AccessPolicyKt {
-	public static final field SUBJECT_REQUEST_ATTRIBUTE Ljava/lang/String;
-}
-
 public final class dev/sard/server/extension/Edition {
 	public static final field Companion Ldev/sard/server/extension/Edition$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
@@ -216,6 +212,15 @@ public class dev/sard/server/extension/SardExtensionsAutoConfiguration {
 	public fun <init> ()V
 }
 
+public abstract interface class dev/sard/server/extension/SardSecurityCustomizer {
+	public abstract fun customize (Lorg/springframework/security/config/annotation/web/builders/HttpSecurity;)V
+	public fun getPublicOperations ()Ljava/util/Set;
+}
+
+public final class dev/sard/server/extension/SardSecurityCustomizer$DefaultImpls {
+	public static fun getPublicOperations (Ldev/sard/server/extension/SardSecurityCustomizer;)Ljava/util/Set;
+}
+
 public abstract interface class dev/sard/server/extension/SessionEvent : dev/sard/server/extension/SardEvent {
 	public abstract fun getClientAddress ()Ljava/lang/String;
 }
@@ -380,6 +385,16 @@ public final class dev/sard/server/extension/Subject {
 
 public final class dev/sard/server/extension/Subject$Companion {
 	public final fun getADMINISTRATOR ()Ldev/sard/server/extension/Subject;
+}
+
+public final class dev/sard/server/extension/SubjectAuthentication : org/springframework/security/authentication/AbstractAuthenticationToken {
+	public fun <init> (Ldev/sard/server/extension/Subject;)V
+	public fun <init> (Ldev/sard/server/extension/Subject;Z)V
+	public synthetic fun <init> (Ldev/sard/server/extension/Subject;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getCredentials ()Ljava/lang/Object;
+	public fun getName ()Ljava/lang/String;
+	public fun getPrincipal ()Ljava/lang/Object;
+	public final fun getSubject ()Ldev/sard/server/extension/Subject;
 }
 
 public abstract interface class dev/sard/server/extension/SubjectSource {
