@@ -28,7 +28,7 @@ class ExtensionWebAutoConfiguration {
                     ?.codeSource
                     ?.location
             val handlers = mappings.flatMap { mapping -> mapping.handlerMethods.map { it.key to it.value } }
-            val outside = ExtensionControllers(core).outsideApi(handlers)
+            val outside = ExtensionControllers(core, ExtensionControllers.frameworkLocations()).outsideApi(handlers)
             check(outside.isEmpty()) {
                 "An extension controller outside /api/v1/ would bypass the session of the core: ${outside.sorted()}"
             }

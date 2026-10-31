@@ -8,9 +8,12 @@ import dev.sard.server.x.PkgInsideController
 import dev.sard.server.x.PkgOutsideController
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.springframework.core.io.ClassPathResource
+import org.springframework.fake.FakeFrameworkController
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.mvc.condition.PatternsRequestCondition
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo
+import java.net.URL
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -19,6 +22,7 @@ import kotlin.test.assertTrue
 @MutFlowTest
 class ExtensionControllersTest {
     private val core = ExtensionControllers::class.java.protectionDomain.codeSource.location
+    private var anchors: Set<URL> = emptySet()
 
     private fun handler(
         path: String,
@@ -27,7 +31,7 @@ class ExtensionControllersTest {
         RequestMappingInfo.paths(path).build() to HandlerMethod(type.getDeclaredConstructor().newInstance(), "ping")
 
     private fun refused(vararg handlers: Pair<RequestMappingInfo, HandlerMethod>) =
-        MutFlow.underTest { ExtensionControllers(core).outsideApi(handlers.toList()) }
+        MutFlow.underTest { ExtensionControllers(core, anchors).outsideApi(handlers.toList()) }
 
     @Test
     fun `a controller outside api v1 in a package of the core namespace is refused when it is not from the core`() {
@@ -50,15 +54,37 @@ class ExtensionControllersTest {
 
     @Test
     fun `a controller of a framework outside api v1 passes`() {
+        anchors = setOf(ClassPathResource::class.java.protectionDomain.codeSource.location)
         val docs =
             RequestMappingInfo.paths("/v3/api-docs").build() to
-                HandlerMethod(
-                    org.springframework.core.io
-                        .ClassPathResource("x"),
-                    "getPath",
-                )
+                HandlerMethod(ClassPathResource("x"), "getPath")
 
         assertEquals(emptyList(), refused(docs))
+    }
+
+    @Test
+    fun `a controller in a framework package from another code source is refused`() {
+        anchors = setOf(ClassPathResource::class.java.protectionDomain.codeSource.location)
+
+        val refused = refused(handler("/fake/ping", FakeFrameworkController::class.java))
+
+        assertEquals(listOf("/fake/ping (org.springframework.fake.FakeFrameworkController)"), refused)
+    }
+
+    @Test
+    fun `the anchors are the code sources of the error controller and of the OpenAPI resource`() {
+        val anchors = MutFlow.underTest { ExtensionControllers.frameworkLocations() }
+
+        val expected =
+            listOf(
+                "org.springframework.boot.webmvc.autoconfigure.error.BasicErrorController",
+                "org.springdoc.webmvc.api.OpenApiWebMvcResource",
+            ).map {
+                Class
+                    .forName(it)
+                    .protectionDomain.codeSource.location
+            }
+        assertEquals(expected.toSet(), anchors)
     }
 
     @Test
@@ -79,7 +105,7 @@ class ExtensionControllersTest {
         val core = RequestMappingInfo.paths("/actuator/health").build() to coreHandler()
         val bootstrap = RequestMappingInfo.paths("/jdk").build() to HandlerMethod(ArrayList<String>(), "size")
 
-        val refused = MutFlow.underTest { ExtensionControllers(null).outsideApi(listOf(core, bootstrap)) }
+        val refused = MutFlow.underTest { ExtensionControllers(null, emptySet()).outsideApi(listOf(core, bootstrap)) }
 
         val registry = "/actuator/health (dev.sard.server.extension.ExtensionRegistry)"
         assertEquals(listOf(registry, "/jdk (java.util.ArrayList)"), refused)
