@@ -9,7 +9,8 @@
 # docs/qa/retention-policy.md. Разбиение L1, ВL1–ВL5, ДL1–ДL7, КL1–КL16 и
 # КП1–КП6 — в заголовке docs/specs/agent/retention-forget.feature.
 #
-# СТАТУС: ЧЕРНОВИК specifier 2026-10-31, ждёт утверждения владельца.
+# СТАТУС: УТВЕРЖДЕНО владельцем 2026-10-31 (передано координатором), КП7–КП11
+# без изменений, целиком в выпуске 1.
 # Сверено с proto/sard/agent/v1/agent.proto 2026-10-31: Action 6, RunStep 13,
 # StepResult 16 и RegisterRequest 14 свободны и не зарезервированы.
 #
