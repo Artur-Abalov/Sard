@@ -57,7 +57,7 @@ class OnboardingSelfBackupApiIntegrationTest(
     lateinit var steps: OnboardingSteps
 
     private val world = RestWorld(ca, enrollment, tokens, registration, jdbc, clock, mapper, port, grpc)
-    private val admin = world.admin(DEFAULT_TENANT)
+    private var admin = world.admin(DEFAULT_TENANT)
 
     @BeforeTest
     fun `the wizard of F4a is done, the onboarding is not complete`() {
@@ -164,6 +164,7 @@ class OnboardingSelfBackupApiIntegrationTest(
         bind()
         backUp()
         clock.now = T0 + HOUR
+        admin = world.admin(DEFAULT_TENANT)
 
         bind("self-2")
 
@@ -177,6 +178,7 @@ class OnboardingSelfBackupApiIntegrationTest(
         bind()
         backUp()
         clock.now = T0 + HOUR
+        admin = world.admin(DEFAULT_TENANT)
 
         bind()
 
@@ -290,6 +292,7 @@ class OnboardingSelfBackupApiIntegrationTest(
         readyToConfirm()
         assertEquals(204, confirm().status)
         clock.now = T0 + HOUR
+        admin = world.admin(DEFAULT_TENANT)
 
         val lines = captureEvents { assertEquals(204, confirm().status) }
 
@@ -656,6 +659,7 @@ class OnboardingSelfBackupApiIntegrationTest(
         readyToConfirm()
         confirm()
         clock.now = T0 + HOUR
+        admin = world.admin(DEFAULT_TENANT)
 
         bind("self-2")
 
@@ -679,6 +683,7 @@ class OnboardingSelfBackupApiIntegrationTest(
         readyToConfirm()
         confirm()
         clock.now = T0 + HOUR
+        admin = world.admin(DEFAULT_TENANT)
         bind("self-2")
         backUp()
 

@@ -18,6 +18,7 @@ const knownCodes = [
   'token_used',
   'token_expired',
   'origin_rejected',
+  'access_denied',
   'unavailable',
   'not_implemented',
   'self_agent_confirmation_required',

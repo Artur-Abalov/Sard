@@ -5,12 +5,13 @@ package dev.sard.server.onboarding
 
 import dev.sard.server.auth.Administrators
 import dev.sard.server.auth.JdbcAdministrators
-import dev.sard.server.database.DEFAULT_EXTENSION_LOCATION
+import dev.sard.server.database.EXTENSION_LOCATIONS_SETTING
 import dev.sard.server.database.MigrationOutcome
 import dev.sard.server.database.MigrationRefused
 import dev.sard.server.database.MigrationSettings
 import dev.sard.server.database.Migrator
 import dev.sard.server.database.PasswordSource
+import dev.sard.server.database.extensionLocations
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
@@ -134,15 +135,8 @@ private fun migrationSettings(env: Map<String, String>): MigrationSettings =
         env["SARD_DB_URL"] ?: DatabaseSettings.of(emptyMap()).url,
         env["SARD_MIGRATE_USER"] ?: "sard_migrator",
         PasswordSource.resolve(env, "SARD_MIGRATE_PASSWORD"),
-        extensionLocations(env),
+        extensionLocations(env[EXTENSION_LOCATIONS_SETTING]),
     )
-
-private fun extensionLocations(env: Map<String, String>): List<String> =
-    env["SARD_MIGRATE_EXTENSION_LOCATIONS"]
-        ?.split(',')
-        ?.map { it.trim() }
-        ?.filter { it.isNotEmpty() }
-        ?: listOf(DEFAULT_EXTENSION_LOCATION)
 
 private fun databaseAdministrators(settings: DatabaseSettings): Administrators {
     val dataSource = DriverManagerDataSource(settings.url, settings.user, settings.password)

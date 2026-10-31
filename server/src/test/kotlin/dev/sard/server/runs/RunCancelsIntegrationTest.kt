@@ -278,7 +278,9 @@ class RunCancelsIntegrationTest(
         running(run)
         cancels.cancel(tenant.id, run.id)
 
-        sessions.inTenant(tenant.id) { StepRevocation.loseSteps(it, tenant.id, tenant.agentId, clock.instant()) }
+        sessions.inTenant(tenant.id) {
+            StepRevocation.loseSteps(it, tenant.id, tenant.agentId, clock.instant(), RunEvents.NONE)
+        }
 
         val ended = runs.get(tenant.id, run.id)!!
         assertEquals(RunOutcome.LOST, ended.outcome)

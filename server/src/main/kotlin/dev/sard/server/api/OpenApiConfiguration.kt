@@ -66,6 +66,9 @@ class OpenApiConfiguration {
     fun unauthorizedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeUnauthorized)
 
     @Bean
+    fun accessDeniedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeAccessDenied)
+
+    @Bean
     fun originRejectedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeOriginRejected)
 
     @Bean
@@ -90,13 +93,34 @@ fun describeUnauthorized(api: OpenAPI) {
         .forEach { it.responses.addApiResponse("401", unauthorized) }
 }
 
-/** Adds 403 origin_rejected to every mutating operation (POST, PUT, PATCH, DELETE), K1. */
+private const val FORBIDDEN_DESCRIPTION = "Origin does not match the request (CSRF), or the access policy refuses it"
+
+/**
+ * Adds 403 to every operation that inherits the root security requirement (CORE1 Р15): access_denied from the
+ * access policy; on a mutating one it is also origin_rejected, and the description tells both.
+ */
+fun describeAccessDenied(api: OpenAPI) {
+    val problem = Content().addMediaType(PROBLEM_JSON, MediaType().schema(Schema<Any>().`$ref`("Problem")))
+    val mutating = setOf("POST", "PUT", "PATCH", "DELETE")
+    api.paths
+        .orEmpty()
+        .values
+        .flatMap { it.readOperationsMap().entries }
+        .filter { it.value.security == null }
+        .map { it.key.name to it.value }
+        .forEach { (method, operation) ->
+            val text = if (method in mutating) FORBIDDEN_DESCRIPTION else "The access policy refuses the operation"
+            operation.responses.addApiResponse("403", ApiResponse().description(text).content(problem))
+        }
+}
+
+/** Adds 403 origin_rejected to every mutating operation (POST, PUT, PATCH, DELETE), K1; one already described stays. */
 fun describeOriginRejected(api: OpenAPI) {
     val problem = Content().addMediaType(PROBLEM_JSON, MediaType().schema(Schema<Any>().`$ref`("Problem")))
     val rejected = ApiResponse().description("Origin does not match the request (CSRF)").content(problem)
     api.paths.orEmpty().values.forEach { item ->
         listOfNotNull(item.post, item.put, item.patch, item.delete).forEach { operation ->
-            operation.responses.addApiResponse("403", rejected)
+            if (operation.responses["403"] == null) operation.responses.addApiResponse("403", rejected)
         }
     }
 }

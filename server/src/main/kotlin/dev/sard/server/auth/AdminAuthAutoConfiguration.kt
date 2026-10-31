@@ -4,15 +4,26 @@
 package dev.sard.server.auth
 
 import dev.sard.server.ClockAutoConfiguration
+import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.SessionApi
+import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SettingsEvents
+import dev.sard.server.events.SubjectActors
+import dev.sard.server.extension.AccessPolicy
+import dev.sard.server.extension.AccessPolicyAutoConfiguration
+import dev.sard.server.extension.SessionExpired
+import dev.sard.server.extension.SubjectSource
 import dev.sard.server.extension.TenancyAutoConfiguration
 import dev.sard.server.extension.TenantResolver
 import jakarta.servlet.Filter
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 
@@ -28,7 +39,9 @@ private const val API_PATTERN = "/api/v1/*"
  * [OriginGuardFilter] (CSRF, К1/Р5) runs before [SessionAuthFilter] (rule 5): a request
  * with a foreign Origin is refused before authentication is even considered.
  */
-@AutoConfiguration(after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class])
+@AutoConfiguration(
+    after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class, AccessPolicyAutoConfiguration::class],
+)
 class AdminAuthAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(SessionApi::class)
@@ -45,7 +58,8 @@ class AdminAuthAutoConfiguration {
         administrators: Administrators,
         passwordHasher: PasswordHasher,
         clock: Clock,
-    ): AdminSetup = StoredAdminSetup(administrators, passwordHasher, clock)
+        settings: SettingsEvents,
+    ): AdminSetup = StoredAdminSetup(administrators, passwordHasher, clock, settings)
 
     @Bean
     @ConditionalOnMissingBean(AdminSetup::class)
@@ -53,7 +67,13 @@ class AdminAuthAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    fun sessionStore(clock: Clock) = SessionStore(clock)
+    fun sessionStore(
+        clock: Clock,
+        publisher: SardEventPublisher,
+    ) = SessionStore(clock) { session, reason ->
+        val event = SessionExpired(clock.instant(), session.tenantId, session.subject, session.clientAddress, reason)
+        publisher.publish(event)
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -68,7 +88,21 @@ class AdminAuthAutoConfiguration {
         attemptTracker: LoginAttemptTracker,
         tenantResolver: TenantResolver,
         clock: Clock,
-    ): SessionApi = SessionApiImpl(administrators, passwordHasher, sessionStore, attemptTracker, tenantResolver, clock)
+        publisher: SardEventPublisher,
+        settings: SettingsEvents,
+        actors: SubjectActors,
+    ): SessionApi =
+        SessionApiImpl(
+            administrators,
+            passwordHasher,
+            sessionStore,
+            attemptTracker,
+            tenantResolver,
+            clock,
+            publisher,
+            settings,
+            actors,
+        )
 
     @Bean
     @ConditionalOnMissingBean(name = ["originGuardFilterRegistration"])
@@ -81,6 +115,20 @@ class AdminAuthAutoConfiguration {
         sessionStore: SessionStore,
         objectMapper: ObjectMapper,
     ): FilterRegistrationBean<Filter> = registration(SessionAuthFilter(sessionStore, objectMapper), order = 2)
+
+    /** The access policy seam (CORE1 Р4): asked for every /api/v1 operation but the public ones, after the filters. */
+    @Bean
+    fun accessPolicyInterceptorConfigurer(
+        policy: ObjectProvider<AccessPolicy>,
+        subjects: ObjectProvider<SubjectSource>,
+        objectMapper: ObjectProvider<ObjectMapper>,
+    ): WebMvcConfigurer =
+        object : WebMvcConfigurer {
+            override fun addInterceptors(registry: InterceptorRegistry) {
+                val interceptor = AccessPolicyInterceptor(policy, subjects, objectMapper)
+                registry.addInterceptor(interceptor).addPathPatterns("/api/v1/**")
+            }
+        }
 
     private fun registration(
         filter: Filter,

@@ -1,0 +1,405 @@
+public abstract interface class dev/sard/server/extension/AccessPolicy {
+	public abstract fun permits (Ldev/sard/server/extension/Subject;Ldev/sard/server/extension/Operation;)Z
+}
+
+public class dev/sard/server/extension/AccessPolicyAutoConfiguration {
+	public fun <init> ()V
+}
+
+public final class dev/sard/server/extension/AccessPolicyKt {
+	public static final field SUBJECT_REQUEST_ATTRIBUTE Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/Edition {
+	public static final field Companion Ldev/sard/server/extension/Edition$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/sard/server/extension/Edition;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/Edition;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/Edition;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDisplayName ()Ljava/lang/String;
+	public final fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/Edition$Companion {
+	public final fun getFREE ()Ldev/sard/server/extension/Edition;
+}
+
+public class dev/sard/server/extension/EditionAutoConfiguration {
+	public fun <init> ()V
+}
+
+public abstract interface class dev/sard/server/extension/EditionProvider {
+	public abstract fun edition ()Ldev/sard/server/extension/Edition;
+	public abstract fun licence ()Ldev/sard/server/extension/LicenceSummary;
+}
+
+public final class dev/sard/server/extension/ExtensionRegistry {
+	public final fun getExtensions ()Ljava/util/List;
+	public final fun ids ()Ljava/util/List;
+}
+
+public abstract interface annotation class dev/sard/server/extension/InternalSardApi : java/lang/annotation/Annotation {
+}
+
+public final class dev/sard/server/extension/LicenceItem {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/sard/server/extension/LicenceItem;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/LicenceItem;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/LicenceItem;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/LicenceState : java/lang/Enum {
+	public static final field ABSENT Ldev/sard/server/extension/LicenceState;
+	public static final field EXPIRED Ldev/sard/server/extension/LicenceState;
+	public static final field INVALID Ldev/sard/server/extension/LicenceState;
+	public static final field UNAVAILABLE Ldev/sard/server/extension/LicenceState;
+	public static final field VALID Ldev/sard/server/extension/LicenceState;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/sard/server/extension/LicenceState;
+	public static fun values ()[Ldev/sard/server/extension/LicenceState;
+}
+
+public final class dev/sard/server/extension/LicenceSummary {
+	public fun <init> (Ldev/sard/server/extension/LicenceState;Ljava/lang/String;Ljava/time/Instant;Ljava/util/List;)V
+	public synthetic fun <init> (Ldev/sard/server/extension/LicenceState;Ljava/lang/String;Ljava/time/Instant;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/sard/server/extension/LicenceState;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/time/Instant;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ldev/sard/server/extension/LicenceState;Ljava/lang/String;Ljava/time/Instant;Ljava/util/List;)Ldev/sard/server/extension/LicenceSummary;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/LicenceSummary;Ldev/sard/server/extension/LicenceState;Ljava/lang/String;Ljava/time/Instant;Ljava/util/List;ILjava/lang/Object;)Ldev/sard/server/extension/LicenceSummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExpiresAt ()Ljava/time/Instant;
+	public final fun getHolder ()Ljava/lang/String;
+	public final fun getItems ()Ljava/util/List;
+	public final fun getState ()Ldev/sard/server/extension/LicenceState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/Operation {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/sard/server/extension/Operation;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/Operation;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/Operation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMethod ()Ljava/lang/String;
+	public final fun getPathTemplate ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/RunCreated : dev/sard/server/extension/RunEvent {
+	public static final field Companion Ldev/sard/server/extension/RunCreated$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/util/UUID;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/util/UUID;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;)Ldev/sard/server/extension/RunCreated;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/RunCreated;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;ILjava/lang/Object;)Ldev/sard/server/extension/RunCreated;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getRunId ()Ljava/util/UUID;
+	public fun getSourceId ()Ljava/util/UUID;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getTrigger ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/RunCreated$Companion {
+}
+
+public abstract interface class dev/sard/server/extension/RunEvent : dev/sard/server/extension/SardEvent {
+	public abstract fun getKind ()Ljava/lang/String;
+	public abstract fun getRunId ()Ljava/util/UUID;
+	public abstract fun getSourceId ()Ljava/util/UUID;
+	public abstract fun getTrigger ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/RunStarted : dev/sard/server/extension/RunEvent {
+	public static final field Companion Ldev/sard/server/extension/RunStarted$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/util/UUID;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/util/UUID;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;)Ldev/sard/server/extension/RunStarted;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/RunStarted;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;ILjava/lang/Object;)Ldev/sard/server/extension/RunStarted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getRunId ()Ljava/util/UUID;
+	public fun getSourceId ()Ljava/util/UUID;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getTrigger ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/RunStarted$Companion {
+}
+
+public final class dev/sard/server/extension/RunStatusChanged : dev/sard/server/extension/RunEvent {
+	public static final field Companion Ldev/sard/server/extension/RunStatusChanged$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Z)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component10 ()Z
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/util/UUID;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/util/UUID;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Z)Ldev/sard/server/extension/RunStatusChanged;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/RunStatusChanged;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;Ljava/util/UUID;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Ldev/sard/server/extension/RunStatusChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public final fun getFrom ()Ljava/lang/String;
+	public fun getKind ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getRunId ()Ljava/util/UUID;
+	public fun getSourceId ()Ljava/util/UUID;
+	public fun getTenantId ()Ljava/util/UUID;
+	public final fun getTerminal ()Z
+	public final fun getTo ()Ljava/lang/String;
+	public fun getTrigger ()Ljava/lang/String;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/RunStatusChanged$Companion {
+}
+
+public abstract interface class dev/sard/server/extension/SardEvent {
+	public abstract fun getActor ()Ldev/sard/server/extension/Subject;
+	public abstract fun getOccurredAt ()Ljava/time/Instant;
+	public abstract fun getTenantId ()Ljava/util/UUID;
+	public abstract fun getType ()Ljava/lang/String;
+}
+
+public abstract interface class dev/sard/server/extension/SardExtension {
+	public abstract fun getDisplayName ()Ljava/lang/String;
+	public abstract fun getId ()Ljava/lang/String;
+}
+
+public class dev/sard/server/extension/SardExtensionsAutoConfiguration {
+	public fun <init> ()V
+}
+
+public abstract interface class dev/sard/server/extension/SessionEvent : dev/sard/server/extension/SardEvent {
+	public abstract fun getClientAddress ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SessionExpired : dev/sard/server/extension/SessionEvent {
+	public static final field Companion Ldev/sard/server/extension/SessionExpired$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/lang/String;)Ldev/sard/server/extension/SessionExpired;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/SessionExpired;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/SessionExpired;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getClientAddress ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getReason ()Ljava/lang/String;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SessionExpired$Companion {
+}
+
+public final class dev/sard/server/extension/SettingsChanged : dev/sard/server/extension/SardEvent {
+	public static final field Companion Ldev/sard/server/extension/SettingsChanged$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/util/UUID;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/UUID;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/util/UUID;)Ldev/sard/server/extension/SettingsChanged;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/SettingsChanged;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/util/UUID;ILjava/lang/Object;)Ldev/sard/server/extension/SettingsChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public final fun getObjectId ()Ljava/util/UUID;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getSetting ()Ljava/lang/String;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SettingsChanged$Companion {
+}
+
+public final class dev/sard/server/extension/SignInFailed : dev/sard/server/extension/SessionEvent {
+	public static final field Companion Ldev/sard/server/extension/SignInFailed$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;)Ldev/sard/server/extension/SignInFailed;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/SignInFailed;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/SignInFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getClientAddress ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SignInFailed$Companion {
+}
+
+public final class dev/sard/server/extension/SignInLocked : dev/sard/server/extension/SessionEvent {
+	public static final field Companion Ldev/sard/server/extension/SignInLocked$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/time/Instant;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/time/Instant;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/time/Instant;)Ldev/sard/server/extension/SignInLocked;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/SignInLocked;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/time/Instant;ILjava/lang/Object;)Ldev/sard/server/extension/SignInLocked;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getClientAddress ()Ljava/lang/String;
+	public final fun getLockedUntil ()Ljava/time/Instant;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SignInLocked$Companion {
+}
+
+public final class dev/sard/server/extension/SignInSucceeded : dev/sard/server/extension/SessionEvent {
+	public static final field Companion Ldev/sard/server/extension/SignInSucceeded$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;)Ldev/sard/server/extension/SignInSucceeded;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/SignInSucceeded;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/SignInSucceeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getClientAddress ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SignInSucceeded$Companion {
+}
+
+public final class dev/sard/server/extension/SignedOut : dev/sard/server/extension/SessionEvent {
+	public static final field Companion Ldev/sard/server/extension/SignedOut$Companion;
+	public static final field TYPE Ljava/lang/String;
+	public fun <init> (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()Ljava/util/UUID;
+	public final fun component3 ()Ldev/sard/server/extension/Subject;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;)Ldev/sard/server/extension/SignedOut;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/SignedOut;Ljava/time/Instant;Ljava/util/UUID;Ldev/sard/server/extension/Subject;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/SignedOut;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getActor ()Ldev/sard/server/extension/Subject;
+	public fun getClientAddress ()Ljava/lang/String;
+	public fun getOccurredAt ()Ljava/time/Instant;
+	public fun getTenantId ()Ljava/util/UUID;
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/SignedOut$Companion {
+}
+
+public final class dev/sard/server/extension/Subject {
+	public static final field Companion Ldev/sard/server/extension/Subject$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/sard/server/extension/Subject;
+	public static synthetic fun copy$default (Ldev/sard/server/extension/Subject;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/sard/server/extension/Subject;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getKind ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/sard/server/extension/Subject$Companion {
+	public final fun getADMINISTRATOR ()Ldev/sard/server/extension/Subject;
+}
+
+public abstract interface class dev/sard/server/extension/SubjectSource {
+	public abstract fun current ()Ldev/sard/server/extension/Subject;
+}
+
+public class dev/sard/server/extension/SubjectSourceAutoConfiguration {
+	public fun <init> ()V
+}
+
+public class dev/sard/server/extension/TenancyAutoConfiguration {
+	public fun <init> ()V
+}
+
+public abstract interface class dev/sard/server/extension/TenantResolver {
+	public static final field Companion Ldev/sard/server/extension/TenantResolver$Companion;
+	public abstract fun currentTenantId ()Ljava/util/UUID;
+}
+
+public final class dev/sard/server/extension/TenantResolver$Companion {
+	public final fun getDEFAULT_TENANT_ID ()Ljava/util/UUID;
+}
+

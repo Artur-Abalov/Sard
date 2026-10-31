@@ -13,6 +13,7 @@ import dev.sard.server.api.OnboardingStep
 import dev.sard.server.api.OnboardingStepId
 import dev.sard.server.api.OnboardingStepState
 import dev.sard.server.api.SetupCodeState
+import dev.sard.server.auth.SessionStore
 import dev.sard.server.pki.CaUsage
 import dev.sard.server.selfagent.captureEvents
 import dev.sard.server.selfbackup.FirstBackupPending
@@ -32,7 +33,7 @@ import kotlin.test.assertTrue
 private const val PASSWORD = "correct-horse-battery"
 
 /** Docs/specs/server/onboarding-setup.feature at the level of the component: no HTTP, no database. */
-@MutFlowTest
+@MutFlowTest(excludeTargets = [SessionStore::class]) // SessionStoreTest mutates it
 class OnboardingServiceTest {
     private val h = OnboardingHarness()
     private val service get() = h.service
@@ -465,7 +466,7 @@ class OnboardingServiceTest {
     fun `Живая сессия администратора переживает выдачу новой`() {
         h.adminSessions.create(h.tenant)
         val session = readySession()
-        h.clock.now = T0 + Duration.ofHours(1)
+        h.clock.now = T0 + Duration.ofMinutes(30)
 
         MutFlow.underTest { service.completeAdmin(session, PASSWORD, ADDRESS) }
 

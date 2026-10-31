@@ -41,6 +41,7 @@ class AgentWaits(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val announcer: RunAnnouncer,
+    private val events: RunEvents,
     private val presence: AgentOnline,
     private val startedAt: Instant,
     private val grace: Duration,
@@ -75,7 +76,11 @@ class AgentWaits(
                 sessions.inTenant(step.tenantId) { session ->
                     val values = mapOf("tenant" to step.tenantId, "step" to step.stepId, "agent" to step.agentId)
                     val closed = session.execute(CLOSE_STEP, values + ("now" to now)) == 1
-                    if (closed) session.execute(CLOSE_RUN, values + ("now" to now))
+                    if (closed) {
+                        events.movingStep(session, step.tenantId, step.stepId) {
+                            session.execute(CLOSE_RUN, values + ("now" to now))
+                        }
+                    }
                     closed
                 }
             }.onFailure { log.warn("wait of step {} not closed: {}", step.stepId, it.toString()) }

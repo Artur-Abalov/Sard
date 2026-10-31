@@ -64,7 +64,9 @@ class FirstStartDocsTest {
     @Test
     fun `The password variable is mentioned only in history and in the test that it is not read`() {
         val skipped = setOf(".git", "build", "node_modules", ".gradle", "dist", ".bin", ".kotlin", ".idea")
-        val history = listOf("docs/sessions", "docs/adr", "docs/specs", "docs/qa").map { File(root, it) }
+        // Agent worktrees (.claude/worktrees, ignored by git) hold whole copies of the repository.
+        val history =
+            listOf("docs/sessions", "docs/adr", "docs/specs", "docs/qa", ".claude/worktrees").map { File(root, it) }
         val found =
             root
                 .walkTopDown()

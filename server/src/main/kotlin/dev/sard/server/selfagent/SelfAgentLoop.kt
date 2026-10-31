@@ -3,10 +3,11 @@
 
 package dev.sard.server.selfagent
 
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.Timing
 import org.springframework.context.SmartLifecycle
 import java.time.Duration
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 /**
  * Runs [check] at once when the server starts and every [interval] after the previous run ended, so checks never
@@ -14,21 +15,12 @@ import java.util.concurrent.TimeUnit
  * (SelfAgentCheck catches everything).
  */
 class SelfAgentLoop(
-    private val interval: Duration,
-    private val scheduler: () -> ScheduledExecutorService,
-    private val check: () -> Unit,
-) : SmartLifecycle {
-    @Volatile
-    private var executor: ScheduledExecutorService? = null
-
-    override fun start() {
-        executor = scheduler().also { it.scheduleWithFixedDelay(check, 0, interval.toMillis(), TimeUnit.MILLISECONDS) }
-    }
-
-    override fun stop() {
-        executor?.shutdownNow()
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
-}
+    interval: Duration,
+    scheduler: () -> ScheduledExecutorService,
+    check: () -> Unit,
+) : SmartLifecycle by PeriodicTask(
+        name = "sard-self-agent",
+        timing = Timing(interval, initialDelay = Duration.ZERO),
+        schedulers = { scheduler() },
+        action = check,
+    )

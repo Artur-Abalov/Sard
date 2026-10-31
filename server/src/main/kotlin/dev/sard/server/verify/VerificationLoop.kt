@@ -3,6 +3,8 @@
 
 package dev.sard.server.verify
 
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.Timing
 import dev.sard.server.persistence.HibernateTenantBridge
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.StepsQueued
@@ -13,9 +15,6 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 private val log = LoggerFactory.getLogger(VerificationLoop::class.java)
 
@@ -35,14 +34,14 @@ class VerificationLoop(
     private val queue: VerificationQueue,
     private val settlement: VerificationSettlement,
     private val queued: StepsQueued,
-    private val schedule: VerificationSchedule,
+    private val schedule: VerificationScheduleReader,
     private val stale: StaleEpisodes,
     private val noVerifier: NoVerifierEpisodes,
 ) {
     fun tick() {
         val now = clock.instant()
         val (tenants, cycle) = sessions.system { session -> tenants(session) to schedule.current(session) }
-        val moments = VerificationSchedule.moments(cycle, now)
+        val moments = VerificationScheduleReader.moments(cycle, now)
         for (tenantId in tenants.filter { it != HibernateTenantBridge.SYSTEM_TENANT_ID }) {
             runCatching { tick(tenantId, moments, cycle, now) }
                 .onFailure { log.warn("verification of tenant {} waits for the next tick", tenantId, it) }
@@ -74,27 +73,11 @@ class VerificationLoop(
 
 /** Runs [tick] every [interval] on one thread; ticks never overlap and a failing one never stops the next. */
 class VerificationTicker(
-    private val interval: Duration,
-    private val tick: () -> Unit,
-) : SmartLifecycle {
-    @Volatile
-    private var executor: ScheduledExecutorService? = null
-
-    override fun start() {
-        val scheduler =
-            Executors.newSingleThreadScheduledExecutor { Thread(it, "sard-verification").apply { isDaemon = true } }
-        scheduler.scheduleWithFixedDelay(::safeTick, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS)
-        executor = scheduler
-    }
-
-    override fun stop() {
-        executor?.shutdownNow()
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
-
-    private fun safeTick() {
-        runCatching(tick).onFailure { log.warn("Verification tick failed; retrying at the next one", it) }
-    }
-}
+    interval: Duration,
+    tick: () -> Unit,
+) : SmartLifecycle by PeriodicTask(
+        name = "sard-verification",
+        timing = Timing(interval),
+        onFailure = { log.warn("Verification tick failed; retrying at the next one", it) },
+        action = tick,
+    )

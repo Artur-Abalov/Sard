@@ -35,6 +35,7 @@ const KNOWN: Record<ErrorCode, true> = {
   token_expired: true,
   not_implemented: true,
   origin_rejected: true,
+  access_denied: true,
   agent_revoked: true,
   agent_role_mismatch: true,
   unavailable: true,

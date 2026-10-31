@@ -278,8 +278,13 @@ class ApiSerializationIntegrationTest(
 
     private val samples: List<Any> =
         listOf(
-            StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
+            StatusResponse("1.0.0", lastVerifiedRestoreAt = null, edition = EditionInfo("free", "Free")),
             RunDefaults(480, 600),
+            ServerInfo(
+                EditionInfo("sample", "Sample"),
+                listOf(ExtensionInfo("sample", "Sard Sample Extension")),
+                LicenceInfo(LicenceStatus.VALID, "Pilot LLC", at, listOf(LicenceItemInfo("Agents", "1"))),
+            ),
             CaInfo(CA_FINGERPRINT, CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
             SessionRequest("secret"),
             Session(id, at),
@@ -590,6 +595,10 @@ class ApiSerializationIntegrationTest(
         val NESTED =
             setOf(
                 "OnboardingStep",
+                "EditionInfo",
+                "ExtensionInfo",
+                "LicenceInfo",
+                "LicenceItemInfo",
                 "SelfBackupPlanItem",
                 "AgentSummary",
                 "InstallStep",

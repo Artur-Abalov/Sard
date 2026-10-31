@@ -61,9 +61,17 @@ class AgentsApiImpl(
         confirm: String?,
     ): AgentDetails =
         when (val revocation = agents.revoke(tenants.currentTenantId(), agentId, confirm)) {
-            is AgentRevocation.Revoked -> detailsOf(revocation.card)
-            AgentRevocation.NotFound -> throw ResourceNotFound()
-            AgentRevocation.ConfirmationRequired -> throw SelfAgentConfirmationRequired()
+            is AgentRevocation.Revoked -> {
+                detailsOf(revocation.card)
+            }
+
+            AgentRevocation.NotFound -> {
+                throw ResourceNotFound()
+            }
+
+            AgentRevocation.ConfirmationRequired -> {
+                throw SelfAgentConfirmationRequired()
+            }
         }
 
     private fun connectivityOf(status: AgentStatus): Connectivity =

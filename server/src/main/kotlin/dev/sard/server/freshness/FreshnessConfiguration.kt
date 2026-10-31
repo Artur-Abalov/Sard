@@ -3,6 +3,8 @@
 
 package dev.sard.server.freshness
 
+import dev.sard.server.loop.PeriodicTask
+import dev.sard.server.loop.Timing
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import org.slf4j.LoggerFactory
@@ -14,9 +16,6 @@ import org.springframework.context.annotation.Configuration
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 private val log = LoggerFactory.getLogger(FreshnessLoop::class.java)
 
@@ -35,32 +34,14 @@ data class FreshnessProperties(
 
 /** Runs [tick] every [interval] on one thread; ticks never overlap. */
 class FreshnessLoop(
-    private val interval: Duration,
-    private val tick: () -> Unit,
-) : SmartLifecycle {
-    @Volatile
-    private var executor: ScheduledExecutorService? = null
-
-    override fun start() {
-        val scheduler = Executors.newSingleThreadScheduledExecutor(::daemon)
-        scheduler.scheduleWithFixedDelay(::safeTick, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS)
-        executor = scheduler
-    }
-
-    override fun stop() {
-        executor?.shutdownNow()
-        executor = null
-    }
-
-    override fun isRunning() = executor != null
-
-    private fun daemon(task: Runnable) = Thread(task, "sard-freshness").apply { isDaemon = true }
-
-    /** Never throws: a thrown exception would cancel every later run of the periodic task. */
-    private fun safeTick() {
-        runCatching(tick).onFailure { log.warn("Freshness check failed; retrying at the next one", it) }
-    }
-}
+    interval: Duration,
+    tick: () -> Unit,
+) : SmartLifecycle by PeriodicTask(
+        name = "sard-freshness",
+        timing = Timing(interval),
+        onFailure = { log.warn("Freshness check failed; retrying at the next one", it) },
+        action = tick,
+    )
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(FreshnessProperties::class)

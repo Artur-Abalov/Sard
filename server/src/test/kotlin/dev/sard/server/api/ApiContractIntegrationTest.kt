@@ -94,7 +94,7 @@ class ApiContractIntegrationTest(
         val operation = spec.path("paths").path("/api/v1/overview").path("get")
 
         assertEquals(
-            listOf("200", "401", "503"),
+            listOf("200", "401", "403", "503"),
             operation
                 .path("responses")
                 .propertyNames()
@@ -297,6 +297,35 @@ class ApiContractIntegrationTest(
     }
 
     @Test
+    fun `Ответ 403 access_denied объявлен у каждой защищённой операции`() {
+        val setup = setOf("POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
+        for ((name, op) in operations().filter { it.first !in PUBLIC_OPERATIONS && it.first !in setup }) {
+            val forbidden = op.path("responses").path("403")
+            assertEquals(
+                "#/components/schemas/Problem",
+                forbidden
+                    .path("content")
+                    .path(PROBLEM_JSON)
+                    .path("schema")
+                    .path("\$ref")
+                    .asString(),
+                name,
+            )
+        }
+        assertTrue("access_denied" in enumValues("ErrorCode"))
+    }
+
+    @Test
+    fun `Ни одна операция ядра с сессией не отвечает access_denied`() {
+        val id = "0192f7a0-0000-7000-8000-000000000001"
+        val cookie = signIn()
+        for ((method, path, body) in contractCalls(id)) {
+            val response = send(method, path.replace(Regex("\\{[^}]+}"), id), body, cookie)
+            assertTrue("access_denied" !in response.body(), "$method $path: ${response.body()}")
+        }
+    }
+
+    @Test
     fun `the public operations have no security requirement and their own 401, if any`() {
         for ((name, op) in operations().filter { it.first in PUBLIC_OPERATIONS }) {
             assertTrue(op.path("security").isArray && op.path("security").isEmpty, "$name: ${op.path("security")}")
@@ -435,6 +464,7 @@ class ApiContractIntegrationTest(
         val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
         val schedule = """{"cron":"* * * * *","timezone":"UTC","enabled":true}"""
         return listOf(
+            Triple("GET", "/api/v1/server", null),
             Triple("GET", "/api/v1/overview", null),
             Triple("GET", "/api/v1/repositories", null),
             Triple("GET", "/api/v1/ca", null),

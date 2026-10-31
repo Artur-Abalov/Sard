@@ -310,7 +310,7 @@ class OnboardingStateIntegrationTest(
 
         assertEquals(200, reply.status)
         assertEquals("00000000-0000-0000-0000-000000000001", reply.json.path("tenantId").asString())
-        assertEquals("2026-10-10T00:00:00Z", reply.json.path("expiresAt").asString())
+        assertEquals("2026-10-09T13:00:00Z", reply.json.path("expiresAt").asString())
     }
 
     @Test

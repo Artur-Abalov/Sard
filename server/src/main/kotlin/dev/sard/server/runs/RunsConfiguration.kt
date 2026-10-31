@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
@@ -78,7 +79,8 @@ class RunsConfiguration {
     fun sources(
         sessions: TenantSessions,
         clock: Clock,
-    ) = Sources(sessions, clock, UuidV7(clock, SecureRandom()))
+        settings: SettingsEvents,
+    ) = Sources(sessions, clock, UuidV7(clock, SecureRandom()), settings)
 
     /** Every [RunFinishedListener] bean (S9) hears each finished run. */
     @Bean
@@ -92,7 +94,8 @@ class RunsConfiguration {
         sessions: TenantSessions,
         clock: Clock,
         announcer: RunAnnouncer,
-    ) = StepTransitions(sessions, clock, announcer)
+        events: RunEvents,
+    ) = StepTransitions(sessions, clock, announcer, events)
 
     @Bean
     fun stepResults(
@@ -141,6 +144,7 @@ class RunsConfiguration {
         queued: ObjectProvider<StepsQueued>,
         waiting: AgentWaitProperties,
         presence: ObjectProvider<AgentOnline>,
+        events: RunEvents,
     ) = Runs(
         sessions,
         clock,
@@ -148,6 +152,7 @@ class RunsConfiguration {
         queued.getIfUnique { StepsQueued.NONE },
         waiting.limit(),
         presence.getIfUnique { AgentOnline.ALWAYS },
+        events,
     )
 }
 
@@ -158,7 +163,8 @@ class TimeoutSettingsConfiguration {
     fun timeoutSettings(
         sessions: TenantSessions,
         clock: Clock,
-    ) = TimeoutSettings(sessions, clock)
+        events: SettingsEvents,
+    ) = TimeoutSettings(sessions, clock, events)
 }
 
 /** Cancel of a run (J1a): the endpoint's service; the dispatcher, if there is one, sends the agent its CancelStep. */
@@ -169,7 +175,8 @@ class RunCancelsConfiguration {
         clock: Clock,
         cancelled: ObjectProvider<StepsCancelled>,
         announcer: RunAnnouncer,
-    ) = CancelMarks(clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer)
+        events: RunEvents,
+    ) = CancelMarks(clock, cancelled.getIfUnique { StepsCancelled.NONE }, announcer, events)
 
     @Bean
     fun runCancels(
@@ -190,6 +197,7 @@ class RestoresConfiguration {
         queued: ObjectProvider<StepsQueued>,
         waiting: AgentWaitProperties,
         presence: ObjectProvider<AgentOnline>,
+        events: RunEvents,
     ) = Restores(
         sessions,
         clock,
@@ -197,5 +205,6 @@ class RestoresConfiguration {
         queued.getIfUnique { StepsQueued.NONE },
         waiting.limit(),
         presence.getIfUnique { AgentOnline.ALWAYS },
+        events,
     )
 }

@@ -93,7 +93,7 @@ proto: tools
 build: build-agent build-cli
 	$(MAKE) web-deps
 	cd web && SARD_VERSION=$(VERSION) npm run build
-	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION) -PsardConsoleDist=web/dist
+	$(GRADLE) :server-app:bootJar -PsardVersion=$(VERSION) -PsardConsoleDist=web/dist
 
 build-agent:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent
@@ -223,13 +223,14 @@ check-sudo-u:
 	./scripts/test-check-sudo-u.sh
 	./scripts/check-sudo-u.sh
 
-## check-pins: every action by commit SHA, every image by digest, no secret within reach of a PR, the release identity (SC1), and the tests of these checks and of release-cosign.sh
+## check-pins: every action by commit SHA, every image by digest, no secret within reach of a PR, the release identity (SC1), and the tests of these checks and of release-cosign.sh and release-maven.sh
 check-pins:
 	./scripts/test-check-pins.sh
 	./scripts/test-lib-test-image.sh
 	./scripts/test-check-workflow-secrets.sh
 	./scripts/test-check-identity.sh
 	./scripts/test-release-cosign.sh
+	./scripts/test-release-maven.sh
 	./scripts/check-pins.sh
 	./scripts/check-workflow-secrets.sh
 	./scripts/check-identity.sh

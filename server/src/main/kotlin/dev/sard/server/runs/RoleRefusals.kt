@@ -35,6 +35,7 @@ class RoleRefusals(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val announcer: RunAnnouncer,
+    private val events: RunEvents,
 ) : RoleLedger {
     override fun roleOf(
         tenantId: UUID,
@@ -62,7 +63,7 @@ class RoleRefusals(
         val moved =
             sessions.inTenant(tenantId) { session ->
                 val ended = session.execute(REFUSE, values) == 1
-                if (ended) session.execute(RUN_FINISHED, values)
+                if (ended) events.movingStep(session, tenantId, stepId) { session.execute(RUN_FINISHED, values) }
                 ended
             }
         if (moved) announcer.announce(tenantId, stepId)

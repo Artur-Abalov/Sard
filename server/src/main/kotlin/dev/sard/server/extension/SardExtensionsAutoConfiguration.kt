@@ -17,6 +17,7 @@ private val log = LoggerFactory.getLogger(SardExtensionsAutoConfiguration::class
 @AutoConfiguration
 class SardExtensionsAutoConfiguration {
     @Bean
+    @InternalSardApi
     fun sardExtensionRegistry(extensions: ObjectProvider<SardExtension>): ExtensionRegistry {
         val registry = ExtensionRegistry(extensions.orderedStream().toList())
         log.info("Sard extensions loaded: {}", registry.ids().ifEmpty { "none" })

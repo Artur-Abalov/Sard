@@ -57,9 +57,17 @@ class EnrollmentTokensApiImpl(
     override fun revokeEnrollmentToken(tokenId: UUID): EnrollmentToken {
         val tenant = tenants.currentTenantId()
         return when (val result = tokens.revoke(tenant, tokenId, clock.instant())) {
-            is RevokeResult.Revoked -> card(tenant, tokenId)
-            is RevokeResult.Rejected -> throw conflict(result.reason, tokens.get(tenant, tokenId))
-            RevokeResult.NotFound -> throw ResourceNotFound()
+            is RevokeResult.Revoked -> {
+                card(tenant, tokenId)
+            }
+
+            is RevokeResult.Rejected -> {
+                throw conflict(result.reason, tokens.get(tenant, tokenId))
+            }
+
+            RevokeResult.NotFound -> {
+                throw ResourceNotFound()
+            }
         }
     }
 

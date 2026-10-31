@@ -3,6 +3,7 @@
 
 package dev.sard.server.enrollment
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.EnrollmentTokenRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
@@ -110,6 +111,7 @@ class EnrollmentTokens(
     private val random: SecureRandom,
     private val ids: UuidV7,
     private val endpoint: AgentEndpoint,
+    private val settings: SettingsEvents,
 ) {
     /**
      * A token for [tenantId], valid for [ttl] (default 24h, 5 minutes to 7 days inclusive,
@@ -128,7 +130,11 @@ class EnrollmentTokens(
         if (label.length > LABEL_MAX_LENGTH) {
             throw EnrollmentTokenValidationException("label", "must be at most $LABEL_MAX_LENGTH characters")
         }
-        return sessions.inTenant(tenantId) { issue(it, ttl, label, builtin = false, role = role) }
+        return sessions.inTenant(tenantId) { session ->
+            issue(session, ttl, label, builtin = false, role = role).also {
+                settings.changed(session, tenantId, "token_created", it.id)
+            }
+        }
     }
 
     /**
@@ -248,6 +254,7 @@ class EnrollmentTokens(
                     .setParameter("id", id)
                     .executeUpdate()
             if (revoked == 1) {
+                settings.changed(session, tenantId, "token_revoked", id)
                 RevokeResult.Revoked(now)
             } else {
                 refusal(session.find(EnrollmentTokenRecord::class.java, id))

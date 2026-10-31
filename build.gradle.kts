@@ -33,6 +33,24 @@ allprojects {
         lockMode = LockMode.STRICT
     }
 
+    // The libraries an enterprise build compiles against (CORE1, ADR 0070): every publication also goes to the file
+    // repository "release" under the root build directory, which the server-jar stage of deploy/server/Dockerfile
+    // fills in the same Gradle run as the jar (build once, ADR 0045) and the release workflow uploads to GitHub
+    // Packages. A Maven version is the tag without its "v".
+    plugins.withId("maven-publish") {
+        extensions.configure<PublishingExtension> {
+            repositories {
+                maven {
+                    name = "release"
+                    url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
+                }
+            }
+            publications.withType<MavenPublication>().configureEach {
+                version = project.version.toString().removePrefix("v")
+            }
+        }
+    }
+
     tasks.register("resolveAndLockAll") {
         description = "Resolves every resolvable configuration, so --write-locks records all of them."
         val resolvable = configurations.filter { it.isCanBeResolved }

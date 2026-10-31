@@ -12,6 +12,9 @@
 #                   └─ sign     (environment "release": minisign over SHA256SUMS, SBOMs included)
 #                         ├─ publish  (GitHub release with the signed files; "-" makes it a pre-release;
 #                         │            build provenance of every file, GitHub attestation)
+#                         ├─ maven    (sard-server-core, sard-proto-jvm, sard-server-console of server-jar's build
+#                         │            to GitHub Packages, version = the tag without "v": what an enterprise
+#                         │            build compiles against, CORE1, ADR 0070; build provenance of each file)
 #                         └─ image    (sard-server for amd64 and arm64: the tested jar, console
 #                               │      included, and the signed packages; sard-agent of the same
 #                               │      signed tarballs, the agent next to the server; GHCR;
@@ -143,6 +146,12 @@ jobs:
         with:
           name: server-jar
           path: build/server-jar/sard-server.jar
+          if-no-files-found: error
+      # The libraries of the same Gradle run as the jar (deploy/server/Dockerfile, stage server-jar).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: maven
+          path: build/server-jar/maven/
           if-no-files-found: error
 
   reproduce:
@@ -339,6 +348,36 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
+
+  # The libraries an enterprise build compiles against, of pre-releases and releases alike (CORE1, ADR 0070):
+  # the files server-jar built, after the owner approved sign; nothing is compiled here.
+  maven:
+    needs: [sign, server-jar]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      # Build provenance of the libraries (GitHub attestation, Sigstore): gh attestation verify.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: maven
+          path: maven
+      - name: GitHub Packages
+        env:
+          MAVEN_TOKEN: ${{ github.token }}
+        run: scripts/release-maven.sh maven "$VERSION" "https://maven.pkg.github.com/${GITHUB_REPOSITORY,,}"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            maven/**/*.jar
+            maven/**/*.pom
+            maven/**/*.module
 
   image:
     needs: sign

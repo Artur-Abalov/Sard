@@ -29,7 +29,7 @@ internal val PUBLIC_OPERATIONS =
     )
 
 /** Operations for which the filter does not even look at a session. */
-private val SESSIONLESS_OPERATIONS =
+internal val SESSIONLESS_OPERATIONS =
     setOf("POST /api/v1/session", "GET /api/v1/status", "POST /api/v1/onboarding/setup-session")
 
 /**
@@ -37,7 +37,7 @@ private val SESSIONLESS_OPERATIONS =
  * a setup session, which the controller checks because the filter does not know setup sessions. All three pass
  * the filter with or without an administrator session; a valid one is attached to the request.
  */
-private val WIZARD_OPERATIONS =
+internal val WIZARD_OPERATIONS =
     setOf("GET /api/v1/onboarding", "POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
 private const val HTTP_UNAUTHORIZED = 401
 
@@ -72,7 +72,7 @@ class SessionAuthFilter(
     /** The session the request carries, touched; null when it carries none or one that is no longer valid. */
     private fun sessionOf(request: HttpServletRequest): AdminSession? {
         val sessionId = request.cookie(SESSION_COOKIE)
-        return sessionId?.let { sessionStore.touch(it) }
+        return sessionId?.let { sessionStore.touch(it, clientAddress(request)) }
     }
 
     /** Р12: DELETE /api/v1/session with an invalid or missing session also clears the cookie. */

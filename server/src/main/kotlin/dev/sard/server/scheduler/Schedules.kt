@@ -3,6 +3,7 @@
 
 package dev.sard.server.scheduler
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.RunRecord
 import dev.sard.server.persistence.ScheduleFireRecord
@@ -38,8 +39,12 @@ class Schedules(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val ids: UuidV7,
+    private val settings: SettingsEvents,
 ) {
-    /** Creates or replaces the schedule of [sourceId]; throws [InvalidSchedule] or SourceNotFound. */
+    /**
+     * Creates or replaces the schedule of [sourceId]; throws [InvalidSchedule] or SourceNotFound. The listeners hear
+     * of it, once committed, when the schedule was new or differed from the draft under its lock (CORE1 Р28).
+     */
     fun set(
         tenantId: UUID,
         sourceId: UUID,
@@ -47,7 +52,12 @@ class Schedules(
     ): ScheduleView {
         val fires = CronSchedule.parse(draft.cron, draft.timezone)
         return try {
-            sessions.inTenant(tenantId) { session -> view(session, write(session, sourceId, fires, draft)) }
+            sessions.inTenant(tenantId) { session ->
+                val written = write(session, sourceId, fires, draft)
+                val states = written.before to written.record.asDraft()
+                settings.changedIf(states, session, tenantId, "source_schedule", sourceId)
+                view(session, written.record)
+            }
         } catch (e: ConstraintViolationException) {
             // Two first sets of one source raced on the key: the loser replaces what the winner created.
             if (e.constraintName != SOURCE_KEY) throw e
@@ -63,7 +73,10 @@ class Schedules(
         session: Session,
         sourceId: UUID,
         draft: ScheduleDraft,
-    ): ScheduleView = view(session, write(session, sourceId, CronSchedule.parse(draft.cron, draft.timezone), draft))
+    ): ScheduleView {
+        val fires = CronSchedule.parse(draft.cron, draft.timezone)
+        return view(session, write(session, sourceId, fires, draft).record)
+    }
 
     /** The schedule of the live source [sourceId]; null if it has none. Throws SourceNotFound. */
     fun get(
@@ -102,18 +115,28 @@ class Schedules(
         sourceId: UUID,
         fires: CronSchedule,
         draft: ScheduleDraft,
-    ): ScheduleRecord {
+    ): Written {
         liveSource(session, sourceId, LockModeType.NONE)
         val now = clock.instant()
         val existing = scheduleOf(session, sourceId, LockModeType.PESSIMISTIC_WRITE)
-        if (existing != null) return existing.also { replace(it, fires, draft, now) }
+        if (existing != null) {
+            val before = existing.asDraft()
+            replace(existing, fires, draft, now)
+            return Written(existing, before)
+        }
         val next = next(fires, draft.enabled, now)
         val record = ScheduleRecord(ids.next(), sourceId, fires.cron, fires.zone.id, draft.enabled, next, now, now)
         record.notifyOnSuccess = draft.notifyOnSuccess
         session.persist(record)
         session.flush()
-        return record
+        return Written(record, null)
     }
+
+    /** A schedule as [write] left it, and what it was under the lock (null: there was none). */
+    private class Written(
+        val record: ScheduleRecord,
+        val before: ScheduleDraft?,
+    )
 
     private fun replace(
         record: ScheduleRecord,
@@ -167,6 +190,9 @@ class Schedules(
             .setLockMode(lock)
             .uniqueResult()
 }
+
+/** What a caller sets of a schedule: the parts that make it differ from another. */
+private fun ScheduleRecord.asDraft() = ScheduleDraft(cron, timezone, enabled, notifyOnSuccess)
 
 private fun fireView(record: ScheduleFireRecord) =
     FireView(

@@ -241,7 +241,7 @@ environment it does nothing.
 
 ```bash
 make proto    # generate Go code from proto/ (the result is committed)
-make build    # agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar, web/dist/
+make build    # agent/bin/sard-agent, cli/bin/sardctl, server-app/build/libs/sard-server.jar, web/dist/
 make test     # all test suites
 make lint     # SPDX headers, buf lint, gofmt/vet/golangci-lint, spotless/detekt, oxlint/prettier/tsc
 make gate     # full quality gate: coverage ≥ 80%, CRAP ≤ 6, complexity ≤ 8, mutation testing

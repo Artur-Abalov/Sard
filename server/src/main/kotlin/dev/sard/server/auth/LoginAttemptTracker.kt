@@ -55,6 +55,9 @@ class LoginAttemptTracker(
         }
     }
 
+    /** How long an address stays locked once it is. */
+    val lockDuration: Duration get() = WINDOW
+
     /** How many addresses are tracked right now, locked or not; for tests only. */
     internal fun trackedAddresses(): Int = byAddress.size
 

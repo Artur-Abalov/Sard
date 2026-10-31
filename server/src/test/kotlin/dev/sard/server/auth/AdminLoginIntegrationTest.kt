@@ -153,7 +153,7 @@ class AdminLoginIntegrationTest(
         val response = send("GET", "/api/v1/session", cookie = cookie)
         assertEquals(200, response.statusCode())
         assertEquals(TENANT_ID, body(response).path("tenantId").asString())
-        assertEquals("2026-10-02T00:00:00Z", body(response).path("expiresAt").asString())
+        assertEquals("2026-10-01T13:00:00Z", body(response).path("expiresAt").asString())
     }
 
     @Test
@@ -242,68 +242,67 @@ class AdminLoginIntegrationTest(
         }
     }
 
-    // ---- Правило: Сессия завершается после 12 часов бездействия и не позже 7 дней после входа ----
+    // ---- Правило: Сессия завершается после 1 час бездействия и не позже 8 часов после входа ----
 
     @Test
-    fun `a session a millisecond before 12 hours idle is still valid`() {
+    fun `a session a millisecond before 1 hour idle is still valid`() {
         val cookie = signIn()
-        movable.now = LOGIN + Duration.ofHours(12) - Duration.ofMillis(1)
+        movable.now = LOGIN + Duration.ofHours(1) - Duration.ofMillis(1)
         assertEquals(200, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
 
     @Test
-    fun `a session exactly 12 hours idle is no longer valid`() {
+    fun `a session exactly 1 hour idle is no longer valid`() {
         val cookie = signIn()
-        movable.now = LOGIN + Duration.ofHours(12)
+        movable.now = LOGIN + Duration.ofHours(1)
         assertEquals(401, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
 
     @Test
     fun `a request with the session extends its idle deadline`() {
         val cookie = signIn()
-        movable.now = LOGIN + Duration.ofHours(11)
+        movable.now = LOGIN + Duration.ofMinutes(30)
         send("GET", "/api/v1/agents", cookie = cookie)
-        movable.now = LOGIN + Duration.ofHours(22) + Duration.ofHours(23 - 22) - Duration.ofMillis(1)
-        // 2026-10-02T10:59:59.999Z, a millisecond before 12h past the 23:00 touch.
-        movable.now = Instant.parse("2026-10-02T10:59:59.999Z")
+        // 2026-10-01T13:29:59.999Z, a millisecond before 1h past the 12:30 touch.
+        movable.now = Instant.parse("2026-10-01T13:29:59.999Z")
         val response = send("GET", "/api/v1/session", cookie = cookie)
         assertEquals(200, response.statusCode())
-        assertEquals("2026-10-02T22:59:59.999Z", body(response).path("expiresAt").asString())
+        assertEquals("2026-10-01T14:29:59.999Z", body(response).path("expiresAt").asString())
     }
 
     @Test
     fun `a request that gets 200 from a stage 1 endpoint also extends the idle deadline`() {
         val cookie = signIn()
-        movable.now = LOGIN + Duration.ofHours(11)
+        movable.now = LOGIN + Duration.ofMinutes(30)
         val endpoint = send("GET", "/api/v1/agents", cookie = cookie)
         assertEquals(200, endpoint.statusCode())
-        movable.now = LOGIN + Duration.ofHours(22) + Duration.ofHours(1) - Duration.ofMillis(1)
+        movable.now = LOGIN + Duration.ofMinutes(30) + Duration.ofHours(1) - Duration.ofMillis(1)
         assertEquals(200, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
 
     @Test
-    fun `an active session a millisecond before 7 days after login is still valid`() {
+    fun `an active session a millisecond before 8 hours after login is still valid`() {
         val cookie = signIn()
         var now = LOGIN
-        while (now + Duration.ofHours(11) < LOGIN + Duration.ofDays(7)) {
-            now += Duration.ofHours(11)
+        while (now + Duration.ofMinutes(30) < LOGIN + Duration.ofHours(8)) {
+            now += Duration.ofMinutes(30)
             movable.now = now
             send("GET", "/api/v1/agents", cookie = cookie)
         }
-        movable.now = LOGIN + Duration.ofDays(7) - Duration.ofMillis(1)
+        movable.now = LOGIN + Duration.ofHours(8) - Duration.ofMillis(1)
         assertEquals(200, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
 
     @Test
-    fun `an active session exactly 7 days after login is no longer valid`() {
+    fun `an active session exactly 8 hours after login is no longer valid`() {
         val cookie = signIn()
         var now = LOGIN
-        while (now + Duration.ofHours(11) < LOGIN + Duration.ofDays(7)) {
-            now += Duration.ofHours(11)
+        while (now + Duration.ofMinutes(30) < LOGIN + Duration.ofHours(8)) {
+            now += Duration.ofMinutes(30)
             movable.now = now
             send("GET", "/api/v1/agents", cookie = cookie)
         }
-        movable.now = LOGIN + Duration.ofDays(7)
+        movable.now = LOGIN + Duration.ofHours(8)
         assertEquals(401, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
 

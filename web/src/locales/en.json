@@ -132,6 +132,7 @@
     "token_used": "The token is already used",
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
+    "access_denied": "You are not allowed to do this",
     "self_agent_confirmation_required": "Revoking the built-in agent needs the confirmation sard-self",
     "setup_required": "The server has no administrator yet: finish the first-start wizard",
     "setup_completed": "The first start is already done",
