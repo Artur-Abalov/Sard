@@ -56,13 +56,13 @@ class CoreSubjectSourceTest {
     @Test
     fun `Событие планировщика после запроса администратора не получает его субъекта`() {
         SecurityContextHolder.getContext().authentication = SubjectAuthentication(Subject.ADMINISTRATOR)
-        SecurityContextHolder.clearContext() // the end of the request: the filter of the chain clears the context
         var onSchedulerThread: Subject? = SSO_USER
 
-        val thread = Thread { onSchedulerThread = CoreSubjectSource().current() }.apply { start() }
-        thread.join()
+        // A thread started while the request holds an authentication does not inherit it.
+        Thread { onSchedulerThread = CoreSubjectSource().current() }.apply { start() }.join()
 
         assertNull(onSchedulerThread)
+        SecurityContextHolder.clearContext() // the end of the request: the filter of the chain clears the context
         assertNull(MutFlow.underTest { CoreSubjectSource().current() })
     }
 }
