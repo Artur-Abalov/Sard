@@ -158,6 +158,11 @@ message RegisterRequest {
   // other plugin and no other target, whatever a command says; the console
   // warns about a source the binding does not allow before it runs.
   repeated SecretInfo secrets = 13;
+  // Actions the agent carries out itself, without a plugin (today FORGET and
+  // PRUNE on a source agent; none on a verifier). An agent that does not know
+  // this field sends none, which the server reads as "cannot PRUNE". FORGET
+  // of an older agent is told by RepositoryInfo.retention_floor instead.
+  repeated Action builtin_actions = 14;
 }
 
 // SecretInfo is a secret of the host and its binding (S11).
@@ -382,6 +387,7 @@ message StepResult {
     VerifyOutput verify = 12;
     RunOutput run = 13;
     ForgetOutput forget = 15;
+    PruneOutput prune = 16;
   }
 
   // Machine-readable reason for STEP_STATUS_REJECTED; unspecified otherwise.
@@ -429,6 +435,19 @@ message ForgetOutput {
   // Who holds the repository lock (host, PID, user, time) as restic says it;
   // set with MAINTENANCE_FAILURE_REPOSITORY_LOCKED.
   string lock_holder = 6;
+}
+
+// PruneOutput is the outcome of a PRUNE step.
+message PruneOutput {
+  // Bytes restic prune removed, as its summary says; absent when restic did
+  // not report it, which is not the same as 0.
+  optional uint64 freed_bytes = 1;
+  // Bytes left in the repository, as the summary of restic prune says.
+  optional uint64 repository_size_bytes = 2;
+  MaintenanceFailure failure = 3;
+  // Who holds the repository lock as restic says it; set with
+  // MAINTENANCE_FAILURE_REPOSITORY_LOCKED.
+  string lock_holder = 4;
 }
 
 // MaintenanceFailure is the machine-readable cause of a failed maintenance
@@ -627,6 +646,9 @@ enum Action {
   // and the host's retention floor no longer protect. The server sends the
   // policy only, never a list of snapshots to delete.
   ACTION_FORGET = 5;
+  // Remove from the repository the data no snapshot refers to (restic
+  // prune). It forgets no snapshot and takes no parameters.
+  ACTION_PRUNE = 6;
 }
 
 // RunStep asks the agent to execute one workflow step with a plugin.
@@ -666,7 +688,16 @@ message RunStep {
   // FORGET step that carries anything outside this message, including
   // plugin, config_json, tags, snapshot_id and fields it does not know.
   ForgetTask forget = 12;
+  // Marks the step as PRUNE (ACTION_PRUNE only). The agent rejects a PRUNE
+  // step that carries anything else, including plugin, config_json, tags,
+  // snapshot_id and fields it does not know.
+  PruneTask prune = 13;
 }
+
+// PruneTask is the maintenance job a PRUNE step carries out. It has no fields
+// on purpose: the repository is RunStep.repository_name and the limit is
+// RunStep.timeout. There is no field that forces, repacks or loosens it.
+message PruneTask {}
 
 // ForgetTask is the retention job a FORGET step carries out. It names no
 // snapshot to delete: the agent computes them itself from the repository and
