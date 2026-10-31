@@ -299,6 +299,13 @@
 #   - Лишний контроллер (Р27, новое свойство для coder):
 #     sard.sample.stray-controller = true — образец добавляет контроллер
 #     GET /sample/stray в пакете dev.sard.server.sample (вне /api/v1).
+#   - Вход через SardSecurityCustomizer (spring-security.feature, Р41, Р44):
+#     sard.sample.public-ping = true — настройщик образца объявляет публичную
+#     операцию GET /api/v1/sample/ping (ответ 204); по умолчанию false.
+#     sard.sample.own-chain = true — образец объявляет свой бин
+#     SecurityFilterChain (отказ старта). sard.sample.public-outside = true —
+#     настройщик образца объявляет публичную операцию GET /sample/open вне
+#     /api/v1 (отказ старта).
 #
 # Теги
 #   @http      HTTP-запросы к запущенному контексту сервера (Spring Boot test,
