@@ -39,7 +39,7 @@ class Schedules(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val ids: UuidV7,
-    private val settings: SettingsEvents = SettingsEvents.NONE,
+    private val settings: SettingsEvents,
 ) {
     /**
      * Creates or replaces the schedule of [sourceId]; throws [InvalidSchedule] or SourceNotFound. The listeners hear

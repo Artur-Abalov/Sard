@@ -8,6 +8,7 @@ import ch.qos.logback.core.read.ListAppender
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.agents.EnrollmentGrpcService
 import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
@@ -128,7 +129,8 @@ class EnrollmentFailureIntegrationTest(
 
     private fun failingTokens(): EnrollmentTokens {
         val endpoint = AgentEndpoint("x:1")
-        return EnrollmentTokens(failingTenantSessions(), ca, clock, SecureRandom(), ids(), endpoint)
+        val sessions = failingTenantSessions()
+        return EnrollmentTokens(sessions, ca, clock, SecureRandom(), ids(), endpoint, SettingsEvents.NONE)
     }
 
     private fun countTokens(): Int? {

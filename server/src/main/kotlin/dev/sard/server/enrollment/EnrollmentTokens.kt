@@ -111,7 +111,7 @@ class EnrollmentTokens(
     private val random: SecureRandom,
     private val ids: UuidV7,
     private val endpoint: AgentEndpoint,
-    private val settings: SettingsEvents = SettingsEvents.NONE,
+    private val settings: SettingsEvents,
 ) {
     /**
      * A token for [tenantId], valid for [ttl] (default 24h, 5 minutes to 7 days inclusive,

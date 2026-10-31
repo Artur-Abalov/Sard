@@ -271,7 +271,7 @@ class SessionApiImplTest {
                     return administrators.replaceHash(expected, hash, now)
                 }
             }
-        val raced = SessionApiImpl(racing, hasher, store, tracker, { TENANT }, clock)
+        val raced = SessionApiImpl(racing, hasher, store, tracker, { TENANT }, clock, settings = SettingsEvents.NONE)
 
         val result = raced.changePassword(old, PASSWORD, "password-from-b1", ADDRESS)
 

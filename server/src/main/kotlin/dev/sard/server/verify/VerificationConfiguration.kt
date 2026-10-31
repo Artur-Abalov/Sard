@@ -32,6 +32,10 @@ class VerificationConfiguration {
     @Bean
     fun verificationHistory(clock: Clock) = VerificationHistory(UuidV7(clock, SecureRandom()))
 
+    /** The read side of the cycle, for the loop, the reports and the writes. */
+    @Bean
+    fun verificationScheduleReader(settings: VerificationSettings) = VerificationScheduleReader(settings)
+
     @Bean
     fun verificationCycles(
         clock: Clock,
@@ -55,8 +59,8 @@ class VerificationConfiguration {
         queue: VerificationQueue,
         settlement: VerificationSettlement,
         queued: ObjectProvider<StepsQueued>,
-        settings: VerificationSettings,
         pool: VerifierPool,
+        reader: VerificationScheduleReader,
     ) = VerificationLoop(
         sessions,
         clock,
@@ -64,7 +68,7 @@ class VerificationConfiguration {
         queue,
         settlement,
         queued.getIfUnique { StepsQueued.NONE },
-        VerificationSchedule(settings),
+        reader,
         StaleEpisodes(UuidV7(clock, SecureRandom())),
         NoVerifierEpisodes(UuidV7(clock, SecureRandom()), pool),
     )
@@ -81,8 +85,8 @@ class VerificationConfiguration {
     fun verificationReports(
         sessions: TenantSessions,
         clock: Clock,
-        settings: VerificationSettings,
-    ) = VerificationReports(sessions, clock, VerificationSchedule(settings))
+        reader: VerificationScheduleReader,
+    ) = VerificationReports(sessions, clock, reader)
 
     @Bean
     fun verificationTicker(
@@ -114,9 +118,9 @@ class VerificationWritesConfiguration {
     /** The installation's cycle: REST sets it, and the listeners hear of a change (CORE1 Р28). */
     @Bean
     fun verificationSchedule(
-        settings: VerificationSettings,
+        reader: VerificationScheduleReader,
         events: SettingsEvents,
-    ) = VerificationSchedule(settings, events)
+    ) = VerificationSchedule(reader, events)
 
     @Bean
     fun verifications(
@@ -124,9 +128,9 @@ class VerificationWritesConfiguration {
         clock: Clock,
         cycles: VerificationCycles,
         pool: VerifierPool,
-        schedule: VerificationSchedule,
+        reader: VerificationScheduleReader,
         switch: VerificationSwitch,
-    ) = Verifications(sessions, clock, cycles, pool, schedule, switch)
+    ) = Verifications(sessions, clock, cycles, pool, reader, switch)
 
     @Bean
     fun verificationSwitch(events: SettingsEvents) = VerificationSwitch(events)

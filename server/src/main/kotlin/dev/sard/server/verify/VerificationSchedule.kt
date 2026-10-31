@@ -44,12 +44,11 @@ data class CycleSchedule(
 }
 
 /**
- * The daily cycle of the installation (V-D9): one schedule for all tenants, the defaults until REST sets it. A change
- * starts from its own moment: the moments before it do not count, so changing the time never fires a missed cycle.
+ * The read side of the installation's daily cycle (V-D9): the defaults until REST sets one. A reader never writes, so
+ * it has no listeners to tell.
  */
-class VerificationSchedule(
+class VerificationScheduleReader(
     private val settings: VerificationSettings,
-    private val events: SettingsEvents = SettingsEvents.NONE,
 ) {
     fun current(session: Session): CycleSchedule {
         val row = session.createNativeQuery(READ, Array<Any?>::class.java).list().firstOrNull()
@@ -59,7 +58,7 @@ class VerificationSchedule(
     }
 
     /** The threshold in force: the saved one, or the server property's until the console saves one. */
-    private fun staleDays(saved: Any?): Int = (saved as Number?)?.toInt() ?: settings.staleAfterDays
+    fun staleDays(saved: Any?): Int = (saved as Number?)?.toInt() ?: settings.staleAfterDays
 
     /** The cycle's last moment at or before [now] and its next one. */
     fun moments(
@@ -67,6 +66,23 @@ class VerificationSchedule(
         now: Instant,
     ): CycleMoments = moments(current(session), now)
 
+    companion object {
+        fun moments(
+            schedule: CycleSchedule,
+            now: Instant,
+        ): CycleMoments = CycleMoments.of(schedule.fires, maxOf(schedule.since, now - LOOK_BACK), now)
+    }
+}
+
+/**
+ * The write side of the installation's daily cycle (V-D9): one schedule for all tenants. A change starts from its own
+ * moment: the moments before it do not count, so changing the time never fires a missed cycle. [events] has no default:
+ * the only instance that sets the schedule must tell the listeners.
+ */
+class VerificationSchedule(
+    private val reader: VerificationScheduleReader,
+    private val events: SettingsEvents,
+) {
     /**
      * Sets the cron and zone, and the threshold when [staleAfterDays] is given (null leaves it). Throws InvalidSchedule
      * naming the wrong field, or [InvalidStaleThreshold], and changes nothing then. One statement writes all three and
@@ -86,7 +102,7 @@ class VerificationSchedule(
         CronSchedule.parse(cron, timezone)
         if (staleAfterDays != null && staleAfterDays !in STALE_AFTER_DAYS) throw InvalidStaleThreshold(staleAfterDays)
         session.createNativeQuery(TURN, String::class.java).singleResult
-        val before = current(session)
+        val before = reader.current(session)
         val row =
             session
                 .createNativeQuery(WRITE.trimIndent(), Array<Any?>::class.java)
@@ -95,15 +111,8 @@ class VerificationSchedule(
                 .setParameter("now", now)
                 .setParameter("stale", staleAfterDays?.toShort(), Short::class.javaObjectType)
                 .singleResult
-        val after = CycleSchedule(row[0] as String, row[1] as String, now, staleDays(row[2]))
+        val after = CycleSchedule(row[0] as String, row[1] as String, now, reader.staleDays(row[2]))
         events.changedIf(before.facts() to after.facts(), session, tenantId, "verification_schedule")
         return after
-    }
-
-    companion object {
-        fun moments(
-            schedule: CycleSchedule,
-            now: Instant,
-        ): CycleMoments = CycleMoments.of(schedule.fires, maxOf(schedule.since, now - LOOK_BACK), now)
     }
 }

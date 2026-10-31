@@ -131,8 +131,8 @@ class Verifications(
     private val clock: Clock,
     private val cycles: VerificationCycles,
     private val pool: VerifierPool,
-    private val schedule: VerificationSchedule,
-    private val switch: VerificationSwitch = VerificationSwitch(),
+    private val schedule: VerificationScheduleReader,
+    private val switch: VerificationSwitch,
 ) {
     fun state(
         tenantId: UUID,

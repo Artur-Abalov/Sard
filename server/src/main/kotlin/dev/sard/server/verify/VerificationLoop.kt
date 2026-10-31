@@ -34,14 +34,14 @@ class VerificationLoop(
     private val queue: VerificationQueue,
     private val settlement: VerificationSettlement,
     private val queued: StepsQueued,
-    private val schedule: VerificationSchedule,
+    private val schedule: VerificationScheduleReader,
     private val stale: StaleEpisodes,
     private val noVerifier: NoVerifierEpisodes,
 ) {
     fun tick() {
         val now = clock.instant()
         val (tenants, cycle) = sessions.system { session -> tenants(session) to schedule.current(session) }
-        val moments = VerificationSchedule.moments(cycle, now)
+        val moments = VerificationScheduleReader.moments(cycle, now)
         for (tenantId in tenants.filter { it != HibernateTenantBridge.SYSTEM_TENANT_ID }) {
             runCatching { tick(tenantId, moments, cycle, now) }
                 .onFailure { log.warn("verification of tenant {} waits for the next tick", tenantId, it) }

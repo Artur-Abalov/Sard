@@ -153,7 +153,7 @@ class Agents(
     private val announcer: RunAnnouncer,
     private val events: RunEvents,
     private val clock: Clock,
-    private val settings: SettingsEvents = SettingsEvents.NONE,
+    private val settings: SettingsEvents,
 ) {
     /** Online: the stream manager has a live session of a not revoked agent. */
     fun online(row: AgentRow): Boolean = row.revokedAt == null && presence.online(row.id)

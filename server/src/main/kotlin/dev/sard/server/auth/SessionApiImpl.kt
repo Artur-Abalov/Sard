@@ -38,7 +38,7 @@ class SessionApiImpl(
     private val tenantResolver: TenantResolver,
     private val clock: Clock,
     private val publisher: SardEventPublisher = SardEventPublisher.NONE,
-    private val settings: SettingsEvents = SettingsEvents.NONE,
+    private val settings: SettingsEvents,
     private val actors: SubjectActors = SubjectActors.NONE,
 ) : SessionApi {
     override fun createSession(

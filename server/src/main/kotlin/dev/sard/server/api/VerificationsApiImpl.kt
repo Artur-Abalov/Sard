@@ -34,6 +34,7 @@ import java.time.Clock
 import java.time.LocalDate
 import java.util.UUID
 import dev.sard.server.verify.VerificationSchedule as Schedule
+import dev.sard.server.verify.VerificationScheduleReader as Reader
 
 private const val READ_ONLY_NOTE = "Give the verifier's host a storage account that can only read the repository."
 
@@ -50,6 +51,7 @@ class VerificationsApiImpl(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val schedule: Schedule,
+    private val reader: Reader,
 ) : VerificationsApi {
     override fun getSourceVerification(sourceId: UUID): SourceVerificationState {
         val state = verifications.state(tenants.currentTenantId(), sourceId)
@@ -87,11 +89,11 @@ class VerificationsApiImpl(
 
     override fun getVerificationSchedule(): VerificationSchedule =
         sessions.inTenant(tenants.currentTenantId()) { session ->
-            val current = schedule.current(session)
+            val current = reader.current(session)
             VerificationSchedule(
                 current.cron,
                 current.timezone,
-                Schedule.moments(current, clock.instant()).next,
+                Reader.moments(current, clock.instant()).next,
                 current.staleAfterDays,
             )
         }
@@ -101,7 +103,7 @@ class VerificationsApiImpl(
         val stale = input.staleAfterDays?.let(::wholeDays)
         val now = clock.instant()
         val set = sessions.inTenant(tenant) { schedule.set(it, tenant, input.cron, input.timezone, stale, now) }
-        return VerificationSchedule(set.cron, set.timezone, Schedule.moments(set, set.since).next, set.staleAfterDays)
+        return VerificationSchedule(set.cron, set.timezone, Reader.moments(set, set.since).next, set.staleAfterDays)
     }
 
     override fun getVerificationReport(

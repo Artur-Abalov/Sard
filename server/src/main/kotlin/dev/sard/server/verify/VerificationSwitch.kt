@@ -17,7 +17,7 @@ private const val LIVE = "select count(*) from sources where tenant_id = :tenant
 
 /** Turns the restore verification of a source on or off (V4) and tells the listeners when that changed it (Р28). */
 class VerificationSwitch(
-    private val events: SettingsEvents = SettingsEvents.NONE,
+    private val events: SettingsEvents,
 ) {
     /** Throws [SourceNotFound] when the tenant has no live source [sourceId]. */
     fun set(

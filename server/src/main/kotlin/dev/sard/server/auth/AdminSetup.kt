@@ -26,7 +26,7 @@ class StoredAdminSetup(
     private val administrators: Administrators,
     private val hasher: PasswordHasher,
     private val clock: Clock,
-    private val settings: SettingsEvents = SettingsEvents.NONE,
+    private val settings: SettingsEvents,
 ) : AdminSetup {
     override val external = false
 

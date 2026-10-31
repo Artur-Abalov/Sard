@@ -548,7 +548,7 @@ class VerificationIntegrationTest(
     @Test
     fun `the property's threshold applies until the console saves one`() {
         jdbc.update("delete from verification_schedule")
-        val schedule = VerificationSchedule(VerificationSettings(staleAfter = Duration.ofDays(5)))
+        val schedule = VerificationScheduleReader(VerificationSettings(staleAfter = Duration.ofDays(5)))
         val before = sessions.system { schedule.current(it) }.staleAfterDays
 
         saveThreshold(3)

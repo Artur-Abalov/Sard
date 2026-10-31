@@ -46,7 +46,7 @@ data class TimeoutDefaults(
 class TimeoutSettings(
     private val sessions: TenantSessions,
     private val clock: Clock,
-    private val events: SettingsEvents = SettingsEvents.NONE,
+    private val events: SettingsEvents,
 ) {
     fun get(tenantId: UUID): TimeoutDefaults = sessions.inTenant(tenantId) { read(it, tenantId) }
 

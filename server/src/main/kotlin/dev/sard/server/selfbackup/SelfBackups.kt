@@ -146,7 +146,7 @@ class SelfBackups internal constructor(
     private val mapper: ObjectMapper,
     /** The onboarding is over: only then an unconfirmed key copy is a warning, not a step of the wizard. */
     private val onboardingComplete: () -> Boolean = { false },
-    private val events: SettingsEvents = SettingsEvents.NONE,
+    private val events: SettingsEvents,
 ) {
     /**
      * Binds the self-backup to [repositoryName] of the live built-in agent: creates the system sources with their
