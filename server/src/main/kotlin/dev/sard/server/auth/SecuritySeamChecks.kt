@@ -56,15 +56,21 @@ private fun isFromCore(
     name: String,
     core: URL?,
 ): Boolean {
-    val declaring = declaringClassOf(beans, name)
-    val location =
-        declaring
-            ?.let { runCatching { Class.forName(it, false, beans.beanClassLoader) }.getOrNull() }
-            ?.protectionDomain
-            ?.codeSource
-            ?.location
-    return location != null && location.toString() == core?.toString()
+    val coreLocation = core?.toString() ?: return false
+    return declaringClassOf(beans, name)?.let { locationOf(it, beans.beanClassLoader) } == coreLocation
 }
+
+/** The code source a class is loaded from; null for a class that cannot be loaded. */
+private fun locationOf(
+    className: String,
+    loader: ClassLoader?,
+): String? =
+    runCatching { Class.forName(className, false, loader) }
+        .getOrNull()
+        ?.protectionDomain
+        ?.codeSource
+        ?.location
+        ?.toString()
 
 private fun originOf(
     beans: ConfigurableListableBeanFactory,
@@ -78,12 +84,15 @@ private fun originOf(
 private fun declaringClassOf(
     beans: ConfigurableListableBeanFactory,
     name: String,
-): String? {
-    if (!beans.containsBeanDefinition(name)) return beans.getType(name)?.name
-    val definition: BeanDefinition = beans.getBeanDefinition(name)
-    return (definition as? AnnotatedBeanDefinition)?.factoryMethodMetadata?.declaringClassName
-        ?: definition.beanClassName
-}
+): String? =
+    if (beans.containsBeanDefinition(name)) {
+        declaringClassOf(beans.getBeanDefinition(name))
+    } else {
+        beans.getType(name)?.name
+    }
+
+private fun declaringClassOf(definition: BeanDefinition): String? =
+    (definition as? AnnotatedBeanDefinition)?.factoryMethodMetadata?.declaringClassName ?: definition.beanClassName
 
 /** The public operations an extension declares must be under /api/v1; anything else is open to the world. */
 internal fun checkPublicOperations(customizers: List<NamedCustomizer>) {
@@ -114,19 +123,3 @@ internal fun customizersOf(beans: ConfigurableListableBeanFactory): List<NamedCu
             Triple(order, name, beans.getBean(name, SardSecurityCustomizer::class.java))
         }.sortedBy { it.first }
         .map { (_, name, customizer) -> NamedCustomizer(name, originOf(beans, name), customizer) }
-
-/** Gives the public operations of the extensions an empty security requirement; undescribed ones are skipped. */
-internal fun describePublicOperations(
-    api: io.swagger.v3.oas.models.OpenAPI,
-    operations: Set<Operation>,
-) {
-    for (operation in operations) {
-        val item = api.paths?.get(operation.pathTemplate) ?: continue
-        item
-            .readOperationsMap()
-            .entries
-            .firstOrNull { it.key.name == operation.method }
-            ?.value
-            ?.security = emptyList()
-    }
-}

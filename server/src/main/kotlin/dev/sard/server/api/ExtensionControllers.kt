@@ -39,17 +39,19 @@ internal class ExtensionControllers(
     private fun pathsOf(info: RequestMappingInfo): Set<String> =
         info.pathPatternsCondition
             ?.patternValues
-            ?.takeIf { it.isNotEmpty() }
-            ?: setOf(NO_PATH)
+            .orEmpty()
+            .ifEmpty { setOf(NO_PATH) }
 
     private fun isTrusted(type: Class<*>): Boolean {
-        val location =
-            type.protectionDomain
-                ?.codeSource
-                ?.location
-                ?.toString()
-        return location != null && (location == core?.toString() || anchors.any { it.toString() == location })
+        val location = locationOf(type) ?: return false
+        return location == core?.toString() || anchors.any { it.toString() == location }
     }
+
+    private fun locationOf(type: Class<*>): String? =
+        type.protectionDomain
+            ?.codeSource
+            ?.location
+            ?.toString()
 
     companion object {
         /** The code sources of the frameworks' controllers; a framework that is not on the class path adds none. */
