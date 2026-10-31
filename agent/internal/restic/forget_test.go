@@ -85,3 +85,15 @@ func TestABackupWaitsForAnExclusiveLockBeforeItReadsTheRepositoryID(t *testing.T
 		t.Errorf("args %q, want %q", got, want)
 	}
 }
+
+// restic prints "repo already locked, waiting up to 5m0s for the lock" on
+// stdout, before the JSON of the config (seen on restic 0.19.1).
+func TestABackupReadsTheRepositoryIDAfterTheWaitingMessageOfRestic(t *testing.T) {
+	wait := "repo already locked, waiting up to 5m0s for the lock\n"
+	cat := reply{inline: wait + `{"version": 2, "id": "` + goldenRepoID + `", "chunker_polynomial": "341cffa9835e0d"}`}
+	f := newFixture(t, map[string]reply{"cat": cat, "backup": {stdout: "backup-ok.stdout"}})
+	sum, err := f.build().Backup(context.Background(), request, nil)
+	if err != nil || sum.RepositoryID != goldenRepoID {
+		t.Fatalf("summary %+v, err %v", sum, err)
+	}
+}

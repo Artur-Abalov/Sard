@@ -69,7 +69,7 @@ func Plan(snaps []restic.Snapshot, t Task, floor config.Floor, now time.Time) De
 		}
 	}
 	candidates := t.forgettable(mains, now)
-	protected := floorKeep(mains, floor)
+	protected := floorKeep(mains, floor, now)
 	var d Decision
 	gone := map[string]bool{}
 	for _, s := range newestFirst(mains) {
@@ -100,7 +100,7 @@ func (t Task) forgettable(mains []restic.Snapshot, now time.Time) map[string]boo
 			complete = append(complete, s)
 		}
 	}
-	kept := t.Policy.keep(complete)
+	kept := t.Policy.keep(complete, now)
 	for _, id := range t.Keep {
 		kept[id] = true
 	}
@@ -124,12 +124,13 @@ func (t Task) stale(s restic.Snapshot, complete []restic.Snapshot, now time.Time
 }
 
 // floorKeep are the main snapshots the floor of the host protects: the
-// latest KeepLast and those not older than KeepWithinDays from the newest.
-func floorKeep(mains []restic.Snapshot, f config.Floor) map[string]bool {
+// latest KeepLast and those not older than KeepWithinDays from the newest
+// (or from now, if the newest is dated in the future).
+func floorKeep(mains []restic.Snapshot, f config.Floor, now time.Time) map[string]bool {
 	if f.Disabled {
 		return nil
 	}
-	return Policy{Last: f.KeepLast, Within: time.Duration(f.KeepWithinDays) * 24 * time.Hour}.keep(mains)
+	return Policy{Last: f.KeepLast, Within: time.Duration(f.KeepWithinDays) * 24 * time.Hour}.keep(mains, now)
 }
 
 // forgottenParts are the parts of forgotten main snapshots and those whose

@@ -56,13 +56,16 @@ func buckets(p Policy) []*bucket {
 }
 
 // keep is the set of ids restic forget with the policy keeps among snapshots,
-// as one group: the rules of restic's ApplyPolicy over all of them.
-func (p Policy) keep(snaps []restic.Snapshot) map[string]bool {
+// as one group: the rules of restic's ApplyPolicy over all of them. Like
+// restic, it measures Within from the newest snapshot, but never from one
+// later than now: a snapshot dated in the future (a skewed clock, a forged
+// time) cannot push the boundary of Within past what really is recent.
+func (p Policy) keep(snaps []restic.Snapshot, now time.Time) map[string]bool {
 	kept := map[string]bool{}
 	list := newestFirst(snaps)
 	bs := buckets(p)
 	for i, s := range list {
-		if i < int(min(p.Last, uint32(len(list)))) || p.within(list[0], s) {
+		if i < int(min(p.Last, uint32(len(list)))) || p.within(minTime(list[0].Time, now), s) {
 			kept[s.ID] = true
 		}
 		for _, b := range bs {
@@ -74,9 +77,16 @@ func (p Policy) keep(snaps []restic.Snapshot) map[string]bool {
 	return kept
 }
 
-// within: s is newer than Within before the newest snapshot of the group.
-func (p Policy) within(newest, s restic.Snapshot) bool {
-	return p.Within != 0 && s.Time.After(newest.Time.Add(-p.Within))
+// within: s is newer than Within before the reference time.
+func (p Policy) within(reference time.Time, s restic.Snapshot) bool {
+	return p.Within != 0 && s.Time.After(reference.Add(-p.Within))
+}
+
+func minTime(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
 }
 
 // take reports whether s is the first snapshot of a new period that the rule

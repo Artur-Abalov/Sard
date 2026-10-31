@@ -257,10 +257,10 @@ func TestПределСохраняетПоследние7СнимковПриП
 func TestПределСохраняетВсеСнимкиЗа14ДнейОтСамогоНового(t *testing.T) {
 	var snaps []restic.Snapshot
 	for i := 0; i < 120; i++ { // 4 a day for 30 days; i = 0 is the oldest
-		snaps = append(snaps, main(fmt.Sprintf("m%d", i), "S", at(30, 18).Add(-time.Duration(119-i)*6*time.Hour)))
+		snaps = append(snaps, main(fmt.Sprintf("m%d", i), "S", at(30, 6).Add(-time.Duration(119-i)*6*time.Hour)))
 	}
 	d := plan(snaps, retention.Task{Policy: last(1)}, builtInFloor)
-	cut := at(30, 18).Add(-14 * 24 * time.Hour)
+	cut := at(30, 6).Add(-14 * 24 * time.Hour)
 	var want []string
 	for _, s := range snaps {
 		if !s.Time.After(cut) {
@@ -346,4 +346,14 @@ func TestЗаданиеСИсточникомДругогоИсточникаН�
 	if len(d.Forget()) != 13 {
 		t.Errorf("forget %d ids", len(d.Forget()))
 	}
+}
+
+// A snapshot dated in the future (a skewed or forged clock) must not move the
+// boundary of the floor past the recent snapshots (restic does the same).
+func TestСнимокИзБудущегоНеСдвигаетГраницуПредела(t *testing.T) {
+	snaps := weekly("S", 10)
+	snaps = append(snaps, main("future", "S", now.AddDate(10, 0, 0)))
+	d := plan(snaps, retention.Task{Policy: last(1)}, config.Floor{KeepWithinDays: 14})
+	// m10 (today) and m9 (7 days ago) are within 14 days of now.
+	sameSet(t, "forget", d.Forget(), ids(names(1, 8)...))
 }

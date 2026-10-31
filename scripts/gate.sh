@@ -165,7 +165,7 @@ mutation_total() {
 # Integration tests run the pinned restic (agent/internal/restic/restic-version)
 # against a local repository in temporary directories: the wrapper itself
 # and plugins driven through pluginhost, and sard-agent repo init / repo list.
-AGENT_INTEGRATION_PKGS=(./internal/restic/... ./internal/pluginhost/... ./cmd/sard-agent/...)
+AGENT_INTEGRATION_PKGS=(./internal/restic/... ./internal/pluginhost/... ./internal/retention/... ./cmd/sard-agent/...)
 gate_agent_integration() {
   local dir="$ROOT/agent"
   say agent "integration tests with the pinned restic"

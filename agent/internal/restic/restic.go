@@ -209,7 +209,7 @@ func (c *CLI) readID(ctx context.Context, flags ...string) (string, error) {
 	var cfg struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(out.Bytes(), &cfg) // invalid JSON leaves the id empty
+	_ = json.Unmarshal(fromJSON(out.Bytes()), &cfg) // invalid JSON leaves the id empty
 	return requireID("restic cat", cfg.ID)
 }
 
@@ -238,6 +238,15 @@ func (c *CLI) Init(ctx context.Context) (string, error) {
 	}
 	_ = json.Unmarshal(out.Bytes(), &msg) // invalid JSON leaves the id empty
 	return requireID("restic init", msg.ID)
+}
+
+// fromJSON drops what restic printed on stdout before the JSON: the message
+// that it waits for a lock.
+func fromJSON(out []byte) []byte {
+	if i := bytes.IndexByte(out, '{'); i > 0 {
+		return out[i:]
+	}
+	return out
 }
 
 func requireID(cmd, id string) (string, error) {
