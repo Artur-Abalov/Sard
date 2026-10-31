@@ -4,8 +4,9 @@
 # QA: шаг FORGET и нижний предел хранения на хосте (L1a)
 
 Сценарии: `docs/specs/agent/retention-forget.feature` и
-`docs/specs/proto/retention-forget.feature` (черновик, ждёт утверждения
-владельцем). Здесь вручную проходятся сценарии с тегом `@qa`; остальные
+`docs/specs/proto/retention-forget.feature` (ответы владельца на ВL1–ВL5
+внесены 2026-10-31; пункты с пометками «ИЗМЕНЕНО» и «НОВОЕ» ждут
+утверждения). Здесь вручную проходятся сценарии с тегом `@qa`; остальные
 проверяют тесты `@start`, `@register`, `@unit`, `@restic`, `@wire`, `@buf` с теми
 же названиями.
 
@@ -36,8 +37,9 @@
 
 ```bash
 seed() { # seed <source> <run> <YYYY-MM-DD HH:MM:SS> [доп. метки через запятую]
+  # SEED_HOST=db1 seed … — снимок «сделан хостом db1»
   d=$(mktemp -d); echo "$3" > "$d/f"
-  rs backup --time "$3" --tag "sard.source=$1,sard.run=$2,sard.step=st-$2${4:+,$4}" "$d" --json \
+  rs backup ${SEED_HOST:+--host "$SEED_HOST"} --time "$3" --tag "sard.source=$1,sard.run=$2,sard.step=st-$2${4:+,$4}" "$d" --json \
     | jq -r 'select(.message_type=="summary").snapshot_id'
   rm -rf "$d"
 }
@@ -131,8 +133,21 @@ retention_floor:
 19. Учётка без права удаления (только для стенда S3 из ADR 0047): подключить
     репозиторий ключом без `DeleteObject` вне `locks/`, засеять 30 снимков,
     отправить FORGET. → `failed`, в итоге
-    `storage account has no delete permission`; `count S1` печатает `30`.
+    `storage account has no delete permission: assign repository maintenance
+    to a host whose account can delete`; `count S1` печатает `30`.
 20. Отказ поддельного шага: отправить агенту шаг FORGET с непустым
     `snapshot_id` (стенд e2e с подменённым сервером, T3; вручную через консоль
     невозможно — это и есть свойство). → `rejected`,
     `forget takes no snapshot id`; список снимков не изменился.
+21. Попытка обойти предел (тот же стенд, что шаг 20). Предел встроенный,
+    30 ежедневных снимков `S1`. Отправить FORGET `S1` с «keep_last 1» и
+    `config_json` `{"force":true}`; затем такой же шаг с `tags`
+    `retention_floor=disabled`. → Оба шага `rejected`,
+    `forget accepts no overrides`; `count S1` печатает `30` после каждого.
+22. Снимки, сделанные другим хостом. Предел встроенный, репозиторий пуст.
+    Засеять 20 недельных снимков от имени хоста `db1`:
+    `for i in $(seq 1 20); do SEED_HOST=db1 seed S1 r$i "$(date -d "2026-11-30 10:00 -$(( (20-i)*7 )) days" '+%F %T')"; done >/dev/null`.
+    Отправить FORGET `S1` с «keep_last 1» этому агенту (не `db1`).
+    → `succeeded`; `count S1` печатает `7`;
+    `rs snapshots --tag sard.source=S1 --json | jq -r '.[].hostname' | sort -u`
+    печатает только `db1`.
