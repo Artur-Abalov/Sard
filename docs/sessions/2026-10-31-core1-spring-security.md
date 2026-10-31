@@ -35,3 +35,20 @@
 - Тесты `OnboardingGuardApiIntegrationTest` с обходными путями (`;`, `..`) теперь ждут 400 брандмауэра вместо 409.
 - Web-моки воспроизводят только функциональные заголовки (`Content-Type`, `Retry-After`, `Set-Cookie`), заголовки
   безопасности — нет, поэтому моки не менялись.
+
+## Отклонения / долги
+Замечания architect и что сделано (сессия 2):
+- (a) Мастер и субъект: `administratorSession` требовала только аутентификацию. Теперь `administratorSession(SubjectSource)`:
+  аутентифицирован, не анонимный (`Authentication?.isSignedIn()`, тот же предикат в `requireAuthentication`) и шов называет
+  субъекта. Тест `SecurityExtensionApiIntegrationTest`.
+- (b) Настройщик мог сузить единственную цепочку (`securityMatcher`): `checkChainIntact` после `build()` — отказ старта с
+  именами бинов. Тест `SecurityStartupChecksTest`.
+- (c) Автоконфигурации безопасности Spring gRPC были активны (бины `grpcSecurity`, `coroutineSecurityContextInterceptor`
+  на 9090): тест `AgentAuthIntegrationTest` сначала упал с этими тремя бинами, затем они исключены.
+- (d) `NoDefaultUser` терял список исключений оператора: заменён `SecurityAutoConfigurationFilter`
+  (`AutoConfigurationImportFilter`), свойств не трогает; тест через `AutoConfigurationImportSelector` с `exclude[0]`.
+- (e) Документация: KDoc и ADR 0021, 0071, OQ-035, `docs/extensions.md` (предупреждение об `oauth2Login`) приведены в
+  соответствие с кодом; атрибут сессии — зацепка `TenantResolver`, не контракт расширения.
+- Тестовые пробелы: сценарий «Событие планировщика после запроса администратора…» покрыт на уровне `CoreSubjectSource`
+  (контекст не виден другому потоку), не как @http с тиком планировщика. Р46 закреплён тестом архитектуры. Порядок
+  настройщиков по `@Order`, затем по имени бина, а не по id расширения — вопрос specifier, код не менялся.

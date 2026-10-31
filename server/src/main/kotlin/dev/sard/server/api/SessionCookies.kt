@@ -3,27 +3,34 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.extension.SubjectSource
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseCookie
+import org.springframework.security.authentication.AnonymousAuthenticationToken
+import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 
 /**
- * Name of the request attribute the core's own chain attaches the touched [dev.sard.server.auth.AdminSession] under,
- * for the code of the core that needs more than the subject (the tenant of the session). An extension is not asked
- * to set it: it authenticates through the security context (CORE1 Р43).
+ * Name of the request attribute the core's own chain attaches the touched [dev.sard.server.auth.AdminSession] under.
+ * It is the hook of a tenant resolver (ADR 0013, OQ-035) that wants the session of the request; no main code of the
+ * core reads it. An extension is not asked to set it: it authenticates through the security context (CORE1 Р43).
  */
 const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.session"
 
 /** The value of the request's cookie [name], or null when it carries none. */
 fun HttpServletRequest.cookie(name: String): String? = cookies.orEmpty().firstOrNull { it.name == name }?.value
 
+/** Signed in: an authentication that is authenticated and not the anonymous one (Р38, Р43). */
+fun Authentication?.isSignedIn(): Boolean = this != null && isAuthenticated && this !is AnonymousAuthenticationToken
+
 /**
- * True when the chain authenticated this request (Р43): the core's session cookie, or the sign-in of an extension.
- * The first-start wizard learns from it that the caller is signed in.
+ * True when the request is signed in (the core's session cookie, or the sign-in of an extension) and the
+ * [SubjectSource] names a subject for it (Р43). The first-start wizard learns from it that the caller is an
+ * administrator; a failing source says no.
  */
-fun HttpServletRequest.administratorSession(): Boolean {
-    val authentication = SecurityContextHolder.getContext().authentication
-    return authentication?.isAuthenticated == true
+fun administratorSession(subjects: SubjectSource): Boolean {
+    val named = runCatching { subjects.current() }.getOrNull()
+    return SecurityContextHolder.getContext().authentication.isSignedIn() && named != null
 }
 
 /** A fresh session cookie (Р7: no Max-Age, no Expires). */

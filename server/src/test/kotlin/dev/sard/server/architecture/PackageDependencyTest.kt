@@ -65,6 +65,18 @@ class PackageDependencyTest {
     }
 
     @Test
+    fun `the metrics listener is outside Spring Security and the servlet stack`() {
+        val outside = Regex("""^import\s+(org\.springframework\.security|jakarta\.servlet|org\.springframework\.web)""")
+        for (slice in listOf("metrics", "prometheus")) {
+            val files = MAIN.resolve(slice).listFiles { f -> f.extension == "kt" }.orEmpty()
+            assertTrue(files.size >= 5, "the scan found only ${files.size} files of $slice")
+            val offenders =
+                files.flatMap { f -> f.readLines().filter { outside.containsMatchIn(it) }.map { "${f.name}: $it" } }
+            assertEquals(emptyList(), offenders)
+        }
+    }
+
+    @Test
     fun `selfbackup knows metrics and metrics does not know selfbackup`() {
         assertTrue("metrics" in importedBy("selfbackup"))
         assertTrue("selfbackup" !in importedBy("metrics"))

@@ -51,53 +51,6 @@ internal fun checkSecurityBeans(core: URL?) =
         }
     }
 
-private fun isFromCore(
-    beans: ConfigurableListableBeanFactory,
-    name: String,
-    core: URL?,
-): Boolean {
-    val coreLocation = core?.toString() ?: return false
-    return declaringClassOf(beans, name)?.let { locationOf(it, beans.beanClassLoader) } == coreLocation
-}
-
-/** The code source a class is loaded from; null for a class that cannot be loaded. */
-private fun locationOf(
-    className: String,
-    loader: ClassLoader?,
-): String? =
-    loadedOrNull(className, loader)
-        ?.protectionDomain
-        ?.codeSource
-        ?.location
-        ?.toString()
-
-private fun loadedOrNull(
-    className: String,
-    loader: ClassLoader?,
-): Class<*>? = runCatching { Class.forName(className, false, loader) }.getOrNull()
-
-private fun originOf(
-    beans: ConfigurableListableBeanFactory,
-    name: String,
-): String = declaringClassOf(beans, name) ?: "unknown"
-
-/**
- * The class whose code declares the bean: the configuration of a `@Bean` method, else the bean's own class; a
- * singleton registered by hand has no definition, and its class is the answer.
- */
-private fun declaringClassOf(
-    beans: ConfigurableListableBeanFactory,
-    name: String,
-): String? =
-    if (beans.containsBeanDefinition(name)) {
-        declaringClassOf(beans.getBeanDefinition(name))
-    } else {
-        beans.getType(name)?.name
-    }
-
-private fun declaringClassOf(definition: BeanDefinition): String? =
-    (definition as? AnnotatedBeanDefinition)?.factoryMethodMetadata?.declaringClassName ?: definition.beanClassName
-
 /** The public operations an extension declares must be under /api/v1; anything else is open to the world. */
 internal fun checkPublicOperations(customizers: List<NamedCustomizer>) {
     val outside =

@@ -129,6 +129,16 @@ class SecurityStartupChecksTest {
     }
 
     @Test
+    fun `Настройщик, который сужает цепочку ядра, останавливает старт`() {
+        val narrowing = customizer { http -> http.securityMatcher("/api/v1/sso/**") }
+
+        runner.withBean("narrow-sec", SardSecurityCustomizer::class.java, { narrowing }).run { ctx ->
+            val text = failureOf(ctx)
+            assertTrue("narrow-sec" in text && "SardSecurityCustomizer" in text, text)
+        }
+    }
+
+    @Test
     fun `Сбой настройщика расширения останавливает старт`() {
         val broken = customizer { error("customizer broken") }
 

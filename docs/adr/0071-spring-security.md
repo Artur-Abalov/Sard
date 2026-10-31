@@ -21,17 +21,21 @@ ADR 0021 отверг Spring Security: функциональность W1b (coo
 ## Решения
 1. **Одна цепочка `SecurityFilterChain`** (`CoreSecurityAutoConfiguration.sardSecurityFilterChain`) на
    HTTP-порту. Spring Security не включает в ней ничего, что видно снаружи: нет пользователя по умолчанию и
-   пароля в логе (автоконфигурацию `UserDetailsServiceAutoConfiguration` исключает `EnvironmentPostProcessor` `NoDefaultUser`, поэтому
-   и любое приложение на ядре, не только со своим `main`),
+   пароля в логе (автоконфигурации `UserDetailsServiceAutoConfiguration` и двух автоконфигураций безопасности Spring gRPC
+   не импортирует `SecurityAutoConfigurationFilter` — `AutoConfigurationImportFilter` из `spring.factories`, поэтому
+   так для любого приложения на ядре, и исключения оператора в `spring.autoconfigure.exclude` остаются его),
    формы входа, Basic, выхода, remember-me, request cache, CORS, CSRF, `HttpSession` (cookie `JSESSIONID`
    нет). Порядок: заголовки API → Origin → контекст безопасности → исключения → доступ. gRPC (mTLS и
-   перехватчик ядра, порт 9090) и слушатель метрик вне Spring Security.
+   перехватчик ядра, порт 9090) и слушатель метрик вне Spring Security: без автоконфигурации безопасности gRPC на
+   порту нет бинов `org.springframework.grpc.server.security.*` и перехватчика `CoroutineSecurityContextInterceptor`
+   (тест `AgentAuthIntegrationTest`).
 2. **Сессия ядра — `SecurityContextRepository` поверх `SessionStore`** (`SessionSecurityContextRepository`).
    Действующая cookie `sard_session` (первая в заголовке, Р53) даёт `SubjectAuthentication(Subject.ADMINISTRATOR)`
    и продлевает сессию — для запросов под `/api/v1`, кроме `POST /api/v1/session`, `GET /api/v1/status` и
    `POST /api/v1/onboarding/setup-session` (Р52). Контекст читается один раз при входе запроса в цепочку,
-   после проверки Origin, и не сохраняется: он живёт один запрос. Сама сессия остаётся атрибутом запроса
-   для кода ядра, которому нужен её арендатор; от расширения этого атрибута не требуется.
+   после проверки Origin, и не сохраняется: он живёт один запрос. Сама сессия остаётся атрибутом
+   запроса `SESSION_REQUEST_ATTRIBUTE` — зацепкой для `TenantResolver` расширения (ADR 0013, OQ-035), которому нужен
+   арендатор сессии; production-код ядра его не читает, а от расширения этого атрибута не требуется.
 3. **Проверка Origin — фильтр цепочки** (`OriginGuardFilter`, правила 0021 и 0046 прежние), CSRF Spring
    Security выключен. Отказы цепочки — прежние problem+json: 401 `unauthenticated` (точка входа; для
    `DELETE /api/v1/session` она очищает cookie) без `WWW-Authenticate`, 403 `origin_rejected`, 403
@@ -57,6 +61,8 @@ ADR 0021 отверг Spring Security: функциональность W1b (coo
    Spring Boot вернул бы пользователя по умолчанию). `SessionApi` остаётся внутренним и заменяемым
    (`@ConditionalOnMissingBean`); бин `sessionAuthFilterRegistration` и обязанность выставлять
    `SESSION_REQUEST_ATTRIBUTE` уходят с фильтром.
+   Мастер первого запуска считает вызывающего администратором, если он аутентифицирован (не анонимно) и
+   `SubjectSource` называет ему субъекта (`administratorSession`).
 8. **Проверки старта** (отказ закрыт; защита от ошибки, а не граница безопасности, 0070 п. 8): бин
    `SecurityFilterChain` или `WebSecurityCustomizer` не из `server-core` (по источнику кода, как контроллеры);
    публичная операция расширения вне `/api/v1`; настройщик бросил исключение или задал правила доступа.
@@ -81,7 +87,8 @@ ADR 0021 отверг Spring Security: функциональность W1b (coo
 
 ## Последствия
 - Расширение встраивает вход через `SardSecurityCustomizer` и `SubjectAuthentication`, не трогая внутренние
-  типы; образец `examples/extension-sample` показывает оба.
+  типы; образец `examples/extension-sample` показывает `SardSecurityCustomizer` (публичные операции и отказы старта),
+  но не `SubjectAuthentication`: фильтр входа в образце не нужен.
 - Ответы `/api/v1` получили два заголовка (OpenAPI их не описывает); пути, которые нельзя сопоставить
   однозначно, отвечают 400 вместо 401, 404 или 405.
 - ABI ядра выросло на `SubjectAuthentication` и `SardSecurityCustomizer` и уменьшилось на

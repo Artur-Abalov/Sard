@@ -94,6 +94,7 @@ class AgentAuthIntegrationTest(
     @Autowired private val enrollment: Enrollment,
     @Autowired private val tokens: EnrollmentTokens,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val context: org.springframework.context.ApplicationContext,
     @LocalGrpcServerPort private val grpcPort: Int,
 ) {
     @TempDir
@@ -219,6 +220,20 @@ class AgentAuthIntegrationTest(
         Metadata().apply {
             put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Basic YWRtaW46eA==")
         }
+
+    @Test
+    fun `gRPC агентов не получает бинов Spring Security`() {
+        val security =
+            context.beanDefinitionNames.filter { name ->
+                context
+                    .getType(name)
+                    ?.name
+                    .orEmpty()
+                    .startsWith("org.springframework.grpc.server.security")
+            }
+
+        assertEquals(emptyList(), security)
+    }
 
     @Test
     fun `an Authorization header does not open a call without a certificate`() {

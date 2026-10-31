@@ -6,7 +6,7 @@ package dev.sard.server.api
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The name an enterprise authentication filter must set for an administrator (ADR 0021, the seam; F4a Р16). */
+/** The request attribute the chain puts the session under: the hook of a tenant resolver (ADR 0071). */
 class SessionRequestAttributeTest {
     @Test
     fun `the request attribute of an administrator session is the one the enterprise contract names`() {
