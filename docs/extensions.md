@@ -43,7 +43,9 @@ GitHub Packages репозитория (`https://maven.pkg.github.com/artur-abal
 
 ```bash
 gh attestation verify sard-server-core-1.2.0-beta.3.jar --repo Artur-Abalov/Sard
-``` Для локальной работы:
+```
+
+Для локальной работы:
 
 ```bash
 ./gradlew :server:publishToMavenLocal :proto-jvm:publishToMavenLocal :server-console:publishToMavenLocal
