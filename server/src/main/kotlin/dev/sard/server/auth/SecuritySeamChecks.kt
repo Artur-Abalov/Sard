@@ -53,37 +53,6 @@ internal fun checkSecurityBeans(core: URL?) =
         }
     }
 
-private fun isFromCore(
-    beans: ConfigurableListableBeanFactory,
-    name: String,
-    core: URL?,
-): Boolean {
-    val coreLocation = core?.toString() ?: return false
-    return declaringClassOf(beans, name)?.let { locationOf(it, beans.beanClassLoader) } == coreLocation
-}
-
-private fun originOf(
-    beans: ConfigurableListableBeanFactory,
-    name: String,
-): String = declaringClassOf(beans, name) ?: "unknown"
-
-/**
- * The class whose code declares the bean: the configuration of a `@Bean` method, else the bean's own class; a
- * singleton registered by hand has no definition, and its class is the answer.
- */
-private fun declaringClassOf(
-    beans: ConfigurableListableBeanFactory,
-    name: String,
-): String? =
-    if (beans.containsBeanDefinition(name)) {
-        declaringClassOf(beans.getBeanDefinition(name))
-    } else {
-        beans.getType(name)?.name
-    }
-
-private fun declaringClassOf(definition: BeanDefinition): String? =
-    (definition as? AnnotatedBeanDefinition)?.factoryMethodMetadata?.declaringClassName ?: definition.beanClassName
-
 /** The public operations an extension declares must be under /api/v1; anything else is open to the world. */
 internal fun checkPublicOperations(customizers: List<NamedCustomizer>) {
     val outside =
@@ -123,16 +92,18 @@ internal fun checkChainIntact(
     chain: SecurityFilterChain,
     customizers: List<NamedCustomizer>,
 ) {
-    val whole = chain as? DefaultSecurityFilterChain
-    val intact =
-        whole != null &&
-            whole.requestMatcher is AnyRequestMatcher &&
-            whole.filters.any { it is ApiHeadersFilter } &&
-            whole.filters.any { it is OriginGuardFilter }
-    check(intact || customizers.isEmpty()) {
+    check(customizers.isEmpty() || isWhole(chain)) {
         val named = customizers.joinToString { describe(it.name, it.origin) }
         "The security chain of the core is no longer the whole chain after the customizers $named: one of them " +
             "narrowed it or took out the headers or the Origin check. An extension adds filters with a " +
             "${SardSecurityCustomizer::class.java.simpleName}; it does not change what the chain covers."
     }
 }
+
+private fun isWhole(chain: SecurityFilterChain): Boolean {
+    val whole = chain as? DefaultSecurityFilterChain ?: return false
+    val covers = whole.requestMatcher is AnyRequestMatcher
+    return covers && whole.has(ApiHeadersFilter::class.java) && whole.has(OriginGuardFilter::class.java)
+}
+
+private fun DefaultSecurityFilterChain.has(type: Class<*>): Boolean = filters.any { type.isInstance(it) }
