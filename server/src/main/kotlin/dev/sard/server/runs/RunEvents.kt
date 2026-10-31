@@ -129,7 +129,8 @@ class RunEvents(
     ) {
         val change = Change.between(watch, now)
         if (!change.happened) return
-        val events = eventsOf(session, watch, now, change)
+        val run = session.find(RunRecord::class.java, watch.runId) ?: return
+        val events = eventsOf(session, run, watch, now, change)
         afterCommit(session) { events.forEach(publisher::publish) }
     }
 
@@ -148,14 +149,14 @@ class RunEvents(
         }
     }
 
-    /** The change of status, then the start, of the run of [watch] between it and [now], each only if it happened. */
+    /** The change of status, then the start, of [run] between [watch] and [now], each only if it happened. */
     private fun eventsOf(
         session: Session,
+        run: RunRecord,
         watch: Watch,
         now: Snapshot,
         change: Change,
     ): List<SardEvent> {
-        val run = session.find(RunRecord::class.java, watch.runId) ?: return emptyList()
         val at = clock.instant()
         val actor = Requester.requesterOf(session, watch.tenantId, run)
         val kind = kindOf(run)

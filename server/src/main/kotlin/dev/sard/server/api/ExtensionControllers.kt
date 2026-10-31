@@ -56,12 +56,6 @@ internal class ExtensionControllers(
         return location == coreLocation || anchors.any { it.toString() == location }
     }
 
-    private fun locationOf(type: Class<*>): String? =
-        type.protectionDomain
-            ?.codeSource
-            ?.location
-            ?.toString()
-
     companion object {
         /** The code sources of the frameworks' controllers; a framework that is not on the class path adds none. */
         fun frameworkLocations(): Set<URL> =
