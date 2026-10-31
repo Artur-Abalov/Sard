@@ -15,6 +15,12 @@
 # вне /api/v1, решение о событии настроек в домене, run.started по started_at)
 # и ответы владельца на вопросы specifier В1–В4 (Р30–Р33).
 #
+# Редакция 5 (2026-10-31, ПРЕДЛОЖЕНО, ждёт владельца): HTTP-безопасность
+# переходит на Spring Security в этом же PR. Решения Р34–Р50, вопросы В-1–В-8
+# и сценарии — в docs/specs/server/spring-security.feature; прежние сценарии
+# этого файла остаются в силе, меняется только прочтение «Дано» про
+# заменённый фильтр сессии (список «Что правится» ниже).
+#
 # Что есть сейчас (проверено чтением ADR и спецификаций):
 #   Е1. Публичное API ядра — только пакеты dev.sard.server.extension.**;
 #       остальное внутреннее (фаза 2, PR #113: server = библиотека
@@ -245,6 +251,28 @@
 #     8 часов с входа (Р23).
 #   - Спецификация консоли docs/specs/web/ — блок редакции и лицензии из
 #     GET /api/v1/status и GET /api/v1/server.
+#   Редакция 5 (spring-security.feature, Р34–Р50):
+#   - Новый ADR (номер назначает coder): HTTP-безопасность на Spring
+#     Security. ADR 0021 заменяется частично — «Spring Security» в
+#     «Отвергнуто», фильтры SessionAuthFilter и OriginGuardFilter как
+#     сервлет-фильтры, «Полный контракт замены — оба бина» и бин
+#     sessionAuthFilterRegistration, обязанность выставлять
+#     SESSION_REQUEST_ATTRIBUTE; в статусе ADR 0021 — ссылка на новый ADR.
+#   - ADR 0070 п. 3 (AuthorizationManager цепочки вместо перехватчика MVC,
+#     SubjectAuthentication вместо SUBJECT_REQUEST_ATTRIBUTE) и п. 4 (шов
+#     SardSecurityCustomizer, отказы старта Р44).
+#   - docs/extensions.md — таблица швов, абзац о замене входа, правило
+#     «Отказ закрыт», новые отказы старта.
+#   - docs/dependencies.md — spring-boot-starter-security, строка
+#     spring-security-crypto (Р50).
+#   - Р26, Р30 и сценарии с «тестовым расширением, заменившим SessionApi и
+#     фильтр сессии» и «тестовым расширением SSO»: «фильтр кладёт в запрос
+#     субъекта» читается как «фильтр, добавленный через
+#     SardSecurityCustomizer, ставит SubjectAuthentication с этим субъектом»,
+#     «без сессии ядра» — как «без аутентификации в цепочке» (Р39). Названия
+#     и «Тогда» не меняются.
+#   - Раздел «Образец» ниже — свойства sard.sample.public-ping,
+#     sard.sample.own-chain, sard.sample.public-outside (spring-security.feature).
 #
 # Образец (examples/extension-sample), как его видят сценарии
 #   - id "sample", displayName "Sard Sample Extension", редакция
