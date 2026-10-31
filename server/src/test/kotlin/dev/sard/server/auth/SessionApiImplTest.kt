@@ -8,6 +8,7 @@ import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SignInResult
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.SardEvent
 import dev.sard.server.extension.SettingsChanged
 import dev.sard.server.extension.SignInFailed
@@ -59,8 +60,8 @@ class SessionApiImplTest {
             { TENANT },
             clock,
             publisher,
-            SettingsEvents(publisher, { Subject.ADMINISTRATOR }, clock) { TENANT },
-            { ROBOT },
+            SettingsEvents(publisher, SubjectActors { Subject.ADMINISTRATOR }, clock) { TENANT },
+            SubjectActors { ROBOT },
         )
 
     private fun withAdministrator(password: String = PASSWORD) {

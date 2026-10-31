@@ -74,6 +74,6 @@ class SardEventPublisherTest {
 
     @Test
     fun `Вне запроса актор события не известен`() {
-        runner.run { ctx -> assertNull(ctx.getBean(ActorSource::class.java).current()) }
+        runner.run { ctx -> assertNull(ctx.getBean(SubjectActors::class.java).current()) }
     }
 }

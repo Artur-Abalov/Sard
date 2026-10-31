@@ -3,9 +3,9 @@
 
 package dev.sard.server.runs
 
-import dev.sard.server.events.ActorSource
 import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.RunCreated
 import dev.sard.server.extension.RunStarted
 import dev.sard.server.extension.RunStatusChanged
@@ -33,7 +33,7 @@ private const val VERIFICATION = "verification"
 class RunEvents(
     private val publisher: SardEventPublisher,
     private val clock: Clock,
-    private val actors: ActorSource,
+    private val actors: SubjectActors,
 ) {
     /** The status a run had, and whether it had its start moment, when a transaction began to move it. */
     class Watch(
@@ -165,7 +165,7 @@ class RunEvents(
 
     companion object {
         /** Tells nobody; for the code that is built without a context. */
-        val NONE = RunEvents(SardEventPublisher.NONE, Clock.systemUTC(), ActorSource.NONE)
+        val NONE = RunEvents(SardEventPublisher.NONE, Clock.systemUTC(), SubjectActors.NONE)
     }
 }
 
@@ -176,6 +176,6 @@ class RunEventsConfiguration {
     fun runEvents(
         publisher: SardEventPublisher,
         clock: Clock,
-        actors: ActorSource,
+        actors: SubjectActors,
     ) = RunEvents(publisher, clock, actors)
 }

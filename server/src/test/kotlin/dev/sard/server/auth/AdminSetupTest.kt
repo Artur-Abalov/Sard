@@ -3,9 +3,9 @@
 
 package dev.sard.server.auth
 
-import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.SardEvent
 import dev.sard.server.extension.SettingsChanged
 import dev.sard.server.extension.TenantResolver
@@ -29,7 +29,7 @@ class AdminSetupTest {
     private val publisher = SardEventPublisher { events += it as SardEvent }
     private val tenant = TenantResolver.DEFAULT_TENANT_ID
     private val setup =
-        StoredAdminSetup(administrators, hasher, clock, SettingsEvents(publisher, ActorSource.NONE, clock) { tenant })
+        StoredAdminSetup(administrators, hasher, clock, SettingsEvents(publisher, SubjectActors.NONE, clock) { tenant })
 
     @Test
     fun `Шаг admin открыт, пока администратора нет`() {

@@ -6,9 +6,9 @@ package dev.sard.server.auth
 import dev.sard.server.ClockAutoConfiguration
 import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.SessionApi
-import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.AccessPolicy
 import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.SessionExpired
@@ -90,7 +90,7 @@ class AdminAuthAutoConfiguration {
         clock: Clock,
         publisher: SardEventPublisher,
         settings: SettingsEvents,
-        actors: ActorSource,
+        actors: SubjectActors,
     ): SessionApi =
         SessionApiImpl(
             administrators,

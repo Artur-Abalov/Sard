@@ -5,10 +5,10 @@ package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.auth.CoreSubjectSource
-import dev.sard.server.events.ActorSource
 import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventMulticaster
 import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
@@ -481,7 +481,7 @@ class RestoresMutationTest(
                 queued,
                 Duration.ofHours(24),
                 { false },
-                RunEvents(SardEventPublisher { }, clock, ActorSource.NONE),
+                RunEvents(SardEventPublisher { }, clock, SubjectActors.NONE),
             )
 
         val run = MutFlow.underTest { offline.start(tenant.id, s, SF, draft(a)) }

@@ -24,13 +24,13 @@ class EventsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    fun actorSource(subjects: SubjectSource): ActorSource = SubjectActors(subjects)
+    fun subjectActors(subjects: SubjectSource): SubjectActors = SubjectActors(subjects)
 
     @Bean
     @ConditionalOnMissingBean
     fun settingsEvents(
         publisher: SardEventPublisher,
-        actors: ActorSource,
+        actors: SubjectActors,
         clock: Clock,
         tenants: TenantResolver,
     ) = SettingsEvents(publisher, actors, clock, tenants)

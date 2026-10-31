@@ -17,7 +17,7 @@ import java.util.UUID
  */
 class SettingsEvents(
     private val publisher: SardEventPublisher,
-    private val actors: ActorSource,
+    private val actors: SubjectActors,
     private val clock: Clock,
     private val tenants: TenantResolver,
 ) {
@@ -77,7 +77,7 @@ class SettingsEvents(
         val NONE =
             SettingsEvents(
                 SardEventPublisher.NONE,
-                ActorSource.NONE,
+                SubjectActors.NONE,
                 Clock.systemUTC(),
                 TenantResolver { TenantResolver.DEFAULT_TENANT_ID },
             )
