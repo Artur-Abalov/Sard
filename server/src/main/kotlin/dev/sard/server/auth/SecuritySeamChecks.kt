@@ -100,10 +100,10 @@ internal fun checkChainIntact(
     }
 }
 
-private fun isWhole(chain: SecurityFilterChain): Boolean {
-    val whole = chain as? DefaultSecurityFilterChain ?: return false
-    val covers = whole.requestMatcher is AnyRequestMatcher
-    return covers && whole.has(ApiHeadersFilter::class.java) && whole.has(OriginGuardFilter::class.java)
-}
+private val REQUIRED_FILTERS = listOf(ApiHeadersFilter::class.java, OriginGuardFilter::class.java)
 
-private fun DefaultSecurityFilterChain.has(type: Class<*>): Boolean = filters.any { type.isInstance(it) }
+private fun isWhole(chain: SecurityFilterChain): Boolean {
+    val whole = chain as? DefaultSecurityFilterChain
+    val filters = whole?.filters.orEmpty()
+    return whole?.requestMatcher is AnyRequestMatcher && REQUIRED_FILTERS.all { type -> filters.any(type::isInstance) }
+}
