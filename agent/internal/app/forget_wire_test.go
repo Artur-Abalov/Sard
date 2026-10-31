@@ -201,3 +201,16 @@ func TestRegisterНесётПределРепозиторияИЕгоПроис�
 		})
 	}
 }
+
+func TestИтогFORGETБезПеречисленияОтличимОтИтогаСПеречислением(t *testing.T) {
+	failed := &agentv1.StepResult{Status: agentv1.StepStatus_STEP_STATUS_FAILED, Output: &agentv1.StepResult_Forget{Forget: &agentv1.ForgetOutput{
+		Failure: agentv1.MaintenanceFailure_MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE}}}
+	got := roundTrip(t, failed, &agentv1.StepResult{}).GetForget()
+	if got == nil || got.Failure != agentv1.MaintenanceFailure_MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE || got.ListedAt != nil {
+		t.Errorf("output = %v", got)
+	}
+	listed := &agentv1.StepResult{Output: &agentv1.StepResult_Forget{Forget: &agentv1.ForgetOutput{ListedAt: timestamppb.New(time.Unix(0, 0))}}}
+	if got := roundTrip(t, listed, &agentv1.StepResult{}).GetForget(); got.GetListedAt() == nil {
+		t.Errorf("a listing at the zero time is read as absent: %v", got)
+	}
+}

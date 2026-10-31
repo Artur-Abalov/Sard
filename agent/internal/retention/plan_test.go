@@ -357,3 +357,25 @@ func TestСнимокИзБудущегоНеСдвигаетГраницуПр�
 	// m10 (today) and m9 (7 days ago) are within 14 days of now.
 	sameSet(t, "forget", d.Forget(), ids(names(1, 8)...))
 }
+
+// keep_within is exclusive, as in restic: exactly 14 days before the newest
+// snapshot is not protected, one second less is.
+func TestГраницаПределаВключаетСнимокМоложе14ДнейНоНеРовно14(t *testing.T) {
+	snaps := []restic.Snapshot{
+		main("new", "S", now),
+		main("edge", "S", now.AddDate(0, 0, -14)),
+		main("inside", "S", now.AddDate(0, 0, -14).Add(time.Second)),
+	}
+	d := plan(snaps, retention.Task{Policy: last(1)}, config.Floor{KeepWithinDays: 14})
+	sameSet(t, "forget", d.Forget(), ids("edge"))
+	sameSet(t, "kept by floor", d.KeptByFloor, ids("inside"))
+}
+
+func TestСнимокСДатойВБудущемНеСдвигаетГраницуПределаСКеепLast1(t *testing.T) {
+	snaps := append(daily("S", 10), main("x1", "S", time.Date(2027, 6, 1, 10, 0, 0, 0, time.UTC)))
+	d := plan(snaps, retention.Task{Policy: last(1)}, config.Floor{KeepLast: 1, KeepWithinDays: 14})
+	if len(d.Forget()) != 0 {
+		t.Errorf("forget = %q", d.Forget())
+	}
+	sameSet(t, "kept by floor", d.KeptByFloor, ids(names(1, 10)...))
+}

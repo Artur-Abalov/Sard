@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
@@ -128,5 +130,45 @@ func TestTheAgentRunsForgetStepsOverTheRepositoriesOfItsConfig(t *testing.T) {
 	}
 	if lines := calls(); len(lines) != 1 || !strings.Contains(lines[0], "snapshots --json --no-lock --tag sard.source=s1") {
 		t.Errorf("restic was run as %q", lines)
+	}
+}
+
+// A FORGET step goes through the started agent: stream, role gate, executor,
+// the retention handler over a fake restic, and its ForgetOutput comes back.
+func TestAForgetStepSentByTheServerReachesTheRetentionHandlerAndItsOutputIsReported(t *testing.T) {
+	h := newAgentHost(t)
+	installPair(t, h.dir, withRole("source")...)
+	writeFile(t, filepath.Join(h.dir, "qa.pass"), []byte("pw"), 0o600)
+	h.extra = "repositories:\n  - {name: qa, url: " + h.dir + "/repo, password_file: " + h.dir + "/qa.pass}\n" +
+		"retention_floor:\n  repositories:\n    qa: {disabled: true}\n"
+	a, b, c := strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64)
+	snap := func(id, day string) string {
+		return `{"id":"` + id + `","time":"2026-11-` + day + `T10:00:00Z","hostname":"h","tags":["sard.source=s1"]}`
+	}
+	done := filepath.Join(h.dir, "forgotten")
+	script := "#!/bin/sh\necho \"$1\" >> " + h.resticCalls + "\n" +
+		"case \"$1\" in\n" +
+		"snapshots) if [ -e " + done + " ]; then echo '[" + snap(c, "30") + "]'; else echo '[" + snap(a, "28") + "," + snap(b, "29") + "," + snap(c, "30") + "]'; fi ;;\n" +
+		"forget) touch " + done + " ;;\n" +
+		"unlock) ;;\n" +
+		"*) echo 'restic 0.19.1 compiled with go1.26.4 on linux/amd64' ;;\nesac\n"
+	h.restic = "restic: {path: " + writeScript(t, filepath.Join(h.dir, "restic"), script) + "}\n"
+	h.server.steps = []*agentv1.RunStep{{CommandId: "f1", Action: agentv1.Action_ACTION_FORGET, RepositoryName: "qa",
+		Forget: &agentv1.ForgetTask{SourceId: "s1", Policy: &agentv1.RetentionPolicy{KeepLast: 1}}}}
+	code, _, stderr := h.runUntil(15*time.Second, []string{"--config", h.config()}, func() bool { return len(h.server.stepResults()) > 0 })
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr)
+	}
+	requireForgetOutput(t, h.server.stepResults()[0], []string{a, b}, []string{c})
+}
+
+func requireForgetOutput(t *testing.T, r *agentv1.StepResult, forgotten, remaining []string) {
+	t.Helper()
+	out := r.GetForget()
+	if r.GetCommandId() != "f1" || r.GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED || out == nil {
+		t.Fatalf("result = %v", r)
+	}
+	if !slices.Equal(out.GetForgottenSnapshotIds(), forgotten) || !slices.Equal(out.GetRemainingSnapshotIds(), remaining) || out.GetListedAt() == nil {
+		t.Errorf("output = %v", out)
 	}
 }

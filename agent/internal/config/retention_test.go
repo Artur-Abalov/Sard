@@ -164,3 +164,19 @@ func TestПределДляНеизвестногоРепозиторияНеО�
 		t.Errorf("unknown = %v", got)
 	}
 }
+
+func TestDisabledВПределеПоУмолчаниюОстанавливаетАгентаСИменемКлюча(t *testing.T) {
+	for _, value := range []string{"true", "false"} {
+		_, err := config.Parse([]byte(floorBase + "retention_floor:\n  default: {disabled: " + value + "}\n"))
+		if err == nil || !strings.Contains(err.Error(), "retention_floor.default.disabled") {
+			t.Errorf("disabled %s: err = %v", value, err)
+		}
+	}
+}
+
+func TestНулевойПределНазываетРазделRepositoriesЕдинственнымМестомДляDisabled(t *testing.T) {
+	_, err := config.Parse([]byte(floorBase + "retention_floor:\n  default: {keep_last: 0, keep_within_days: 0}\n"))
+	if err == nil || !strings.Contains(err.Error(), "disabled: true") || !strings.Contains(err.Error(), "retention_floor.repositories") {
+		t.Fatalf("err = %v", err)
+	}
+}

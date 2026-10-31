@@ -222,7 +222,7 @@ func emptyFloor(f Floor, path string) error {
 	if f.Disabled || f.KeepLast != 0 || f.KeepWithinDays != 0 {
 		return nil
 	}
-	return fmt.Errorf("%w: %s: keep_last 0 and keep_within_days 0 keep nothing; to switch the floor off say \"disabled: true\"", ErrInvalidRetentionFloor, path)
+	return fmt.Errorf("%w: %s: keep_last 0 and keep_within_days 0 keep nothing; to switch the floor off say \"disabled: true\" for a repository in retention_floor.repositories.<name> (the only place for disabled)", ErrInvalidRetentionFloor, path)
 }
 
 func mapKeysOf[V any](m map[string]V) func(yield func(string) bool) {

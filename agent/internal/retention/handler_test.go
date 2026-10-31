@@ -397,6 +397,9 @@ func TestНедоступноеХранилищеДоПеречисленияН�
 	}
 	out, err := r.run(forgetStep(keepLast(1)))
 	hasFailure(t, out, err, agentv1.MaintenanceFailure_MAINTENANCE_FAILURE_STORAGE_UNAVAILABLE)
+	if out.ListedAt != nil || len(out.RemainingSnapshotIds)+len(out.ForgottenSnapshotIds)+len(out.KeptByFloorSnapshotIds) != 0 {
+		t.Errorf("output %v", out)
+	}
 	if r.store.count("forget") != 0 {
 		t.Errorf("calls %v", r.store.calls)
 	}
