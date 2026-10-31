@@ -333,6 +333,17 @@ class FirstStartRestartIntegrationTest {
         assertFalse(mentioned, "the variable is in the log")
     }
 
+    // ---- spring-security.feature: Правило "Цепочка ядра не создаёт сессий контейнера и cookie, кроме своих" ----
+
+    @Test
+    fun `Старт ядра не печатает сгенерированный пароль Spring Security`() {
+        val server = start()
+
+        assertFalse("Using generated security password" in server.logText, server.logText)
+        val loud = server.startLog.filter { it.logger.startsWith("org.springframework.security") }
+        assertTrue(loud.none { it.level.isGreaterOrEqual(ch.qos.logback.classic.Level.WARN) }, "$loud")
+    }
+
     @Test
     fun `Сервер без пароля в окружении стартует, пароль не нужен`() {
         val server = start()

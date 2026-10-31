@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 data class Logged(
     val level: Level,
     val text: String,
+    val logger: String = "",
 )
 
 /** Everything the server logs, at DEBUG, while [block] runs. */
@@ -32,6 +33,6 @@ fun captureEvents(block: () -> Unit): List<Logged> {
     }
     return appender.list.map { event ->
         val causes = generateSequence(event.throwableProxy) { it.cause }.mapNotNull { it.message }
-        Logged(event.level, (listOf(event.formattedMessage) + causes).joinToString("\n"))
+        Logged(event.level, (listOf(event.formattedMessage) + causes).joinToString("\n"), event.loggerName)
     }
 }

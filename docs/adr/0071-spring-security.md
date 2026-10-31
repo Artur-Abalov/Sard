@@ -21,7 +21,8 @@ ADR 0021 отверг Spring Security: функциональность W1b (coo
 ## Решения
 1. **Одна цепочка `SecurityFilterChain`** (`CoreSecurityAutoConfiguration.sardSecurityFilterChain`) на
    HTTP-порту. Spring Security не включает в ней ничего, что видно снаружи: нет пользователя по умолчанию и
-   пароля в логе (автоконфигурация `UserDetailsServiceAutoConfiguration` исключена в `SardServerApplication`),
+   пароля в логе (автоконфигурацию `UserDetailsServiceAutoConfiguration` исключает `EnvironmentPostProcessor` `NoDefaultUser`, поэтому
+   и любое приложение на ядре, не только со своим `main`),
    формы входа, Basic, выхода, remember-me, request cache, CORS, CSRF, `HttpSession` (cookie `JSESSIONID`
    нет). Порядок: заголовки API → Origin → контекст безопасности → исключения → доступ. gRPC (mTLS и
    перехватчик ядра, порт 9090) и слушатель метрик вне Spring Security.

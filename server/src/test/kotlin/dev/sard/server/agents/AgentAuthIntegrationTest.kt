@@ -20,6 +20,7 @@ import dev.sard.server.pki.YEAR
 import dev.sard.server.role.AgentRole
 import io.grpc.CallOptions
 import io.grpc.ChannelCredentials
+import io.grpc.ClientInterceptors
 import io.grpc.Grpc
 import io.grpc.ManagedChannel
 import io.grpc.Metadata
@@ -32,6 +33,7 @@ import io.grpc.health.v1.HealthCheckResponse
 import io.grpc.health.v1.HealthGrpc
 import io.grpc.protobuf.StatusProto
 import io.grpc.stub.ClientCalls
+import io.grpc.stub.MetadataUtils
 import io.grpc.stub.StreamObserver
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
@@ -165,11 +167,15 @@ class AgentAuthIntegrationTest(
     private fun call(
         credentials: ChannelCredentials,
         fullMethodName: String,
+        headers: Metadata? = null,
     ): Outcome =
         try {
             val options = CallOptions.DEFAULT.withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS)
             val method = rawMethod(fullMethodName)
-            val body = ClientCalls.blockingUnaryCall(channel(credentials), method, options, ByteArray(0))
+            val plain = channel(credentials)
+            val target =
+                if (headers == null) plain else ClientInterceptors.intercept(plain, MetadataUtils.newAttachHeadersInterceptor(headers))
+            val body = ClientCalls.blockingUnaryCall(target, method, options, ByteArray(0))
             Outcome(Status.Code.OK, body = String(body))
         } catch (e: StatusRuntimeException) {
             Outcome(e.status.code, reasonOf(e.status, e.trailers ?: Metadata()))
@@ -205,6 +211,30 @@ class AgentAuthIntegrationTest(
     fun `a service nobody listed is refused without a certificate`() {
         assertFalse(ProbeService.SERVICE in UNAUTHENTICATED_SERVICES)
         assertEquals(refused(AgentAuthFailure.CERT_MISSING), call(anonymous(), ProbeService.WHOAMI))
+    }
+
+    // --- spring-security.feature: gRPC is outside Spring Security (Р45)
+
+    private val basicAuthorization =
+        Metadata().apply {
+            put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Basic YWRtaW46eA==")
+        }
+
+    @Test
+    fun `an Authorization header does not open a call without a certificate`() {
+        val actual = call(anonymous(), ProbeService.WHOAMI, basicAuthorization)
+
+        assertEquals(refused(AgentAuthFailure.CERT_MISSING), actual)
+    }
+
+    @Test
+    fun `an Authorization header does not change the call of a live agent`() {
+        val agent = enrolled(acme)
+        val expected = "${agent.identity.tenantId}/${agent.identity.agentId}/${agent.serial}"
+
+        val actual = call(presenting(agent), ProbeService.WHOAMI, basicAuthorization)
+
+        assertEquals(Outcome(Status.Code.OK, body = expected), actual)
     }
 
     // --- 3: the open services

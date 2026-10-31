@@ -75,6 +75,8 @@ class SecurityChainTestConfiguration {
         "spring.grpc.server.port=0",
         "sard.test.admin-password=$PASSWORD",
         "sard.console.location=$FIXTURE_CONSOLE",
+        // One worker thread: the next request runs on the thread of the previous one (Р48).
+        "server.tomcat.threads.max=1",
     ],
 )
 @Import(SeededAdministrator::class, TestcontainersConfiguration::class, SecurityChainTestConfiguration::class)
@@ -416,6 +418,17 @@ class SpringSecurityHttpIntegrationTest(
     }
 
     // ---- Правило: Контекст безопасности живёт один запрос ----
+
+    @Test
+    fun `Запрос без cookie после запроса с сессией в том же потоке отвечает 401`() {
+        val session = signIn()
+
+        assertEquals(200, get("/api/v1/sources", session).statusCode())
+        val response = get("/api/v1/sources")
+
+        assertEquals(401, response.statusCode())
+        assertEquals("unauthenticated", response.code())
+    }
 
     @Test
     fun `Одновременные запросы с сессией и без неё получают каждый свой ответ`() {

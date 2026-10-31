@@ -65,6 +65,29 @@ class ConsoleWithAgentDownloadsIntegrationTest(
     }
 
     @Test
+    fun `Пакеты агента отдаются только со своими заголовками`() {
+        val response = http.get("/downloads/agent/manifest.json")
+
+        assertEquals(200, response.statusCode())
+        val cache = response.headers().allValues("Cache-Control")
+        assertEquals(1, cache.size, "$cache")
+        assertTrue("no-store" !in cache.single(), cache.single())
+        assertEquals(listOf("nosniff"), response.headers().allValues("X-Content-Type-Options"))
+        for (name in listOf("X-Frame-Options", "Pragma", "Expires", "X-XSS-Protection", "Content-Security-Policy")) {
+            assertTrue(response.headers().allValues(name).isEmpty(), name)
+        }
+    }
+
+    @Test
+    fun `Пакеты агента с недействующей cookie отвечают так же, как без неё`() {
+        val response = http.get("/downloads/agent/manifest.json", cookie = "forged-session-id")
+
+        assertEquals(200, response.statusCode())
+        assertTrue(response.body().contains("\"version\": \"$SERVER_VERSION\""), response.body())
+        assertTrue(response.headers().allValues("Set-Cookie").isEmpty())
+    }
+
+    @Test
     fun `Путь пакетов агента без файла не отдаёт страницу консоли`() {
         listOf(
             "/downloads",

@@ -51,6 +51,17 @@ private class ProxiedClient(
                 .build()
         return http.send(request, HttpResponse.BodyHandlers.ofString())
     }
+
+    fun statusOverHttps(): HttpResponse<String> {
+        val request =
+            HttpRequest
+                .newBuilder(URI.create("http://localhost:$port/api/v1/status"))
+                .header("Host", PUBLIC_HOST)
+                .header("X-Forwarded-Proto", "https")
+                .GET()
+                .build()
+        return http.send(request, HttpResponse.BodyHandlers.ofString())
+    }
 }
 
 private fun setCookieOf(response: HttpResponse<String>): String {
@@ -113,6 +124,15 @@ class ReverseProxyIntegrationTest(
     @Test
     fun `the plain-http Origin no longer matches once the proxy says https`() {
         assertEquals(403, client.login(origin = "http://$PUBLIC_HOST").statusCode())
+    }
+
+    @Test
+    fun `a response under api v1 over HTTPS gets no Strict-Transport-Security`() {
+        val response = client.statusOverHttps()
+
+        assertEquals(200, response.statusCode())
+        assertTrue(response.headers().allValues("Strict-Transport-Security").isEmpty())
+        assertEquals(listOf("no-store"), response.headers().allValues("Cache-Control"))
     }
 
     @Test

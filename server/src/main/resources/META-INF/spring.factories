@@ -1,1 +1,2 @@
-org.springframework.boot.EnvironmentPostProcessor=dev.sard.server.database.DatabasePasswordFile
+org.springframework.boot.EnvironmentPostProcessor=dev.sard.server.database.DatabasePasswordFile,\
+dev.sard.server.auth.NoDefaultUser
