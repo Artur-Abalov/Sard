@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.auth.CoreSubjectSource
 import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventMulticaster
 import dev.sard.server.events.SardEventPublisher
@@ -57,6 +58,7 @@ private class FixedPresence(
         AfterCommit::class,
         SardEventPublisher::class,
         SardEventMulticaster::class,
+        CoreSubjectSource::class, // CoreSubjectSourceTest mutates it
     ],
 )
 @SpringBootTest(
