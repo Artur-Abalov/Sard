@@ -19,6 +19,7 @@
 | Расширение `sample`, «Sard Sample Extension» | `SampleAutoConfiguration` (`META-INF/spring/…AutoConfiguration.imports`) |
 | Шов редакции и лицензии: редакция `sample` | `SampleEdition`, свойство `sard.sample.licence` |
 | Шов политики доступа | `SamplePolicy`, свойства `sard.sample.deny`, `sard.sample.policy-failing` |
+| Вход в цепочку безопасности ядра (`SardSecurityCustomizer`), публичные операции по свойствам | `SampleSecurityCustomizer`, свойства `sard.sample.public-ping`, `sard.sample.public-outside`, `sard.sample.own-chain` |
 | Источник субъекта (шов `SubjectSource`), только при заданном свойстве | `SampleSubjectSource`, свойство `sard.sample.subject` |
 | Лишний контроллер `GET /sample/stray` в пакете ядра, только при свойстве | `dev.sard.server.sample.StrayController`, свойство `sard.sample.stray-controller` |
 | Слушатель событий ядра, пишет строку в `sample_events` | `SampleEventListener`, свойство `sard.sample.listener` |
@@ -38,6 +39,12 @@
   никого. Шов не аутентифицирует: без сессии ядра по-прежнему 401. Не задано — субъект как у ядра.
 - `sard.sample.stray-controller` — `true`: образец добавляет контроллер `GET /sample/stray` в пакете
   `dev.sard.server.sample`, вне `/api/v1`; ядро видит, что он не его, и отказывается стартовать.
+- `sard.sample.public-ping` — `true`: настройщик образца объявляет публичную операцию `GET /api/v1/sample/ping`
+  (204 без сессии); по умолчанию `false`, и образец публичных операций не добавляет.
+- `sard.sample.own-chain` — `true`: образец объявляет свой бин `SecurityFilterChain`; ядро отказывается стартовать
+  (вход встраивают через `SardSecurityCustomizer`).
+- `sard.sample.public-outside` — `true`: настройщик объявляет публичную операцию `GET /sample/open` вне `/api/v1`;
+  ядро отказывается стартовать.
 - `sard.sample.listener` — `record` (по умолчанию), `throw` или `slow` (три секунды, затем запись).
 
 ## Сборка и тесты

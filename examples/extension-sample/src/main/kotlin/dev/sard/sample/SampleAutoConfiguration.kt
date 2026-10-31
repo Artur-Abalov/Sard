@@ -8,6 +8,7 @@ import dev.sard.server.extension.AccessPolicyAutoConfiguration
 import dev.sard.server.extension.EditionAutoConfiguration
 import dev.sard.server.extension.EditionProvider
 import dev.sard.server.extension.SardExtension
+import dev.sard.server.extension.SardSecurityCustomizer
 import dev.sard.server.extension.SubjectSource
 import dev.sard.server.extension.SubjectSourceAutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfiguration
@@ -15,10 +16,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.web.SecurityFilterChain
 
 /**
  * The sample starter: an extension, the edition and licence seam and the access policy replaced, a listener of the
- * events, its own endpoints and, in db/migration-extensions, its own migration. Ordered before the core's defaults,
+ * events, its own endpoints, its entry into the security chain of the core and, in db/migration-extensions, its own
+ * migration. Ordered before the core's defaults,
  * as ADR 0013 and 0021 ask of a starter that replaces one.
  */
 @AutoConfiguration(
@@ -45,6 +49,15 @@ class SampleAutoConfiguration {
     @ConditionalOnProperty("sard.sample.subject")
     fun sampleSubject(properties: SampleProperties): SubjectSource =
         SampleSubjectSource(SampleSubjectSource.parse(checkNotNull(properties.subject)))
+
+    /** The sample's way into the security chain of the core (Р41); named after the extension's id. */
+    @Bean("sample")
+    fun sampleSecurity(properties: SampleProperties): SardSecurityCustomizer = SampleSecurityCustomizer(properties)
+
+    /** Only with `sard.sample.own-chain`: a chain of its own, which the core refuses at start (Р44). */
+    @Bean("sample-chain")
+    @ConditionalOnProperty("sard.sample.own-chain")
+    fun sampleChain(http: HttpSecurity): SecurityFilterChain = http.build()
 
     @Bean
     fun sampleEventListener(

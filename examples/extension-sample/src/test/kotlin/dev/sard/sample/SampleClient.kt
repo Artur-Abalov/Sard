@@ -21,6 +21,7 @@ class SampleClient(
         val status: Int,
         val body: String,
         private val mapper: ObjectMapper,
+        val headers: Map<String, List<String>> = emptyMap(),
     ) {
         val json: JsonNode by lazy { mapper.readTree(body) }
 
@@ -42,7 +43,7 @@ class SampleClient(
     ): Reply {
         val cookie = session?.let { mapOf("Cookie" to "sard_session=$it") }.orEmpty()
         val response = raw(method, path, body, headers + cookie)
-        return Reply(response.statusCode(), response.body(), mapper)
+        return Reply(response.statusCode(), response.body(), mapper, response.headers().map())
     }
 
     private fun raw(

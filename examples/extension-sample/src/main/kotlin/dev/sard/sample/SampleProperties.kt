@@ -23,4 +23,10 @@ data class SampleProperties(
     val subject: String? = null,
     /** Adds GET /sample/stray in a package of the core's namespace, which refuses the start (Р27). */
     val strayController: Boolean = false,
+    /** The security customizer declares GET /api/v1/sample/ping public: it answers 204 without a session. */
+    val publicPing: Boolean = false,
+    /** Declares a SecurityFilterChain of the sample's own, which refuses the start (Р44). */
+    val ownChain: Boolean = false,
+    /** The security customizer declares GET /sample/open public, outside /api/v1, which refuses the start (Р44). */
+    val publicOutside: Boolean = false,
 )

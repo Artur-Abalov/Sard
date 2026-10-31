@@ -52,6 +52,8 @@ dependencies {
     // What the starter itself uses; server-core brings its own at runtime only.
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    // SardSecurityCustomizer.customize takes an HttpSecurity: the types of Spring Security are part of the API.
+    implementation("org.springframework.boot:spring-boot-starter-security")
     runtimeOnly("dev.sard:sard-server-console:$sardVersion")
 
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

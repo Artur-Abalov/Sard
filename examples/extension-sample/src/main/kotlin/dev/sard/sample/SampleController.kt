@@ -31,6 +31,11 @@ class SampleController(
             SampleEvent(rs.getLong("id"), rs.getString("type"), rs.getString("detail"))
         }
 
+    /** Public only when `sard.sample.public-ping` is set ([SampleSecurityCustomizer]); otherwise under the session. */
+    @GetMapping("/ping")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun ping() = Unit
+
     @PostMapping("/notes")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun note() = Unit

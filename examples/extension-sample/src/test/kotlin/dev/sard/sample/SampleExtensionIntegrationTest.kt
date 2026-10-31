@@ -53,6 +53,16 @@ class SampleExtensionIntegrationTest(
     }
 
     @Test
+    fun `Расширение не добавляет публичных операций`() {
+        // spring-security.feature, Р41: sard.sample.public-ping is off, so the sample's ping is under the session.
+        val reply = client.send("GET", "/api/v1/sample/ping")
+
+        assertEquals(401, reply.status)
+        assertEquals("unauthenticated", reply.json.path("code").asString())
+        assertEquals(204, client.send("GET", "/api/v1/sample/ping", admin()).status)
+    }
+
+    @Test
     fun `Статус сервера с образцом сообщает его редакцию`() {
         val json = client.send("GET", "/api/v1/status").json
 
