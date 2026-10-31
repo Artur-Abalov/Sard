@@ -4,8 +4,8 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
-import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventPublisher
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.RunCreated
 import dev.sard.server.extension.RunStarted
 import dev.sard.server.extension.RunStatusChanged
@@ -58,7 +58,8 @@ class RunEventsMutationTest(
 ) {
     private val tenant = RunsTenant(jdbc)
     private val published = mutableListOf<SardEvent>()
-    private val events = RunEvents(SardEventPublisher { published += it as SardEvent }, clock, { SCHEDULER })
+    private val publisher = SardEventPublisher { published += it as SardEvent }
+    private val events = RunEvents(publisher, clock, SubjectActors { SCHEDULER })
 
     @BeforeTest
     fun `a tenant with an agent`() {

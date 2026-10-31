@@ -17,7 +17,7 @@ import java.util.UUID
  */
 class SettingsEvents(
     private val publisher: SardEventPublisher,
-    private val actors: ActorSource,
+    private val actors: SubjectActors,
     private val clock: Clock,
     private val tenants: TenantResolver,
 ) {
@@ -44,7 +44,7 @@ class SettingsEvents(
         objectId: UUID? = null,
     ) {
         val event = SettingsChanged(clock.instant(), tenantId, actors.current(), setting, objectId)
-        session.transaction.registerSynchronization(CommitPublication(publisher, event))
+        session.transaction.registerSynchronization(AfterCommit { publisher.publish(event) })
     }
 
     /** As [changed] when a statement of the write changed [rows] rows: none, no event. */
@@ -77,7 +77,7 @@ class SettingsEvents(
         val NONE =
             SettingsEvents(
                 SardEventPublisher.NONE,
-                ActorSource.NONE,
+                SubjectActors.NONE,
                 Clock.systemUTC(),
                 TenantResolver { TenantResolver.DEFAULT_TENANT_ID },
             )

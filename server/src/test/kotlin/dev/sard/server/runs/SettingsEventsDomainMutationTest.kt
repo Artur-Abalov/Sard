@@ -7,10 +7,10 @@ import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.EnrollmentTokenValidationException
 import dev.sard.server.enrollment.EnrollmentTokens
-import dev.sard.server.events.ActorSource
-import dev.sard.server.events.CommitPublication
+import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.EventLog
 import dev.sard.server.extension.RecordingConfiguration
 import dev.sard.server.extension.SardEvent
@@ -62,7 +62,7 @@ private const val ERASED = "delete from verification_schedule"
         VerificationSwitch::class,
         VerificationSchedule::class,
         SettingsEvents::class,
-        CommitPublication::class,
+        AfterCommit::class,
     ],
 )
 @SpringBootTest(
@@ -364,7 +364,7 @@ class SettingsEventsDomainMutationTest(
     fun `An event asked for in a transaction goes out with its fields after the commit, not after a rollback`() {
         val published = mutableListOf<SardEvent>()
         val publisher = SardEventPublisher { published += it as SardEvent }
-        val events = SettingsEvents(publisher, ActorSource { ACTOR }, clock) { tenant.id }
+        val events = SettingsEvents(publisher, SubjectActors { ACTOR }, clock) { tenant.id }
         val id = UUID.randomUUID()
 
         assertFailsWith<IllegalStateException> {
@@ -388,7 +388,7 @@ class SettingsEventsDomainMutationTest(
     fun `An event without an object names none`() {
         val published = mutableListOf<SardEvent>()
         val publisher = SardEventPublisher { published += it as SardEvent }
-        val events = SettingsEvents(publisher, ActorSource.NONE, clock) { tenant.id }
+        val events = SettingsEvents(publisher, SubjectActors.NONE, clock) { tenant.id }
 
         sessions.inTenant(tenant.id) { session ->
             MutFlow.underTest { events.changed(session, tenant.id, "run_defaults") }

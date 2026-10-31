@@ -7,9 +7,9 @@ import dev.sard.server.api.NoSuchSessionException
 import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
-import dev.sard.server.events.ActorSource
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
+import dev.sard.server.events.SubjectActors
 import dev.sard.server.extension.SignInFailed
 import dev.sard.server.extension.SignInLocked
 import dev.sard.server.extension.SignInSucceeded
@@ -39,7 +39,7 @@ class SessionApiImpl(
     private val clock: Clock,
     private val publisher: SardEventPublisher = SardEventPublisher.NONE,
     private val settings: SettingsEvents = SettingsEvents.NONE,
-    private val actors: ActorSource = ActorSource.NONE,
+    private val actors: SubjectActors = SubjectActors.NONE,
 ) : SessionApi {
     override fun createSession(
         password: String,

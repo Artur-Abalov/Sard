@@ -23,8 +23,8 @@ private val TENANT = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
 class SettingsEventsTest {
     private val published = mutableListOf<SardEvent>()
     private val actor = Subject("administrator", "admin")
-    private val events =
-        SettingsEvents(SardEventPublisher { published += it as SardEvent }, { actor }, MovableClock(AT)) { TENANT }
+    private val publisher = SardEventPublisher { published += it as SardEvent }
+    private val events = SettingsEvents(publisher, SubjectActors { actor }, MovableClock(AT)) { TENANT }
 
     @Test
     fun `changed publishes the setting, the object, the tenant, the actor and the time`() {

@@ -4,7 +4,6 @@
 package dev.sard.server.events
 
 import dev.sard.server.extension.SardEvent
-import dev.sard.server.extension.Subject
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEvent
 import org.springframework.context.ApplicationEventPublisher
@@ -13,18 +12,6 @@ import org.springframework.context.PayloadApplicationEvent
 import org.springframework.context.event.SimpleApplicationEventMulticaster
 
 private val log = LoggerFactory.getLogger(SardEventPublisher::class.java)
-
-/**
- * Who the events of the core name as their actor. Not a seam: [SubjectActors] reads the public
- * [dev.sard.server.extension.SubjectSource], which is what an extension replaces (CORE1 Р26).
- */
-fun interface ActorSource {
-    fun current(): Subject?
-
-    companion object {
-        val NONE = ActorSource { null }
-    }
-}
 
 /**
  * Hands [SardEvent]s to the listeners of the application, synchronously (CORE1 Р21). Callers publish after the
