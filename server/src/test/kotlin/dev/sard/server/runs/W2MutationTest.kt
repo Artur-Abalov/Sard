@@ -4,7 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
-import dev.sard.server.events.CommitPublication
+import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventMulticaster
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
@@ -54,7 +54,7 @@ private class FixedPresence(
     excludeTargets = [
         TenantSessions::class, // TenantSessionsTest mutates it
         SettingsEvents::class, // the events of a setting: SettingsEventsDomainMutationTest mutates them
-        CommitPublication::class,
+        AfterCommit::class,
         SardEventPublisher::class,
         SardEventMulticaster::class,
     ],

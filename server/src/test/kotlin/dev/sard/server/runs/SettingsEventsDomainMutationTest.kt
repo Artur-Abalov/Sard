@@ -8,7 +8,7 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.EnrollmentTokenValidationException
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.events.ActorSource
-import dev.sard.server.events.CommitPublication
+import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.events.SettingsEvents
 import dev.sard.server.extension.EventLog
@@ -62,7 +62,7 @@ private const val ERASED = "delete from verification_schedule"
         VerificationSwitch::class,
         VerificationSchedule::class,
         SettingsEvents::class,
-        CommitPublication::class,
+        AfterCommit::class,
     ],
 )
 @SpringBootTest(

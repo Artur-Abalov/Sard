@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.events.ActorSource
+import dev.sard.server.events.AfterCommit
 import dev.sard.server.events.SardEventPublisher
 import dev.sard.server.extension.RunCreated
 import dev.sard.server.extension.RunStarted
@@ -11,8 +12,6 @@ import dev.sard.server.extension.RunStatusChanged
 import dev.sard.server.extension.SardEvent
 import dev.sard.server.extension.Subject
 import dev.sard.server.persistence.RunRecord
-import jakarta.transaction.Status
-import jakarta.transaction.Synchronization
 import org.hibernate.Session
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -27,10 +26,9 @@ private const val VERIFICATION = "verification"
 
 /**
  * The events of a run (CORE1 Р19): created, started (when the run gets its `started_at`, once, Р29) and every change
- * of the field status. A caller asks for a
- * [Watch] before it moves the run in its transaction and calls [settled] after: what the database then shows
- * decides, so no caller names the status it moved to. The events are published when the transaction has
- * committed, in the order they happened, and not at all if it rolls back.
+ * of the field status. A caller asks for a [Watch] before it moves the run in its transaction and calls [settled]
+ * after: what the database then shows decides, so no caller names the status it moved to. The events are published
+ * when the transaction has committed, in the order they happened, and not at all if it rolls back.
  */
 class RunEvents(
     private val publisher: SardEventPublisher,
@@ -168,17 +166,6 @@ class RunEvents(
     companion object {
         /** Tells nobody; for the code that is built without a context. */
         val NONE = RunEvents(SardEventPublisher.NONE, Clock.systemUTC(), ActorSource.NONE)
-    }
-}
-
-/** Runs [action] when the transaction has committed, and not on a rollback (CORE1 Р21). */
-internal class AfterCommit(
-    private val action: () -> Unit,
-) : Synchronization {
-    override fun beforeCompletion() = Unit
-
-    override fun afterCompletion(status: Int) {
-        if (status == Status.STATUS_COMMITTED) action()
     }
 }
 

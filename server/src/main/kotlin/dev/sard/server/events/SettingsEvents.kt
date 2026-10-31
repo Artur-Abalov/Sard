@@ -44,7 +44,7 @@ class SettingsEvents(
         objectId: UUID? = null,
     ) {
         val event = SettingsChanged(clock.instant(), tenantId, actors.current(), setting, objectId)
-        session.transaction.registerSynchronization(CommitPublication(publisher, event))
+        session.transaction.registerSynchronization(AfterCommit { publisher.publish(event) })
     }
 
     /** As [changed] when a statement of the write changed [rows] rows: none, no event. */
