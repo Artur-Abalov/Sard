@@ -220,7 +220,7 @@ Go-инструменты, скачивает зависимости Go и npm �
 
 ```bash
 make proto    # сгенерировать Go-код из proto/ (результат коммитится)
-make build    # agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar, web/dist/
+make build    # agent/bin/sard-agent, cli/bin/sardctl, server-app/build/libs/sard-server.jar, web/dist/
 make test     # все наборы тестов
 make lint     # SPDX-заголовки, buf lint, gofmt/vet/golangci-lint, spotless/detekt, oxlint/prettier/tsc
 make gate     # полный шлюз качества: покрытие ≥ 80%, CRAP ≤ 6, сложность ≤ 8, мутационное тестирование

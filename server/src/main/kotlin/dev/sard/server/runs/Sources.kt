@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
@@ -10,6 +11,8 @@ import dev.sard.server.persistence.UuidV7
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import org.hibernate.exception.ConstraintViolationException
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
 import java.util.UUID
 
@@ -60,6 +63,7 @@ class Sources(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val ids: UuidV7,
+    private val settings: SettingsEvents,
 ) {
     fun create(
         tenantId: UUID,
@@ -82,11 +86,15 @@ class Sources(
                 record.takeTimeouts(draft, keep = false)
                 session.persist(record)
                 session.flush()
+                settings.changed(session, tenantId, "source_created", record.id)
                 viewOf(record)
             }
         }
 
-    /** Replaces the whole source (S8a: PUT); runs already started keep the config they were sent. */
+    /**
+     * Replaces the whole source (S8a: PUT); runs already started keep the config they were sent. The listeners hear
+     * of it, once committed, when the source differed from the draft under the lock of its row (CORE1 Р28).
+     */
     fun replace(
         tenantId: UUID,
         sourceId: UUID,
@@ -105,6 +113,7 @@ class Sources(
                         Action.BACKUP,
                         requireListed = true,
                     ).requireConfig(draft.config)
+                val before = SourceFacts(record)
                 record.name = draft.name
                 record.agentId = draft.agentId
                 record.plugin = draft.plugin
@@ -113,6 +122,7 @@ class Sources(
                 record.takeTimeouts(draft, keep = true)
                 record.updatedAt = clock.instant()
                 session.flush()
+                settings.changedIf(before to SourceFacts(record), session, tenantId, "source_updated", sourceId)
                 viewOf(record)
             }
         }
@@ -127,6 +137,7 @@ class Sources(
             record.requireUserSource()
             activeRunOf(session, sourceId)?.let { throw RunActive(it) }
             record.deletedAt = clock.instant()
+            settings.changed(session, tenantId, "source_deleted", sourceId)
         }
     }
 
@@ -184,6 +195,29 @@ class Sources(
             record.backupTimeoutMinutes,
             record.restoreTimeoutMinutes,
         )
+}
+
+private val CONFIGS = JsonMapper.builder().build()
+
+/** What a replacement can change of a source: not the time of the change, and not the spelling of the config. */
+private data class SourceFacts(
+    val name: String,
+    val agentId: UUID,
+    val plugin: String,
+    val repositoryName: String,
+    val config: JsonNode,
+    val backupTimeoutMinutes: Int?,
+    val restoreTimeoutMinutes: Int?,
+) {
+    constructor(record: SourceRecord) : this(
+        record.name,
+        record.agentId,
+        record.plugin,
+        record.repositoryName,
+        CONFIGS.readTree(record.config),
+        record.backupTimeoutMinutes,
+        record.restoreTimeoutMinutes,
+    )
 }
 
 private fun SourceRecord.takeTimeouts(

@@ -18,6 +18,7 @@ import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.RoleRefusals
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.StepCounts
 import dev.sard.server.runs.StepDeadlines
 import dev.sard.server.runs.StepTransitions
@@ -135,7 +136,8 @@ class DispatchConfiguration {
         sessions: TenantSessions,
         clock: Clock,
         announcer: RunAnnouncer,
-    ): RoleLedger = RoleRefusals(sessions, clock, announcer)
+        events: RunEvents,
+    ): RoleLedger = RoleRefusals(sessions, clock, announcer, events)
 
     @Bean
     fun stepDispatcher(

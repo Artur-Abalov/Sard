@@ -26,7 +26,10 @@ interface Administrators {
         now: Instant,
     ): Boolean
 
-    /** True when there was a hash to remove. */
+    /**
+     * True when there was a hash to remove. In the same statement it leaves the mark of the reset, which the next
+     * start of the server announces (CORE1 Р32); a reset that removes nothing leaves none, and several leave one.
+     */
     fun remove(): Boolean
 }
 
@@ -66,5 +69,14 @@ class JdbcAdministrators(
             expected,
         ) == 1
 
-    override fun remove(): Boolean = jdbc.update("delete from administrators where tenant_id = ?", tenant) == 1
+    // One statement, so the hash goes and the mark appears together or not at all: a data-modifying CTE always runs.
+    override fun remove(): Boolean = jdbc.queryForObject(RESET, Int::class.java, tenant) == 1
 }
+
+private const val RESET = """
+    with removed as (delete from administrators where tenant_id = ? returning tenant_id),
+         marked as (
+             insert into admin_password_resets (tenant_id) select tenant_id from removed on conflict do nothing
+             returning 1
+         )
+    select count(*) from removed"""

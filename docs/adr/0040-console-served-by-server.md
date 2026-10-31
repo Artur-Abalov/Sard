@@ -18,10 +18,12 @@ ADR 0039 оставил консоль за пределами образа: о�
 - **Набор консоли лежит внутри jar**, на пути классов, в каталоге `console/`
   (не в `static/`: стандартная раздача Spring Boot его не видит и не знает
   правил ниже). `java -jar` самодостаточен, в образе по-прежнему один файл
-  `/app/sard-server.jar`.
+  `/app/sard-server.jar`. С CORE1 набор собирает модуль `server-console` в свой jar
+  (`sard-server-console-<версия>.jar`), а `server-app` кладёт его в `BOOT-INF/lib`
+  рядом с `server-core`; путь на classpath прежний — `console/`.
 - **Gradle включает набор только по `-PsardConsoleDist=<каталог>`** (готовая
   сборка `web/dist`). Без свойства jar собирается без консоли, поэтому
-  `./gradlew :server:test` и `:server:bootJar` не требуют Node. Свойство задано, а
+  `./gradlew :server:test` и `:server-app:bootJar` не требуют Node. Свойство задано, а
   `index.html` в каталоге нет — сборка падает с сообщением, называющим свойство и
   каталог.
 - **Раздача — сервлетный фильтр** `ConsoleFilter` на `/*`, регистрируется, только

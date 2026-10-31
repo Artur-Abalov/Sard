@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.events.SettingsEvents
 import java.time.Clock
 
 /**
@@ -25,12 +26,17 @@ class StoredAdminSetup(
     private val administrators: Administrators,
     private val hasher: PasswordHasher,
     private val clock: Clock,
+    private val settings: SettingsEvents,
 ) : AdminSetup {
     override val external = false
 
     override fun done(): Boolean = administrators.hash() != null
 
-    override fun create(password: String): Boolean = administrators.create(hasher.hash(password), clock.instant())
+    override fun create(password: String): Boolean {
+        val created = administrators.create(hasher.hash(password), clock.instant())
+        if (created) settings.changed("password")
+        return created
+    }
 }
 
 /** An extension signs people in: the step counts as done, and the server sets no password. */

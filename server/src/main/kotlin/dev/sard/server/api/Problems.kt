@@ -55,6 +55,9 @@ enum class ErrorCode {
     @JsonProperty("origin_rejected")
     ORIGIN_REJECTED,
 
+    @JsonProperty("access_denied")
+    ACCESS_DENIED,
+
     @JsonProperty("agent_revoked")
     AGENT_REVOKED,
 

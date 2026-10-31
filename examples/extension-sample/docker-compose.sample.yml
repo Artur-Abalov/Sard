@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# The QA stand of the extension sample: deploy/docker-compose.yml with the server and the migrate step run from the
+# sample's image (README.md). The sample's settings are the environment of the server.
+services:
+  migrate:
+    image: sard-server-sample:dev # allow-unpinned: built from this checkout by this file
+    build:
+      context: .
+  server:
+    image: sard-server-sample:dev # allow-unpinned: built from this checkout by this file
+    build:
+      context: .
+    environment:
+      # valid, expired, absent, invalid or failing (the licence seam throws).
+      SARD_SAMPLE_LICENCE: ${SARD_SAMPLE_LICENCE:-valid}
+      # Operations the policy refuses, "METHOD /path/template", comma separated.
+      SARD_SAMPLE_DENY: ${SARD_SAMPLE_DENY:-}
+      SARD_SAMPLE_POLICY_FAILING: ${SARD_SAMPLE_POLICY_FAILING:-false}
+      # record, throw or slow (three seconds, then record).
+      SARD_SAMPLE_LISTENER: ${SARD_SAMPLE_LISTENER:-record}
+      # No agent packages next to the sample.
+      SARD_AGENT_DOWNLOADS: "false"

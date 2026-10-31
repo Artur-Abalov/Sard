@@ -10,9 +10,13 @@ plugins {
     kotlin("jvm")
     id("io.spring.dependency-management")
     id("com.google.protobuf")
+    `maven-publish`
 }
 
 val springBootVersion = rootProject.extra["springBootVersion"] as String
+
+group = "dev.sard"
+version = providers.gradleProperty("sardVersion").getOrElse("dev")
 
 // The proto sources are the parent directory; keep build output outside it.
 layout.buildDirectory = rootProject.layout.buildDirectory.dir("proto-jvm")
@@ -36,6 +40,11 @@ dependencies {
     api("io.grpc:grpc-kotlin-stub")
     api("com.google.protobuf:protobuf-java")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+    constraints {
+        // gRPC still asks for 33.6.0; GHSA-xxph-c9ww-hj94 is fixed in 33.7.2. The constraint reaches
+        // every project that depends on this one (server, e2e).
+        api("com.google.guava:guava:33.7.2-jre")
+    }
 }
 
 sourceSets {
@@ -77,4 +86,31 @@ tasks.named("resolveAndLockAll") {
     val platforms = listOf("linux-x86_64", "linux-aarch_64", "osx-x86_64", "osx-aarch_64", "windows-x86_64")
     val all = executables.flatMap { exe -> platforms.map { dependencies.create("$exe:$it@exe") } }
     doLast { configurations.detachedConfiguration(*all.toTypedArray()).resolve() }
+}
+
+// What an enterprise build and the extension sample compile against (CORE1 phase 3, Р1): the version is the
+// build's X.Y.Z and the public API is dev.sard.server.extension.**. No remote repository yet; the release workflow adds it.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            artifactId = "sard-proto-jvm"
+            // The versions the build resolved, not the bare coordinates of the BOM-managed ones.
+            versionMapping {
+                allVariants { fromResolutionResult() }
+            }
+            pom {
+                name = "Sard agent protocol (JVM)"
+                description = "Generated Java and Kotlin code of the server-agent gRPC contract"
+                url = "https://github.com/Artur-Abalov/Sard"
+                licenses {
+                    license {
+                        name = "Apache-2.0"
+                        url = "https://spdx.org/licenses/Apache-2.0.html"
+                    }
+                }
+                scm { url = "https://github.com/Artur-Abalov/Sard" }
+            }
+        }
+    }
 }

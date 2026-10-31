@@ -655,6 +655,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Edition, extensions and licence of this server
+         * @description Needs a session.
+         */
+        get: operations["server"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/self-backup": {
         parameters: {
             query?: never;
@@ -983,7 +1003,7 @@ export interface components {
             staleAfterDays?: number | null;
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable" | "run_finished";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "access_denied" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable" | "run_finished";
         /** @description A field of the request that failed validation */
         FieldError: {
             /** @description JSON name of the field, e.g. repositoryName */
@@ -2086,6 +2106,12 @@ export interface components {
             /** @description What to tell the administrator about the storage account of the verifier */
             readOnlyNote: string;
         };
+        /** @description The edition of this build */
+        EditionInfo: {
+            /** @description "free" in the open core */
+            id: string;
+            displayName: string;
+        };
         StatusResponse: {
             /** @description sard-server version */
             version: string;
@@ -2094,6 +2120,8 @@ export interface components {
              * @description When a restore was last verified successfully; null if never
              */
             lastVerifiedRestoreAt: string | null;
+            /** @description The edition of this build */
+            edition: components["schemas"]["EditionInfo"];
         };
         /** @description A page of sources */
         SourcePage: {
@@ -2366,6 +2394,38 @@ export interface components {
              * @description When the session ends unless renewed
              */
             expiresAt: string;
+        };
+        /** @description An extension on the server's classpath */
+        ExtensionInfo: {
+            id: string;
+            displayName: string;
+        };
+        /** @description The licence summary of the extension; limits are shown, never applied by the core */
+        LicenceInfo: {
+            state: components["schemas"]["LicenceStatus"];
+            /** @description null when the extension did not report it */
+            holder: string | null;
+            /**
+             * Format: date-time
+             * @description null when the extension did not report it
+             */
+            expiresAt: string | null;
+            items: components["schemas"]["LicenceItemInfo"][];
+        };
+        /** @description A line of the licence, shown as the extension gave it */
+        LicenceItemInfo: {
+            label: string;
+            value: string;
+        };
+        /** @enum {string} */
+        LicenceStatus: "valid" | "expired" | "absent" | "invalid" | "unavailable";
+        /** @description What the server tells a signed-in administrator about its edition, extensions and licence */
+        ServerInfo: {
+            edition: components["schemas"]["EditionInfo"];
+            /** @description Ordered by id; empty in the open core */
+            extensions: components["schemas"]["ExtensionInfo"][];
+            /** @description null in the free edition */
+            licence: components["schemas"]["LicenceInfo"] | null;
         };
         /** @description The commands for a terminal on the server's machine that add a repository to the built-in agent */
         RepositoryCommand: {
@@ -2842,6 +2902,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The database is unavailable; nothing was changed */
             503: {
                 headers: {
@@ -2884,7 +2953,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2951,6 +3020,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -3004,7 +3082,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3078,7 +3156,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3145,6 +3223,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -3198,7 +3285,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3274,6 +3361,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -3327,7 +3423,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3405,7 +3501,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3485,7 +3581,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3541,6 +3637,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The database is unavailable; nothing was changed */
             503: {
                 headers: {
@@ -3583,7 +3688,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3650,7 +3755,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3721,6 +3826,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -3772,7 +3886,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3844,6 +3958,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -3906,7 +4029,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3987,7 +4110,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4068,7 +4191,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4144,7 +4267,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4202,6 +4325,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4316,7 +4448,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4363,7 +4495,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4421,7 +4553,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4488,7 +4620,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4744,6 +4876,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -4795,7 +4936,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4862,7 +5003,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4932,7 +5073,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Origin does not match the request (CSRF) */
+            /** @description Origin does not match the request (CSRF), or the access policy refuses it */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4999,6 +5140,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -5048,6 +5198,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -5088,6 +5247,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5167,6 +5335,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -5223,6 +5400,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5289,6 +5475,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -5343,6 +5538,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -5359,6 +5563,53 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerInfo"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -5392,6 +5643,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5458,6 +5718,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -5498,6 +5767,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5549,6 +5827,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5617,6 +5904,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -5659,6 +5955,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5714,6 +6019,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5777,6 +6091,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The database is unavailable; nothing was changed */
             503: {
                 headers: {
@@ -5808,6 +6131,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5884,6 +6216,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -5931,6 +6272,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The database is unavailable; nothing was changed */
             503: {
                 headers: {
@@ -5968,6 +6318,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6024,6 +6383,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The access policy refuses the operation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -6069,6 +6437,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6129,6 +6506,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The access policy refuses the operation */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

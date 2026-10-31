@@ -36,7 +36,7 @@ class RunsReadApiIntegrationTest(
     private val world = RestWorld(ca, enrollment, tokens, registration, jdbc, clock, mapper, port, grpc)
     private val clock = world.clock
     private val tenant = world.tenant()
-    private val admin = world.admin(tenant)
+    private var admin = world.admin(tenant)
     private val agent = world.agent(tenant)
 
     @AfterTest
@@ -127,6 +127,7 @@ class RunsReadApiIntegrationTest(
         val runs =
             (0..2).map { hour ->
                 clock.now = T0.plus(Duration.ofHours(hour.toLong()))
+                admin = world.admin(tenant)
                 start(source).also { world.forceRun(UUID.fromString(it), "succeeded") }
             }
 

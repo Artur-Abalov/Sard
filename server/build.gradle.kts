@@ -11,10 +11,17 @@ plugins {
     id("com.diffplug.spotless")
     id("io.github.anschnapp.mutflow")
     jacoco
+    `maven-publish`
 }
 
 group = "dev.sard"
 version = providers.gradleProperty("sardVersion").getOrElse("dev")
+
+// server-core (CORE1): the library the open-core application (server-app) and an enterprise
+// build package; the project keeps its path :server so the gates and the tests' paths stay put.
+base {
+    archivesName = "sard-server-core"
+}
 
 // Kotlin 2.4.20 overrides the 2.3.x managed by Spring Boot 4.1.2 (owner's decision, see session log).
 extra["kotlin.version"] = "2.4.20"
@@ -23,6 +30,21 @@ kotlin {
     jvmToolchain(25)
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
+    }
+    // The public API of server-core is dev.sard.server.extension.** and nothing else (CORE1 phase 3, Р1): its ABI is
+    // dumped to server/api/ and `check` fails when a change of it is not in the dump. A deliberate change is made
+    // visible with `./gradlew :server:updateLegacyAbi` and shows up in the diff of the pull request.
+    @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
+    abiValidation {
+        filters {
+            include {
+                byNames.add("dev.sard.server.extension.**")
+            }
+            // What has to be public for Spring but is no API (the @Bean methods of the auto-configurations).
+            exclude {
+                annotatedWith.add("dev.sard.server.extension.InternalSardApi")
+            }
+        }
     }
 }
 
@@ -85,33 +107,27 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-springBoot {
-    buildInfo()
-}
-
+// A library: sard-server.jar and the build-info.properties the server reads its version from
+// belong to the application that packages it (server-app). The tests read the build info from
+// the classpath as the server does, so they get their own copy.
 tasks.bootJar {
-    archiveFileName = "sard-server.jar"
+    enabled = false
 }
-
-// The console (S10, ADR 0040): the jar carries web/dist under console/ only when -PsardConsoleDist=<dir>
-// names a finished build (make build and the image's Dockerfile do); without it the jar has no console
-// and needs no Node. A directory without index.html fails the build, naming the property and the directory.
-val consoleDist = providers.gradleProperty("sardConsoleDist")
-val verifyConsoleDist by tasks.registering {
-    val dist = consoleDist.map { rootProject.layout.projectDirectory.dir(it) }
-    onlyIf { dist.isPresent }
-    doFirst {
-        val directory = dist.get().asFile
-        check(directory.resolve("index.html").isFile) {
-            "-PsardConsoleDist=${consoleDist.get()}: $directory has no index.html; build the console first (cd web && npm run build)"
-        }
+tasks.jar {
+    archiveClassifier = ""
+    // The main class lives here, so Spring Boot's startup line reads the version from this manifest.
+    manifest {
+        attributes("Implementation-Title" to "sard-server-core", "Implementation-Version" to project.version)
     }
 }
-tasks.processResources {
-    if (consoleDist.isPresent) {
-        dependsOn(verifyConsoleDist)
-        from(consoleDist.map { rootProject.layout.projectDirectory.dir(it) }) { into("console") }
-    }
+val testBuildInfo by tasks.registering(org.springframework.boot.gradle.tasks.buildinfo.BuildInfo::class) {
+    destinationDir = layout.buildDirectory.dir("test-build-info")
+}
+sourceSets.test {
+    resources.srcDir(layout.buildDirectory.dir("test-build-info"))
+}
+tasks.processTestResources {
+    dependsOn(testBuildInfo)
 }
 
 // The real sard-agent for the agent seam tests (S4a), built once per build and shared by every
@@ -309,7 +325,34 @@ mutflow {
     targets = listOf("dev.sard.server.**")
 }
 
-// mutflow's mutated copy of main also packages build-info.properties.
-tasks.matching { it.name == "processMutatedMainResources" }.configureEach {
-    dependsOn("bootBuildInfo")
+// What an enterprise build and the extension sample compile against (CORE1 phase 3, Р1): the version is the
+// build's X.Y.Z and the public API is dev.sard.server.extension.**. No remote repository yet; the release workflow adds it.
+// The POM carries the resolved versions (versionMapping below), not the Spring BOM the plugin would import into it.
+dependencyManagement {
+    generatedPomCustomization { enabled(false) }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            artifactId = "sard-server-core"
+            // The versions the build resolved, not the bare coordinates of the BOM-managed ones.
+            versionMapping {
+                allVariants { fromResolutionResult() }
+            }
+            pom {
+                name = "Sard server core"
+                description = "The open core of sard-server: the library an enterprise build and extensions compile against"
+                url = "https://github.com/Artur-Abalov/Sard"
+                licenses {
+                    license {
+                        name = "AGPL-3.0-only"
+                        url = "https://spdx.org/licenses/AGPL-3.0-only.html"
+                    }
+                }
+                scm { url = "https://github.com/Artur-Abalov/Sard" }
+            }
+        }
+    }
 }

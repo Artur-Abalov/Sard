@@ -12,6 +12,7 @@ type Schemas = components['schemas']
 export const status: Status = {
   version: '0.0.0-mock',
   lastVerifiedRestoreAt: '2026-09-01T03:04:00Z',
+  edition: { id: 'free', displayName: 'Free' },
 }
 
 // Sample data of the stage 1 API: agents online, offline, revoked, duplicated and

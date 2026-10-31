@@ -149,6 +149,7 @@ class StepTransitions(
     private val sessions: TenantSessions,
     private val clock: Clock,
     private val announcer: RunAnnouncer = RunAnnouncer(sessions, RunFinishedPublisher.NONE),
+    private val events: RunEvents,
 ) : DispatchLedger {
     override fun active(
         tenantId: UUID,
@@ -274,7 +275,7 @@ class StepTransitions(
                 "cancelResult" to cancelResultOf(to),
             ) + extra
         val moved = execute(step, values) == 1
-        if (moved && run != null) execute(run, values)
+        if (moved && run != null) events.movingStep(this, tenantId, stepId) { execute(run, values) }
         return moved
     }
 }

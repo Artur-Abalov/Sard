@@ -40,6 +40,7 @@ class AgentWaitIntegrationTest(
     @Autowired private val sessions: TenantSessions,
     @Autowired private val deadlines: StepDeadlines,
     @Autowired private val announcer: RunAnnouncer,
+    @Autowired private val events: RunEvents,
     @Autowired private val finished: RecordingRunFinished,
     @Autowired private val steps: StepTransitions,
     @Autowired private val clock: MovableClock,
@@ -63,7 +64,7 @@ class AgentWaitIntegrationTest(
     private fun waits(
         online: Boolean = false,
         startedAt: Instant = RUNS_NOW.minus(Duration.ofDays(1)),
-    ) = AgentWaits(deadlines, sessions, clock, announcer, { online }, startedAt, GRACE)
+    ) = AgentWaits(deadlines, sessions, clock, announcer, events, { online }, startedAt, GRACE)
 
     private fun started(): RunView = runs.start(tenant.id, sources.create(tenant.id, tenant.draft()).id)
 
@@ -91,7 +92,7 @@ class AgentWaitIntegrationTest(
 
     private fun runsSeeing(online: Boolean): Runs {
         val ids = UuidV7(clock, SecureRandom())
-        return Runs(sessions, clock, ids, RecordingStepsQueued(), DAY, { online })
+        return Runs(sessions, clock, ids, RecordingStepsQueued(), DAY, { online }, RunEvents.NONE)
     }
 
     // J1c: Запуск онлайн-агента в очереди не называется ждущим
@@ -148,7 +149,15 @@ class AgentWaitIntegrationTest(
     // J1c: Потолок ожидания задаётся настройкой
     @Test
     fun `the ceiling of the wait is the setting`() {
-        val short = Runs(sessions, clock, UuidV7(clock, SecureRandom()), RecordingStepsQueued(), Duration.ofMinutes(1))
+        val short =
+            Runs(
+                sessions,
+                clock,
+                UuidV7(clock, SecureRandom()),
+                RecordingStepsQueued(),
+                Duration.ofMinutes(1),
+                events = RunEvents.NONE,
+            )
         val run = short.start(tenant.id, sources.create(tenant.id, tenant.draft()).id)
 
         assertEquals(RUNS_NOW + Duration.ofMinutes(1), run.agentWaitUntil)

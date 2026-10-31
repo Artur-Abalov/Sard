@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfbackup
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentOwnedKey
 import dev.sard.server.persistence.AgentRepositoryRecord
@@ -145,6 +146,7 @@ class SelfBackups internal constructor(
     private val mapper: ObjectMapper,
     /** The onboarding is over: only then an unconfirmed key copy is a warning, not a step of the wizard. */
     private val onboardingComplete: () -> Boolean = { false },
+    private val events: SettingsEvents,
 ) {
     /**
      * Binds the self-backup to [repositoryName] of the live built-in agent: creates the system sources with their
@@ -165,7 +167,7 @@ class SelfBackups internal constructor(
         while (true) {
             try {
                 return sessions.inTenant(tenantId) { session ->
-                    bindIn(session, repositoryName, confirmLocalStorage, location, complete)
+                    bindIn(session, tenantId, repositoryName, confirmLocalStorage, location, complete)
                 }
             } catch (e: ConstraintViolationException) {
                 if (e.constraintName !in RACE_KEYS) throw e
@@ -233,6 +235,7 @@ class SelfBackups internal constructor(
 
     private fun bindIn(
         session: Session,
+        tenantId: UUID,
         repositoryName: String,
         confirmLocalStorage: Boolean,
         location: String?,
@@ -250,7 +253,9 @@ class SelfBackups internal constructor(
                     .requireConfig(mapper.writeValueAsString(planned.config))
                 keep(session, existing[planned.role], planned, agent.id, repositoryName, now)
             }
-        record(session, moved.any { it }, now, location)
+        // The sources were locked above, so what they were is what the previous binding left (CORE1 Р28).
+        val bound = record(session, moved.any { it }, now, location)
+        if (bound) events.changed(session, tenantId, "self_backup_repository")
         session.flush()
         return viewIn(session, complete)
     }
@@ -311,25 +316,17 @@ class SelfBackups internal constructor(
 
     /**
      * Creates the binding, or marks it bound again now when the sources [moved], with the new [location] (none
-     * without one). Unmoved, the binding keeps its address unless a new one comes.
+     * without one). Unmoved, the binding keeps its address unless a new one comes. True if the binding changed.
      */
     private fun record(
         session: Session,
         moved: Boolean,
         now: Instant,
         location: String?,
-    ) {
+    ): Boolean {
         val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
-        if (record == null) {
-            session.persist(SelfBackupRecord(ids.next(), now, now).also { it.location = location })
-        } else if (moved) {
-            record.boundAt = now
-            record.updatedAt = now
-            record.location = location
-        } else if (location != null && location != record.location) {
-            record.location = location
-            record.updatedAt = now
-        }
+        if (record == null) session.persist(SelfBackupRecord(ids.next(), now, now).also { it.location = location })
+        return record == null || record.rebound(moved, now, location)
     }
 
     private fun viewIn(
@@ -445,4 +442,19 @@ private fun viewOf(
         recoveryKeyCommand = recoveryKeyCommand(repository.name),
         location = record.location,
     )
+}
+
+/** A move binds the record again [now]; a move or a new address takes the new [location]. True if it changed. */
+private fun SelfBackupRecord.rebound(
+    moved: Boolean,
+    now: Instant,
+    location: String?,
+): Boolean {
+    val changed = moved || (location != null && location != this.location)
+    if (changed) {
+        this.location = location
+        updatedAt = now
+    }
+    if (moved) boundAt = now
+    return changed
 }

@@ -7,14 +7,30 @@ import dev.sard.server.extension.TenantResolver.Companion.DEFAULT_TENANT_ID
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Import
 
 /**
  * Pins the open core to the default tenant. An enterprise starter overrides the
  * resolver by declaring `@AutoConfiguration(before = [TenancyAutoConfiguration::class])`.
  */
 @AutoConfiguration
+@Import(TenancySeamConfiguration::class)
 class TenancyAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
+    @InternalSardApi
     fun tenantResolver() = TenantResolver { DEFAULT_TENANT_ID }
+}
+
+/**
+ * The check that only one implementation of the seam is declared. A configuration of its own, so that the static
+ * bean method (a post-processor must exist before any bean) is not in the public API of the auto-configuration.
+ */
+@Configuration(proxyBeanMethods = false)
+internal object TenancySeamConfiguration {
+    /** Two extensions replacing the seam refuse the start, like the other seams (Р22). */
+    @Bean
+    @JvmStatic
+    fun tenantResolverSeamCheck() = singleImplementationOf(TenantResolver::class.java)
 }

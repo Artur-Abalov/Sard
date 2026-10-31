@@ -63,7 +63,7 @@ data class VerificationReport(
 class VerificationReports(
     private val sessions: TenantSessions,
     private val clock: Clock,
-    private val schedule: VerificationSchedule,
+    private val schedule: VerificationScheduleReader,
 ) {
     /** Throws [SourceNotFound] for no such source in the tenant and [InvalidReportPeriod] for an impossible period. */
     fun of(

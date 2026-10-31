@@ -3,6 +3,7 @@
 
 package dev.sard.server.fleet
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentCertificateRecord
 import dev.sard.server.persistence.AgentPluginRecord
@@ -13,6 +14,7 @@ import dev.sard.server.persistence.hqlWhere
 import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.StepRevocation
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
@@ -149,7 +151,9 @@ class Agents(
     private val sessions: TenantSessions,
     private val presence: AgentPresence,
     private val announcer: RunAnnouncer,
+    private val events: RunEvents,
     private val clock: Clock,
+    private val settings: SettingsEvents,
 ) {
     /** Online: the stream manager has a live session of a not revoked agent. */
     fun online(row: AgentRow): Boolean = row.revokedAt == null && presence.online(row.id)
@@ -254,12 +258,13 @@ class Agents(
         if (agent.revokedAt != null) return emptyList()
         val now = clock.instant()
         agent.revokedAt = now
+        settings.changed(session, tenantId, "agent_revoked", agent.id)
         session
             .createMutationQuery(REVOKE_CERTIFICATES)
             .setParameter("now", now)
             .setParameter("agent", agent.id)
             .executeUpdate()
-        return StepRevocation.loseSteps(session, tenantId, agent.id, now)
+        return StepRevocation.loseSteps(session, tenantId, agent.id, now, events)
     }
 
     /** Records a confirmed duplicate session of [agentId] at the clock's time (ADR 0026, rule 2). */

@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.fleet.AgentPresence
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.MachineAgents
@@ -11,6 +12,7 @@ import dev.sard.server.fleet.Repositories
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.registration.Registration
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.selfbackup.recoveryKeyCommand
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +36,10 @@ class AgentServiceConfiguration {
         sessions: TenantSessions,
         presence: AgentPresence,
         announcer: RunAnnouncer,
+        events: RunEvents,
         clock: Clock,
-    ) = Agents(sessions, presence, announcer, clock)
+        settings: SettingsEvents,
+    ) = Agents(sessions, presence, announcer, events, clock, settings)
 
     @Bean
     fun repositories(sessions: TenantSessions) = Repositories(sessions, ::recoveryKeyCommand)

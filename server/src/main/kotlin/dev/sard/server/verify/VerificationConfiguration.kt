@@ -4,9 +4,11 @@
 package dev.sard.server.verify
 
 import dev.sard.server.agents.stream.AgentConnections
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.CancelMarks
+import dev.sard.server.runs.RunEvents
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepsQueued
 import dev.sard.server.runs.VerificationRuns
@@ -30,6 +32,10 @@ class VerificationConfiguration {
     @Bean
     fun verificationHistory(clock: Clock) = VerificationHistory(UuidV7(clock, SecureRandom()))
 
+    /** The read side of the cycle, for the loop, the reports and the writes. */
+    @Bean
+    fun verificationScheduleReader(settings: VerificationSettings) = VerificationScheduleReader(settings)
+
     @Bean
     fun verificationCycles(
         clock: Clock,
@@ -42,7 +48,8 @@ class VerificationConfiguration {
         settings: VerificationSettings,
         pool: VerifierPool,
         history: VerificationHistory,
-    ) = VerificationQueue(settings, pool, VerificationRuns(UuidV7(clock, SecureRandom())), history)
+        events: RunEvents,
+    ) = VerificationQueue(settings, pool, VerificationRuns(UuidV7(clock, SecureRandom()), events), history)
 
     @Bean
     fun verificationLoop(
@@ -52,8 +59,8 @@ class VerificationConfiguration {
         queue: VerificationQueue,
         settlement: VerificationSettlement,
         queued: ObjectProvider<StepsQueued>,
-        settings: VerificationSettings,
         pool: VerifierPool,
+        reader: VerificationScheduleReader,
     ) = VerificationLoop(
         sessions,
         clock,
@@ -61,19 +68,10 @@ class VerificationConfiguration {
         queue,
         settlement,
         queued.getIfUnique { StepsQueued.NONE },
-        VerificationSchedule(settings),
+        reader,
         StaleEpisodes(UuidV7(clock, SecureRandom())),
         NoVerifierEpisodes(UuidV7(clock, SecureRandom()), pool),
     )
-
-    @Bean
-    fun verifications(
-        sessions: TenantSessions,
-        clock: Clock,
-        cycles: VerificationCycles,
-        pool: VerifierPool,
-        settings: VerificationSettings,
-    ) = Verifications(sessions, clock, cycles, pool, VerificationSchedule(settings))
 
     @Bean
     fun verificationReads(
@@ -87,8 +85,8 @@ class VerificationConfiguration {
     fun verificationReports(
         sessions: TenantSessions,
         clock: Clock,
-        settings: VerificationSettings,
-    ) = VerificationReports(sessions, clock, VerificationSchedule(settings))
+        reader: VerificationScheduleReader,
+    ) = VerificationReports(sessions, clock, reader)
 
     @Bean
     fun verificationTicker(
@@ -112,4 +110,28 @@ class VerificationCancelConfiguration {
         settlement: VerificationSettlement,
         history: VerificationHistory,
     ) = VerificationCancels(sessions, clock, runs, marks, settlement, history)
+}
+
+/** The writes REST makes to restore verification, and the events of them (CORE1 Р28). */
+@Configuration(proxyBeanMethods = false)
+class VerificationWritesConfiguration {
+    /** The installation's cycle: REST sets it, and the listeners hear of a change (CORE1 Р28). */
+    @Bean
+    fun verificationSchedule(
+        reader: VerificationScheduleReader,
+        events: SettingsEvents,
+    ) = VerificationSchedule(reader, events)
+
+    @Bean
+    fun verifications(
+        sessions: TenantSessions,
+        clock: Clock,
+        cycles: VerificationCycles,
+        pool: VerifierPool,
+        reader: VerificationScheduleReader,
+        switch: VerificationSwitch,
+    ) = Verifications(sessions, clock, cycles, pool, reader, switch)
+
+    @Bean
+    fun verificationSwitch(events: SettingsEvents) = VerificationSwitch(events)
 }

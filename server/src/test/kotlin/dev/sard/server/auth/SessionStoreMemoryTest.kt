@@ -24,7 +24,7 @@ class SessionStoreMemoryTest {
     @Test
     fun `an expired session is gone by the time the next one is created`() {
         store.create(TENANT)
-        clock.now = NOW + Duration.ofHours(12)
+        clock.now = NOW + Duration.ofHours(1)
         assertEquals(1, MutFlow.underTest { store.trackedSessions() })
         store.create(TENANT)
         assertEquals(1, MutFlow.underTest { store.trackedSessions() })
@@ -33,7 +33,7 @@ class SessionStoreMemoryTest {
     @Test
     fun `a still-valid session survives the sweep`() {
         val first = store.create(TENANT)
-        clock.now = NOW + Duration.ofHours(1)
+        clock.now = NOW + Duration.ofMinutes(10)
         store.create(TENANT)
         assertEquals(2, MutFlow.underTest { store.trackedSessions() })
         assertEquals(first.id, store.touch(first.id)?.id)

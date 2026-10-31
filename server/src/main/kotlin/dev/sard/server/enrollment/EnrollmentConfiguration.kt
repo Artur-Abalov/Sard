@@ -3,6 +3,7 @@
 
 package dev.sard.server.enrollment
 
+import dev.sard.server.events.SettingsEvents
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentCertificatePolicy
@@ -21,7 +22,8 @@ class EnrollmentConfiguration {
         ca: CertificateAuthority,
         clock: Clock,
         endpoint: AgentEndpoint,
-    ) = EnrollmentTokens(sessions, ca, clock, SecureRandom(), UuidV7(clock, SecureRandom()), endpoint)
+        settings: SettingsEvents,
+    ) = EnrollmentTokens(sessions, ca, clock, SecureRandom(), UuidV7(clock, SecureRandom()), endpoint, settings)
 
     /** Tokens carry the fingerprint of the CA they were issued under (F4a, OQ-191). */
     @Bean

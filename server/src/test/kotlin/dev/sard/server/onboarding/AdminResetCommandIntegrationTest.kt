@@ -49,8 +49,11 @@ class AdminResetCommandIntegrationTest(
     @AfterTest
     fun `forget the state`() {
         jdbc.update("delete from administrators")
+        jdbc.update("delete from admin_password_resets")
         jdbc.update("delete from onboarding_steps where step <> 'keys_confirmed'")
     }
+
+    private fun markers() = jdbc.queryForObject("select count(*) from admin_password_resets", Int::class.java)
 
     private class Result(
         val exit: Int,
@@ -98,6 +101,8 @@ class AdminResetCommandIntegrationTest(
         assertTrue("docker compose restart server" in result.output, result.output)
         assertNull(administrators.hash())
         assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps where step = 'ca'", Int::class.java))
+        // Р32: the command is a process without listeners; it leaves the mark that the next start announces.
+        assertEquals(1, markers())
     }
 
     @Test
@@ -132,11 +137,13 @@ class AdminResetCommandIntegrationTest(
     @Test
     fun `admin-reset без администратора выходит с кодом 0 и ничего не меняет`() {
         administrators.remove()
+        jdbc.update("delete from admin_password_resets")
 
         val result = command("admin-reset")
 
         assertEquals(0, result.exit, result.output)
         assertTrue("not set" in result.output, result.output)
+        assertEquals(0, markers())
         assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps where step = 'ca'", Int::class.java))
     }
 

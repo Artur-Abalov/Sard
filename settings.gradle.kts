@@ -17,7 +17,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "sard"
 
-include("server", "proto-jvm")
+// server is the library server-core; server-app packages it with server-console into sard-server.jar (CORE1).
+include("server", "server-app", "server-console", "proto-jvm")
 project(":proto-jvm").projectDir = file("proto/jvm")
 
 // End-to-end tests run against built images (`make e2e`). Image builds copy only

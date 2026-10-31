@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfagent
 
+import dev.sard.server.loop.PeriodicTask
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
@@ -36,7 +37,7 @@ private class RecordingScheduler : ScheduledThreadPoolExecutor(1) {
 }
 
 /** Rule "Проверка повторяется с заданным интервалом" and "Первая проверка выполняется при старте сервера". */
-@MutFlowTest
+@MutFlowTest(excludeTargets = [PeriodicTask::class]) // PeriodicTaskTest mutates it
 class SelfAgentLoopTest {
     @Test
     fun `Цикл сразу проверяет и повторяет проверку с заданным интервалом`() {

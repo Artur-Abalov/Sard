@@ -21,8 +21,9 @@ const SHOWN_FIRES = 3
 
 /** The three fires after now at a step of a day: all the mock can say of a cron it has no fixture for. */
 function daily(): string[] {
+  const now = Date.now()
   return Array.from({ length: SHOWN_FIRES }, (_, i) =>
-    new Date(Date.now() + (i + 1) * DAY_MS).toISOString(),
+    new Date(now + (i + 1) * DAY_MS).toISOString(),
   )
 }
 

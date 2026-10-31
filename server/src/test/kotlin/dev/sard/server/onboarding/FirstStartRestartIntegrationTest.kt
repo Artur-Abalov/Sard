@@ -11,6 +11,8 @@ import dev.sard.server.api.Session
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
 import dev.sard.server.api.list
+import dev.sard.server.extension.SUBJECT_REQUEST_ATTRIBUTE
+import dev.sard.server.extension.Subject
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -360,7 +362,10 @@ class FirstStartRestartIntegrationTest {
             response: HttpServletResponse,
             chain: FilterChain,
         ) {
-            if (request.getHeader("X-Extension-Admin") != null) request.setAttribute(SESSION_REQUEST_ATTRIBUTE, "admin")
+            if (request.getHeader("X-Extension-Admin") != null) {
+                request.setAttribute(SESSION_REQUEST_ATTRIBUTE, "admin")
+                request.setAttribute(SUBJECT_REQUEST_ATTRIBUTE, Subject("extension-admin", "root"))
+            }
             chain.doFilter(request, response)
         }
     }
@@ -412,7 +417,8 @@ class FirstStartRestartIntegrationTest {
     fun `С заменённым SessionApi смена пароля отвечает 501, а шаг ca выполняет администратор расширения`() {
         val server = start(extension())
 
-        val change = server.client.changePassword("anything", "a", "b")
+        assertEquals(401, server.client.changePassword("anything", "a", "b").status)
+        val change = server.client.changePassword("anything", "a", "b", headers = mapOf("X-Extension-Admin" to "1"))
         assertEquals(501, change.status)
         assertEquals("not_implemented", change.code)
 
