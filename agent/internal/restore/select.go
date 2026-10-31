@@ -7,11 +7,11 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	"slices"
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // Latest is the word that stands for the newest snapshot of a source (Р58).

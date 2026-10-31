@@ -198,10 +198,10 @@ func BackupOutput(b Backup) *agentv1.BackupOutput {
 	}
 }
 
-// resticTags turns step tags into sorted "key=value" restic tags.
 // reservedStepTag: a key that would make the snapshot a part of another one.
 func reservedStepTag(key string) bool { return strings.HasSuffix(key, "."+sdk.MainSnapshotTag) }
 
+// resticTags turns step tags into sorted "key=value" restic tags.
 func resticTags(tags map[string]string) ([]string, error) {
 	out := make([]string, 0, len(tags))
 	for k, v := range tags {

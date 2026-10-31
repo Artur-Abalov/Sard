@@ -7,7 +7,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	"slices"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // The tags Sard puts on a snapshot of a backup (FXs).
