@@ -34,6 +34,7 @@ import kotlin.test.assertTrue
 
 private val SCHEDULER = Subject("service", "scheduler")
 private val LATER = Duration.ofSeconds(5)
+private const val NOBODY = "requested_by = null, requested_by_kind = null, requested_by_id = null"
 private const val RESTORE =
     """{"snapshotId":"s1","snapshotCreatedAt":"2026-09-30T09:00:00Z","repositoryName":"main",""" +
         """"config":{"destination":"x"},"target":"/r/x"}"""
@@ -112,7 +113,7 @@ class RunEventsMutationTest(
     fun `A run nobody asked for is created by the actor of the thread, a verification run has the kind verification`() {
         val run = startedRun()
         val unasked =
-            "update runs set requested_by = null, trigger = 'verification', kind = 'restore', restore = ?::jsonb where id = ?"
+            "update runs set $NOBODY, trigger = 'verification', kind = 'restore', restore = ?::jsonb where id = ?"
         jdbc.update(unasked, RESTORE, run.id)
 
         inTenant { MutFlow.underTest { events.created(it, checkNotNull(it.find(RunRecord::class.java, run.id))) } }
@@ -158,6 +159,8 @@ class RunEventsMutationTest(
     @Test
     fun `Starting gives the change of status first and run started after it, with the same fields`() {
         val run = startedRun()
+        inTenant { events.created(it, checkNotNull(it.find(RunRecord::class.java, run.id))) }
+        published.clear()
         clock.now = RUNS_NOW + LATER
 
         val result =
@@ -181,7 +184,7 @@ class RunEventsMutationTest(
         for (event in listOf<SardEvent>(changed, started)) {
             assertEquals(RUNS_NOW + LATER, event.occurredAt)
             assertEquals(tenant.id, event.tenantId)
-            assertEquals(Subject.ADMINISTRATOR, event.actor)
+            assertEquals(SCHEDULER, event.actor)
         }
         assertEquals(run.id, changed.runId)
         assertEquals(run.id, started.runId)
@@ -190,6 +193,24 @@ class RunEventsMutationTest(
         assertEquals("manual", started.trigger)
         assertEquals("backup", started.kind)
         assertEquals(changed.sourceId, started.sourceId)
+    }
+
+    @Test
+    fun `A run moved on another thread names the subject who asked for it, not the administrator`() {
+        val alice = Subject("sso-user", "alice")
+        val asking = RunEvents(publisher, clock, SubjectActors { alice })
+        val agentThread = RunEvents(publisher, clock, SubjectActors.NONE)
+        val run = startedRun()
+        inTenant { MutFlow.underTest { asking.created(it, checkNotNull(it.find(RunRecord::class.java, run.id))) } }
+        published.clear()
+
+        inTenant { session ->
+            MutFlow.underTest {
+                agentThread.movingRun(session, tenant.id, run.id) { setStatus(session, run.id, "running") }
+            }
+        }
+
+        assertEquals(listOf(alice, alice), published.map { it.actor })
     }
 
     @Test
@@ -267,7 +288,10 @@ class RunEventsMutationTest(
     @Test
     fun `A scheduled run changes status without an actor`() {
         val run = startedRun()
-        jdbc.update("update runs set requested_by = null, trigger = 'schedule' where id = ?", run.id)
+        jdbc.update(
+            "update runs set $NOBODY, trigger = 'schedule' where id = ?",
+            run.id,
+        )
 
         inTenant { session ->
             MutFlow.underTest { events.movingRun(session, tenant.id, run.id) { setStatus(session, run.id, "running") } }

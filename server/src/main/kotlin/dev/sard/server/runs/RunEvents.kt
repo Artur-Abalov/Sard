@@ -22,6 +22,9 @@ private const val RUN_STATUS_OF_STEP =
     "select r.id, r.status, r.started_at is not null from runs r where r.tenant_id = :tenant and " +
         "r.id = (select run_id from run_steps where tenant_id = :tenant and id = :step)"
 private const val RUN_STATE = "select status, started_at is not null from runs where tenant_id = :tenant and id = :run"
+private const val RUN_REQUESTER = "select requested_by_kind, requested_by_id from runs where id = :run"
+private const val SET_REQUESTER =
+    "update runs set requested_by_kind = :kind, requested_by_id = :id where id = :run and requested_by is not null"
 private const val VERIFICATION = "verification"
 
 /**
@@ -56,6 +59,7 @@ class RunEvents(
     ) {
         val at = clock.instant()
         val actor = actors.current()
+        if (actor != null) Requester.remember(session, run, actor)
         afterCommit(session) {
             val tenantId = checkNotNull(run.tenantId)
             publisher.publish(RunCreated(at, tenantId, actor, run.id, kindOf(run), run.trigger, run.sourceId))
@@ -126,7 +130,7 @@ class RunEvents(
         if (!statusChanged && !startedNow) return
         val run = session.find(RunRecord::class.java, watch.runId) ?: return
         val at = clock.instant()
-        val actor = actorOf(run)
+        val actor = Requester.requesterOf(session, run)
         val kind = kindOf(run)
         val tenant = watch.tenantId
         val terminal = !RunState.of(now.status).active
@@ -151,9 +155,6 @@ class RunEvents(
             .firstOrNull()
             ?.let { Snapshot(it[0] as String, it[1] as Boolean) }
 
-    /** A manual run was asked for by the administrator; a scheduled one by nobody. */
-    private fun actorOf(run: RunRecord): Subject? = run.requestedBy?.let { Subject.ADMINISTRATOR }
-
     private fun kindOf(run: RunRecord) = if (run.trigger == Trigger.VERIFICATION.stored) VERIFICATION else run.kind
 
     private fun afterCommit(
@@ -167,6 +168,34 @@ class RunEvents(
         /** Tells nobody; for the code that is built without a context. */
         val NONE = RunEvents(SardEventPublisher.NONE, Clock.systemUTC(), SubjectActors.NONE)
     }
+}
+
+/** The subject behind a manual run, which the agent's thread cannot name later (R26). */
+private object Requester {
+    /** A manual run keeps the subject that asked for it (the agent's thread names nobody); a scheduled one has none. */
+    fun remember(
+        session: Session,
+        run: RunRecord,
+        actor: Subject,
+    ) {
+        session
+            .createNativeQuery(SET_REQUESTER)
+            .setParameter("kind", actor.kind)
+            .setParameter("id", actor.id)
+            .setParameter("run", run.id)
+            .executeUpdate()
+    }
+
+    fun requesterOf(
+        session: Session,
+        run: RunRecord,
+    ): Subject? =
+        session
+            .createNativeQuery(RUN_REQUESTER, Array<Any?>::class.java)
+            .setParameter("run", run.id)
+            .resultList
+            .firstOrNull()
+            ?.let { row -> (row[0] as String?)?.let { Subject(it, row[1] as String) } }
 }
 
 /** The bean of [RunEvents], which the places that move a run share. */
