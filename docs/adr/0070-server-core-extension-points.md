@@ -82,11 +82,18 @@ Enterprise-сборка (первой — LIC1) — то же ядро плюс 
    `/api/v1` — отказ старта (`ExtensionWebAutoConfiguration`, `ExtensionControllers`). Контроллером
    ядра считается только тот, чей класс загружен из того же источника кода (`CodeSource`), что и сам
    `server-core`; префикс пакета `dev.sard.server.` ничего не доказывает (Р27) — расширение может
-   объявить класс в этом пакете. Классы фреймворков (`org.springframework.`, `org.springdoc.`,
-   `org.apache.`, `io.swagger.`) не проверяются. Обработчик, путь которого определить нельзя
-   (`pathPatternsCondition == null`), считается лежащим вне `/api/v1`.
-9. **Публикация**: `maven-publish` для `sard-server-core`, `sard-proto-jvm`, `sard-server-console`
-   (без удалённого репозитория — его добавит релизный workflow). `examples/extension-sample` —
+   объявить класс в этом пакете. Доверены, кроме ядра, только источники кода фреймворков, чьи
+   контроллеры сервер отдаёт вне `/api/v1` (страница ошибки Spring Boot, документ OpenAPI springdoc):
+   их находят по классу-якорю, не по имени пакета. Обработчик, путь которого определить нельзя
+   (`pathPatternsCondition == null`), считается лежащим вне `/api/v1`. Проверяются обработчики
+   `RequestMappingHandlerMapping`; маршруты `RouterFunction`, `SimpleUrlHandlerMapping` и свои
+   сервлеты расширения проверка не видит — это защита от ошибки, а не граница безопасности:
+   расширение — доверенный код в том же процессе.
+9. **Публикация**: `maven-publish` для `sard-server-core`, `sard-proto-jvm`, `sard-server-console`.
+   Их собирает тот же запуск Gradle, что и `sard-server.jar` (стадия `server-jar` Dockerfile, ADR 0045),
+   в файловый репозиторий `build/maven-repo`; задача `maven` релизного workflow после одобрения
+   `sign` выгружает эти файлы в GitHub Packages (`scripts/release-maven.sh`, версия — тег без `v`) и
+   прикладывает к ним аттестацию происхождения сборки. `examples/extension-sample` —
    отдельная Gradle-сборка против опубликованного в локальный репозиторий ядра, строгая блокировка
    зависимостей как в корне; CI собирает и тестирует её.
 

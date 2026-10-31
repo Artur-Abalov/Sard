@@ -14,7 +14,10 @@
 # each with its jar, POM and Gradle module, or nothing is uploaded. The
 # repository writes its own maven-metadata.xml, so those are not sent. The
 # token comes in MAVEN_TOKEN and reaches curl in a netrc file, never on a
-# command line.
+# command line. Versions there are immutable, so a rerun after a partial upload
+# must not fail: a file already there with the same bytes is skipped, one with
+# other bytes stops the upload. Jars go first, POMs and modules last, so a
+# version is not resolvable until all its jars are in.
 set -euo pipefail
 
 die() { echo "release-maven: $*" >&2; exit 1; }
@@ -43,13 +46,25 @@ unexpected="$(find "$dir" -type f ! -path "$dir/dev/sard/sard-server-core/*" ! -
 [ -z "$unexpected" ] || die "not a library of the release: $unexpected"
 
 host="$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<<"$url")"
-netrc="$(mktemp)"
-trap 'rm -f "$netrc"' EXIT
+netrc="$(mktemp)" remote="$(mktemp)"
+trap 'rm -f "$netrc" "$remote"' EXIT
 chmod 600 "$netrc"
 printf 'machine %s login token password %s\n' "$host" "$MAVEN_TOKEN" >"$netrc"
 
-for file in "${files[@]}"; do
-  path="${file#"$dir"/}"
-  curl --fail --silent --show-error --netrc-file "$netrc" --upload-file "$file" "$url/$path"
+upload() { # file
+  local path="${1#"$dir"/}"
+  if curl --fail --silent --netrc-file "$netrc" --output "$remote" "$url/$path"; then
+    cmp -s "$1" "$remote" || die "$path is already there with other content"
+    echo "already there $path"
+    return
+  fi
+  curl --fail --silent --show-error --netrc-file "$netrc" --upload-file "$1" "$url/$path"
   echo "uploaded $path"
+}
+
+for file in "${files[@]}"; do
+  case "$file" in *.pom | *.pom.* | *.module | *.module.*) ;; *) upload "$file" ;; esac
+done
+for file in "${files[@]}"; do
+  case "$file" in *.pom | *.pom.* | *.module | *.module.*) upload "$file" ;; esac
 done

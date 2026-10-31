@@ -14,7 +14,7 @@
 #                         │            build provenance of every file, GitHub attestation)
 #                         ├─ maven    (sard-server-core, sard-proto-jvm, sard-server-console of server-jar's build
 #                         │            to GitHub Packages, version = the tag without "v": what an enterprise
-#                         │            build compiles against, CORE1, ADR 0070)
+#                         │            build compiles against, CORE1, ADR 0070; build provenance of each file)
 #                         └─ image    (sard-server for amd64 and arm64: the tested jar, console
 #                               │      included, and the signed packages; sard-agent of the same
 #                               │      signed tarballs, the agent next to the server; GHCR;
@@ -357,6 +357,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Build provenance of the libraries (GitHub attestation, Sigstore): gh attestation verify.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -369,6 +372,12 @@ jobs:
         env:
           MAVEN_TOKEN: ${{ github.token }}
         run: scripts/release-maven.sh maven "$VERSION" "https://maven.pkg.github.com/${GITHUB_REPOSITORY,,}"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            maven/**/*.jar
+            maven/**/*.pom
+            maven/**/*.module
 
   image:
     needs: sign

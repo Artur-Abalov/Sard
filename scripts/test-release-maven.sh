@@ -16,9 +16,23 @@ trap 'rm -rf "$WORK"' EXIT
 die() { echo "test-release-maven: FAIL: $*" >&2; exit 1; }
 
 mkdir "$WORK/bin"
+# A PUT (--upload-file) is recorded; a GET (--output) serves the file from
+# $REMOTE if it is there, else fails as a missing file does (exit 22).
 cat >"$WORK/bin/curl" <<'EOF'
 #!/bin/sh
-echo "$*" >>"$CURL_LOG"
+out="" upload="" last=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift ;;
+    --upload-file) upload="$2"; shift ;;
+    --netrc-file) shift ;;
+  esac
+  last="$1"; shift
+done
+if [ -n "$upload" ]; then echo "PUT $last" >>"$CURL_LOG"; exit 0; fi
+path="${last#https://maven.pkg.github.com/o/r/}"
+[ -f "$REMOTE/$path" ] || exit 22
+cp "$REMOTE/$path" "$out"
 EOF
 chmod +x "$WORK/bin/curl"
 TOKEN=s3cret-token
@@ -34,10 +48,11 @@ repo() { # dir, version
   done
 }
 
+mkdir "$WORK/remote"
 run() { # dir, version... → output, exit code in RC
   : >"$WORK/curl.log"
   RC=0
-  OUT="$(PATH="$WORK/bin:$PATH" CURL_LOG="$WORK/curl.log" MAVEN_TOKEN="$TOKEN" \
+  OUT="$(PATH="$WORK/bin:$PATH" CURL_LOG="$WORK/curl.log" REMOTE="$WORK/remote" MAVEN_TOKEN="$TOKEN" \
     "$HERE/release-maven.sh" "$@" https://maven.pkg.github.com/o/r 2>&1)" || RC=$?
 }
 
@@ -78,4 +93,23 @@ grep -q "https://maven.pkg.github.com/o/r/dev/sard/sard-server-core/1.2.0-rc.1/s
   "$WORK/curl.log" || die "the core jar was not uploaded: $(cat "$WORK/curl.log")"
 grep -q "maven-metadata" "$WORK/curl.log" && die "maven-metadata.xml was uploaded"
 grep -q "$TOKEN" "$WORK/curl.log" && die "the token is on the command line"
-echo "ok: a complete repository uploads its 18 files"
+last="$(tail -n 1 "$WORK/curl.log")"
+grep -qE '\.(pom|module)(\.sha256)?$' <<<"$last" || die "POMs and modules go last, the last upload is: $last"
+echo "ok: a complete repository uploads its 18 files, POMs and modules last"
+
+# A rerun after a partial upload: the files already there with the same bytes are skipped.
+mkdir -p "$WORK/remote/dev/sard/sard-proto-jvm/1.2.0-rc.1"
+cp "$WORK/ok/dev/sard/sard-proto-jvm/1.2.0-rc.1/sard-proto-jvm-1.2.0-rc.1.jar" "$WORK/remote/dev/sard/sard-proto-jvm/1.2.0-rc.1/"
+run "$WORK/ok" v1.2.0-rc.1
+[ "$RC" -eq 0 ] || die "a rerun: exit $RC: $OUT"
+[ "$(wc -l <"$WORK/curl.log")" -eq 17 ] || die "a rerun: want 17 uploads, got: $(cat "$WORK/curl.log")"
+grep -q "already there dev/sard/sard-proto-jvm/1.2.0-rc.1/sard-proto-jvm-1.2.0-rc.1.jar" <<<"$OUT" \
+  || die "a rerun: the uploaded jar was not skipped: $OUT"
+echo "ok: a rerun skips what is already there"
+
+# A file already there with other bytes stops the upload.
+echo different >"$WORK/remote/dev/sard/sard-proto-jvm/1.2.0-rc.1/sard-proto-jvm-1.2.0-rc.1.jar"
+run "$WORK/ok" v1.2.0-rc.1
+[ "$RC" -eq 1 ] || die "other content there: exit $RC, want 1: $OUT"
+grep -q "already there with other content" <<<"$OUT" || die "other content there: reason not given: $OUT"
+echo "ok: other content already there stops the upload"
