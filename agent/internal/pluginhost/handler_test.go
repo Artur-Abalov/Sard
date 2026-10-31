@@ -392,3 +392,17 @@ func TestFingerprintStreamExit3FailsKeepingTheMainSnapshotAndNamesTheRepository(
 		t.Fatalf("Run = %v, %v", res, err)
 	}
 }
+
+// L1a, ADR 0071: a step tag that marks a part is refused with the step, and restic does not run.
+func TestABackupStepWithATagThatMarksAPartIsRejectedWithoutTouchingTheStorage(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	st := step(backup, `{}`)
+	st.Tags = map[string]string{"files.main_snapshot": strings.Repeat("a", 64)}
+	_, err := f.run(t, st)
+	if !errors.Is(err, executor.ErrRejected) || !strings.Contains(err.Error(), "main_snapshot") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(f.repo.requests) != 0 {
+		t.Error("restic ran")
+	}
+}

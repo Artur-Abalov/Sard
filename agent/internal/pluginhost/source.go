@@ -93,7 +93,7 @@ func (s *Source) Plugin() sdk.Plugin { return s.plugin }
 // config or unknown secret is returned before anything runs, as a
 // *sdk.ConfigError.
 func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Repository, tags []string, r Reporter) (Backup, error) {
-	if err := s.schema.Validate(cfg); err != nil {
+	if err := s.precheck(cfg, tags); err != nil {
 		return Backup{}, err
 	}
 	h := &host{secrets: s.secrets, plugin: s.plugin.Name(), r: r}
@@ -103,7 +103,7 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 	}
 	release := releaseOnce(d)
 	defer release()
-	merged, err := s.withPluginTags(tags, d.Tags)
+	merged, err := s.dumpTags(tags, d)
 	if err != nil {
 		return Backup{}, err
 	}
@@ -117,6 +117,52 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 		return withUnreadable(Backup{BackupSummary: sum}, err), err
 	}
 	return s.withFingerprint(ctx, h, cfg, repo, tags, d, Backup{BackupSummary: sum}, early)
+}
+
+// precheck: the config is valid and the tags of the step are allowed, before
+// anything runs.
+func (s *Source) precheck(cfg sdk.Config, tags []string) error {
+	if err := s.schema.Validate(cfg); err != nil {
+		return err
+	}
+	return checkStepTags(tags)
+}
+
+// checkStepTags refuses, with the step, a tag that makes a part.
+func checkStepTags(tags []string) error {
+	if i := slices.IndexFunc(tags, stepTagIsReserved); i >= 0 {
+		return rejected(fmt.Errorf("tag %q: a key that ends in .%s is the agent's own", tags[i], sdk.MainSnapshotTag))
+	}
+	return nil
+}
+
+func stepTagIsReserved(tag string) bool {
+	key, _, _ := strings.Cut(tag, "=")
+	return reservedStepTag(key)
+}
+
+// dumpTags are the tags of the step followed by those of the dump, once the
+// dump is known not to use the key of the parts.
+func (s *Source) dumpTags(step []string, d sdk.Dump) ([]string, error) {
+	if err := checkPluginTags(d); err != nil {
+		return nil, err
+	}
+	return s.withPluginTags(step, d.Tags)
+}
+
+// checkPluginTags refuses the key the agent keeps for its own parts, in the
+// tags of the dump and of its extra files (the plugin's fault, not the step's).
+func checkPluginTags(d sdk.Dump) error {
+	all := []map[string]string{d.Tags}
+	for _, f := range d.Extra {
+		all = append(all, f.Tags)
+	}
+	for _, tags := range all {
+		if _, ok := tags[sdk.MainSnapshotTag]; ok {
+			return fmt.Errorf("the plugin sets the tag %q, which the agent keeps for the parts of a snapshot", sdk.MainSnapshotTag)
+		}
+	}
+	return nil
 }
 
 // withUnreadable records the unreadable paths a snapshot written without some
@@ -188,7 +234,7 @@ func (s *Source) backupExtra(ctx context.Context, repo restic.Repository, step [
 		if err != nil {
 			return main, err
 		}
-		tags = append(tags, s.plugin.Name()+".main_snapshot="+main.SnapshotID)
+		tags = append(tags, s.plugin.Name()+"."+sdk.MainSnapshotTag+"="+main.SnapshotID)
 		got, err := repo.Backup(ctx, restic.BackupRequest{Tags: tags, StdinFilename: f.Name, Stdin: func(_ context.Context, w io.Writer) error {
 			_, err := w.Write(f.Content)
 			return err

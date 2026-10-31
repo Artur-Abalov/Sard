@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -518,5 +519,52 @@ func TestDumpFollowsASuccessfulPrepareOfACancelledStep(t *testing.T) {
 	}
 	if want := []string{"prepare {}", "dump {}"}; !slices.Equal(p.calls, want) {
 		t.Errorf("calls = %q, want %q", p.calls, want)
+	}
+}
+
+// A tag that makes a snapshot the part of another one is the agent's own
+// (L1a, ADR 0071): a part is forgotten without the floor of the host, so
+// neither the server nor a plugin may write it.
+func TestATagThatMarksAPartIsRefusedBeforeRestic(t *testing.T) {
+	tests := map[string]struct {
+		step     []string
+		dump     sdk.Dump
+		rejected bool
+	}{
+		"step tag of this plugin":    {step: []string{"fake.main_snapshot=" + strings.Repeat("a", 64)}, rejected: true},
+		"step tag of another plugin": {step: []string{"other.main_snapshot=" + strings.Repeat("a", 64)}, rejected: true},
+		"dump tag":                   {dump: sdk.Dump{Paths: []string{"/srv"}, Tags: map[string]string{"main_snapshot": "x"}}},
+		"tag of an extra file": {dump: sdk.Dump{Paths: []string{"/srv"},
+			Extra: []sdk.ExtraFile{{Name: "g", Content: []byte("x"), Tags: map[string]string{"main_snapshot": "x"}}}}},
+	}
+	for name, c := range tests {
+		t.Run(name, func(t *testing.T) {
+			r := &repo{}
+			p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) { return c.dump, nil }}
+			_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, c.step, &reporter{})
+			if err == nil || !strings.Contains(err.Error(), "main_snapshot") {
+				t.Fatalf("err = %v", err)
+			}
+			if errors.Is(err, executor.ErrRejected) != c.rejected {
+				t.Errorf("rejected = %v, want %v", errors.Is(err, executor.ErrRejected), c.rejected)
+			}
+			if len(r.requests) != 0 {
+				t.Errorf("restic ran: %v", r.requests)
+			}
+		})
+	}
+}
+
+// The agent's own writers still use the tag: the fingerprint and the extra files.
+func TestTheAgentStillWritesItsOwnPartTagForExtraFiles(t *testing.T) {
+	r := &repo{}
+	p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+		return sdk.Dump{Paths: []string{"/srv"}, Extra: []sdk.ExtraFile{{Name: "g", Content: []byte("x"), Tags: map[string]string{"part": "globals"}}}}, nil
+	}}
+	if _, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.requests[1].Tags; !slices.Contains(got, "fake.main_snapshot=snap") {
+		t.Errorf("tags = %v", got)
 	}
 }

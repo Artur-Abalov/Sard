@@ -19,7 +19,7 @@ const (
 	sourceTag    = "sard.source"
 	partTag      = "postgresql.part"
 	databaseTag  = "postgresql.database"
-	mainTag      = "postgresql.main_snapshot"
+	mainTag      = "postgresql." + sdk.MainSnapshotTag
 	versionTag   = "postgresql.pg_dump_version"
 	serverTag    = "postgresql.server_version"
 	clusterTag   = "postgresql.system_identifier"

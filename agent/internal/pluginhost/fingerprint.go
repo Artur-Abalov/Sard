@@ -89,7 +89,7 @@ func (s *Source) withFingerprint(ctx context.Context, h sdk.Host, cfg sdk.Config
 	if err != nil {
 		return out, err
 	}
-	tags, err := s.withPluginTags(step, map[string]string{"main_snapshot": out.SnapshotID, "part": "fingerprint"})
+	tags, err := s.withPluginTags(step, map[string]string{sdk.MainSnapshotTag: out.SnapshotID, "part": "fingerprint"})
 	if err != nil {
 		return out, err
 	}

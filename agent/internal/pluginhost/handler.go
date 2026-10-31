@@ -199,11 +199,17 @@ func BackupOutput(b Backup) *agentv1.BackupOutput {
 }
 
 // resticTags turns step tags into sorted "key=value" restic tags.
+// reservedStepTag: a key that would make the snapshot a part of another one.
+func reservedStepTag(key string) bool { return strings.HasSuffix(key, "."+sdk.MainSnapshotTag) }
+
 func resticTags(tags map[string]string) ([]string, error) {
 	out := make([]string, 0, len(tags))
 	for k, v := range tags {
 		if k == "" || strings.Contains(k+v, ",") {
 			return nil, fmt.Errorf("tag %q=%q: restic tags need a key and no commas", k, v)
+		}
+		if reservedStepTag(k) {
+			return nil, fmt.Errorf("tag %q: a key that ends in .%s is the agent's own", k, sdk.MainSnapshotTag)
 		}
 		out = append(out, k+"="+v)
 	}

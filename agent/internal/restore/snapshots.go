@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	"slices"
 	"strings"
 	"time"
@@ -128,7 +129,7 @@ func ListFailure(ctx context.Context, err error, target repoinit.Target) *refusa
 
 const (
 	fingerprintPartTag = "files.part=fingerprint"
-	filesMainTag       = "files.main_snapshot="
+	filesMainTag       = "files." + sdk.MainSnapshotTag + "="
 )
 
 // markCompleteness is Р89: reads the list only. A fingerprint snapshot links

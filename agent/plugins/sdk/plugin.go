@@ -76,6 +76,15 @@ type Dump struct {
 	Release func()
 }
 
+// MainSnapshotTag is the key, without the plugin prefix, of the tag that links
+// a snapshot to its main snapshot: the agent writes
+// "<plugin name>.main_snapshot=<id of the main snapshot>" on every extra file
+// and fingerprint. The value is the full id. The agent reads such a snapshot
+// as a part of the main one, and a part is forgotten with it, so the key is
+// reserved: a plugin cannot set it in Dump.Tags or ExtraFile.Tags, and the
+// server cannot send a step tag that ends in ".main_snapshot".
+const MainSnapshotTag = "main_snapshot"
+
 // ExtraFile is a small file a plugin stores in addition to its main dump,
 // e.g. the global objects of a database cluster. The agent saves it only
 // after the main snapshot succeeded, as a snapshot with the step's tags, the

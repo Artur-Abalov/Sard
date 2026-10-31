@@ -10,6 +10,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // Task is what the server asks of a FORGET step (proto ForgetTask).
@@ -40,7 +41,7 @@ const SourceTag = "sard.source="
 
 // mainSnapshotSuffix ends the key of the tag that makes a snapshot the part
 // of another one: "<plugin>.main_snapshot=<full id of the main snapshot>" (V2).
-const mainSnapshotSuffix = ".main_snapshot"
+const mainSnapshotSuffix = "." + sdk.MainSnapshotTag
 
 // mainOf is the id of the main snapshot s is a part of; false for a main one.
 func mainOf(s restic.Snapshot) (string, bool) {

@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	"slices"
 	"strings"
 
@@ -99,7 +100,7 @@ func newest(list []Snapshot, source string) (Snapshot, *refusal.Failure) {
 // mainSnapshotSuffix ends the key of the tag the agent writes on a file a plugin
 // stores besides its main dump (Dump.Extra, ADR 0051 point 4):
 // <plugin>.main_snapshot=<id of the main snapshot>.
-const mainSnapshotSuffix = ".main_snapshot"
+const mainSnapshotSuffix = "." + sdk.MainSnapshotTag
 
 // isExtra: the snapshot is an extra file of a plugin, which belongs to its main
 // snapshot and is restored with it, never by itself as the newest (О2).
