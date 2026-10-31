@@ -11,7 +11,9 @@ import org.springframework.beans.factory.config.BeanFactoryPostProcessor
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory
 import org.springframework.core.annotation.Order
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer
+import org.springframework.security.web.DefaultSecurityFilterChain
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.util.matcher.AnyRequestMatcher
 import java.net.URL
 
 private const val API_PREFIX = "/api/v1/"
@@ -59,22 +61,6 @@ private fun isFromCore(
     val coreLocation = core?.toString() ?: return false
     return declaringClassOf(beans, name)?.let { locationOf(it, beans.beanClassLoader) } == coreLocation
 }
-
-/** The code source a class is loaded from; null for a class that cannot be loaded. */
-private fun locationOf(
-    className: String,
-    loader: ClassLoader?,
-): String? =
-    loadedOrNull(className, loader)
-        ?.protectionDomain
-        ?.codeSource
-        ?.location
-        ?.toString()
-
-private fun loadedOrNull(
-    className: String,
-    loader: ClassLoader?,
-): Class<*>? = runCatching { Class.forName(className, false, loader) }.getOrNull()
 
 private fun originOf(
     beans: ConfigurableListableBeanFactory,
@@ -127,3 +113,26 @@ internal fun customizersOf(beans: ConfigurableListableBeanFactory): List<NamedCu
             Triple(order, name, beans.getBean(name, SardSecurityCustomizer::class.java))
         }.sortedBy { it.first }
         .map { (_, name, customizer) -> NamedCustomizer(name, originOf(beans, name), customizer) }
+
+/**
+ * After the customizers have been applied the chain must still be the whole chain of the core: one that matches every
+ * request and still has the headers and the Origin check. A customizer that narrows it (`securityMatcher`) or takes
+ * these filters out would leave /api/v1 outside the chain, so the start is refused and the text names them (Р44).
+ */
+internal fun checkChainIntact(
+    chain: SecurityFilterChain,
+    customizers: List<NamedCustomizer>,
+) {
+    val whole = chain as? DefaultSecurityFilterChain
+    val intact =
+        whole != null &&
+            whole.requestMatcher is AnyRequestMatcher &&
+            whole.filters.any { it is ApiHeadersFilter } &&
+            whole.filters.any { it is OriginGuardFilter }
+    check(intact || customizers.isEmpty()) {
+        val named = customizers.joinToString { describe(it.name, it.origin) }
+        "The security chain of the core is no longer the whole chain after the customizers $named: one of them " +
+            "narrowed it or took out the headers or the Origin check. An extension adds filters with a " +
+            "${SardSecurityCustomizer::class.java.simpleName}; it does not change what the chain covers."
+    }
+}

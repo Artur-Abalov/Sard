@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.extension.SubjectSource
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.headers.Header
@@ -39,6 +40,7 @@ private const val SESSION_PATH = "/api/v1/onboarding"
 @Tag(name = "onboarding", description = "The first-start wizard")
 class OnboardingController(
     private val api: OnboardingApi,
+    private val subjects: SubjectSource,
 ) {
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @SecurityRequirements
@@ -51,8 +53,7 @@ class OnboardingController(
     )
     fun state(
         @Parameter(hidden = true) @CookieValue(SETUP_COOKIE, required = false) setupSessionId: String?,
-        httpRequest: HttpServletRequest,
-    ): Onboarding = api.state(httpRequest.administratorSession(), setupSessionId)
+    ): Onboarding = api.state(administratorSession(subjects), setupSessionId)
 }
 
 /** POST /api/v1/onboarding/setup-session (К2): the setup code buys a setup session. */
@@ -155,6 +156,7 @@ class SetupSessionController(
 @Tag(name = "onboarding")
 class OnboardingCaController(
     private val api: OnboardingApi,
+    private val subjects: SubjectSource,
     private val objectMapper: ObjectMapper,
 ) {
     @PostMapping
@@ -172,7 +174,7 @@ class OnboardingCaController(
     )
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun confirm(httpRequest: HttpServletRequest) {
-        api.confirmCa(httpRequest.cookie(SETUP_COOKIE), httpRequest.administratorSession(), httpRequest.remoteAddr)
+        api.confirmCa(httpRequest.cookie(SETUP_COOKIE), administratorSession(subjects), httpRequest.remoteAddr)
     }
 
     @ExceptionHandler(NoSuchSessionException::class)

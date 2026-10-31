@@ -52,4 +52,17 @@ class CoreSubjectSourceTest {
     fun `without an authentication there is no subject, as outside a request`() {
         assertNull(subjectOf(null))
     }
+
+    @Test
+    fun `Событие планировщика после запроса администратора не получает его субъекта`() {
+        SecurityContextHolder.getContext().authentication = SubjectAuthentication(Subject.ADMINISTRATOR)
+        SecurityContextHolder.clearContext() // the end of the request: the filter of the chain clears the context
+        var onSchedulerThread: Subject? = SSO_USER
+
+        val thread = Thread { onSchedulerThread = CoreSubjectSource().current() }.apply { start() }
+        thread.join()
+
+        assertNull(onSchedulerThread)
+        assertNull(MutFlow.underTest { CoreSubjectSource().current() })
+    }
 }

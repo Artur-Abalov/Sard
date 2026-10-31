@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.api.isSignedIn
 import dev.sard.server.extension.AccessPolicy
 import dev.sard.server.extension.Operation
 import dev.sard.server.extension.Subject
@@ -10,7 +11,6 @@ import dev.sard.server.extension.SubjectSource
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
-import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.authentication.InsufficientAuthenticationException
 import org.springframework.security.authorization.AuthorizationDecision
 import org.springframework.security.authorization.AuthorizationManager
@@ -29,7 +29,7 @@ private val DENIED = AuthorizationDecision(false)
  */
 internal fun requireAuthentication(authentication: Supplier<out Authentication?>) {
     val current = authentication.get()
-    if (current == null || current is AnonymousAuthenticationToken || !current.isAuthenticated) {
+    if (!current.isSignedIn()) {
         throw InsufficientAuthenticationException("Authentication is required")
     }
 }

@@ -140,6 +140,16 @@ class SecurityExtensionApiIntegrationTest(
     }
 
     @Test
+    fun `Аутентификация расширения, которую источник субъекта не называет, не даёт мастеру сессии администратора`() {
+        val foreign = anonymous("GET", "/api/v1/onboarding", "X-Test-Auth" to "foreign")
+        val named = anonymous("GET", "/api/v1/onboarding", "X-Test-Auth" to "subj")
+
+        assertEquals(200, foreign.status, foreign.toString())
+        assertEquals("none", foreign.json.path("access").asString())
+        assertEquals("admin", named.json.path("access").asString())
+    }
+
+    @Test
     fun `Неаутентифицированная аутентификация расширения отвечает 401`() {
         val response = anonymous("GET", "/api/v1/sources", "X-Test-Auth" to "unauth")
 

@@ -105,7 +105,9 @@ class CoreSecurityAutoConfiguration {
                 rules.anyRequest().access(AccessPolicyAuthorizationManager(policy, subjects, operations))
             }
         customizers.forEach { apply(it, http) }
-        return http.build()
+        val chain = http.build()
+        checkChainIntact(chain, customizers)
+        return chain
     }
 
     /** Spring Security does not offer, create or write anything on its own that the server did not do before. */
